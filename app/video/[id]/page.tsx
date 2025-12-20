@@ -1,26 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, ChevronDown, ChevronUp, X, ThumbsUp, Flame, Lightbulb } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function VideoDetail({ params }: any) {
   const { id } = params;
-  
   const [video, setVideo] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  
   const [isFavorited, setIsFavorited] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0); 
-
+  const [likeCount, setLikeCount] = useState(0);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
   const [relatedVideos, setRelatedVideos] = useState<any[]>([]);
-
   const [showToolInfo, setShowToolInfo] = useState(false);
   const [showPromptInfo, setShowPromptInfo] = useState(false);
 
@@ -63,10 +59,9 @@ export default function VideoDetail({ params }: any) {
   async function fetchComments() {
     const { data } = await supabase
       .from('comments')
-      .select('*, profiles(username, avatar_url)') 
+      .select('*, profiles(username, avatar_url)')
       .eq('video_id', id)
       .order('created_at', { ascending: false });
-    
     if (data) setComments(data);
   }
 
@@ -115,6 +110,7 @@ export default function VideoDetail({ params }: any) {
     if (!error) { setNewComment(''); fetchComments(); }
     setCommentLoading(false);
   };
+
   const handleToggleFavorite = async () => {
     if (!user) return alert('请先登录');
     if (isFavorited) {
@@ -125,16 +121,19 @@ export default function VideoDetail({ params }: any) {
       setIsFavorited(true);
     }
   };
+
   const handleCopyPrompt = (e: React.MouseEvent) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     if (!video?.prompt) return;
     navigator.clipboard.writeText(video.prompt).then(() => alert('已复制！'));
   };
+
   const handleDeleteVideo = async () => {
     if (!confirm('确定删除？')) return;
     await supabase.from('videos').delete().eq('id', id);
     window.location.href = '/';
   };
+
   const handleLike = () => {
     if (isLiked) {
       setLikeCount(prev => prev - 1);
@@ -144,13 +143,12 @@ export default function VideoDetail({ params }: any) {
       setIsLiked(true);
     }
   };
+
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href).then(() => alert('链接已复制，快去分享吧！'));
   };
 
-    // 简单的模拟人气算法：把文字长度当成基数，或者干脆只算点赞和评论
-    const popularity = (likeCount * 5) + (comments.length * 10) + 100; // 基础热度100
-
+  const popularity = (likeCount * 5) + (comments.length * 10) + 100;
 
   if (!video) return <div className="min-h-screen bg-[#0A0A0A] text-white flex items-center justify-center">加载中...</div>;
 
@@ -161,24 +159,47 @@ export default function VideoDetail({ params }: any) {
           <ArrowLeft size={20} />
           <span>返回</span>
         </Link>
-        <div className="w-8"></div> 
+        <div className="w-8"></div>
       </nav>
 
       <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           
+          {/* 👇 核心修改区域：支持 Bilibili 和 MP4 混播 */}
           <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden relative flex items-center justify-center border border-white/5 shadow-2xl">
             {video.video_url ? (
-              <iframe src={video.video_url} className="w-full h-full" scrolling="no" frameBorder="0" allowFullScreen></iframe>
+              // 判断是否是 Bilibili 链接
+              video.video_url.includes('player.bilibili.com') ? (
+                 <iframe 
+                   src={video.video_url} 
+                   className="w-full h-full" 
+                   scrolling="no" 
+                   // @ts-ignore
+                   border="0" 
+                   frameBorder="no" 
+                   framespacing="0" 
+                   allowFullScreen={true}
+                   sandbox="allow-top-navigation allow-same-origin allow-forms allow-scripts"
+                 ></iframe>
+              ) : (
+                // 否则假定是普通视频文件 (mp4)
+                <video 
+                   src={video.video_url} 
+                   poster={video.thumbnail_url} 
+                   controls 
+                   className="w-full h-full object-contain"
+                   playsInline
+                />
+              )
             ) : video.thumbnail_url ? (
-               <img src={video.thumbnail_url} className="w-full h-full object-cover opacity-50" />
+              <img src={video.thumbnail_url} className="w-full h-full object-cover opacity-50" />
             ) : (
-               <Play size={64} className="text-gray-700" />
+              <Play size={64} className="text-gray-700" />
             )}
           </div>
-          
+          {/* 👆 修改结束 */}
+
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-            
             <div className="flex-1">
               <div className="flex items-start gap-3 mb-2">
                 {video.category && (
@@ -188,15 +209,12 @@ export default function VideoDetail({ params }: any) {
                 )}
                 <h1 className="text-2xl font-bold text-white leading-tight">{video.title}</h1>
               </div>
-              
+
               <div className="flex items-center gap-6 text-sm text-gray-400 pl-1 mt-3 font-mono">
                 <span className="text-gray-300 font-bold font-sans">@{video.author}</span>
-                
-                {/* 播放数：现在会实时更新了 */}
                 <div className="flex items-center gap-1.5 opacity-80">
-                  <Eye size={14}/> {video.views} 播放
+                  <Eye size={14} /> {video.views} 播放
                 </div>
-                
                 <div className="flex items-center gap-1.5 opacity-80">
                   <Flame size={14} /> {popularity} 人气
                 </div>
@@ -217,12 +235,11 @@ export default function VideoDetail({ params }: any) {
                 <span>分享</span>
               </button>
             </div>
-
           </div>
 
           <div className="flex flex-wrap gap-4 pb-6 border-b border-white/5 items-center">
             {video.storyboard_url && (
-              <button 
+              <button
                 onClick={handleDownloadStoryboard}
                 className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white transition-all shadow-lg shadow-purple-900/20"
               >
@@ -230,23 +247,18 @@ export default function VideoDetail({ params }: any) {
                 {video.is_vip ? `下载分镜 (${video.price || 10}积分)` : '免费下载分镜'}
               </button>
             )}
-
             <div className="h-6 w-px bg-white/10 mx-2"></div>
-
-            <button 
+            <button
               onClick={() => { setShowToolInfo(!showToolInfo); setShowPromptInfo(false); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                showToolInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showToolInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'
+                }`}
             >
               <PenTool size={14} /> 查看工具
             </button>
-
-            <button 
+            <button
               onClick={() => { setShowPromptInfo(!showPromptInfo); setShowToolInfo(false); }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                showPromptInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showPromptInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'
+                }`}
             >
               <FileText size={14} /> 查看提示词
             </button>
@@ -262,7 +274,7 @@ export default function VideoDetail({ params }: any) {
             <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200">
               <div className="flex justify-between items-start mb-2">
                 <h3 className="text-sm font-bold text-gray-300">使用工具</h3>
-                <button onClick={() => setShowToolInfo(false)}><X size={14} className="text-gray-500 hover:text-white"/></button>
+                <button onClick={() => setShowToolInfo(false)}><X size={14} className="text-gray-500 hover:text-white" /></button>
               </div>
               <div className="text-sm text-gray-400">
                 {video.tag ? (
@@ -280,9 +292,9 @@ export default function VideoDetail({ params }: any) {
                 <h3 className="text-sm font-bold text-gray-300">提示词 (Prompt)</h3>
                 <div className="flex gap-3">
                   {video.prompt && (
-                    <button onClick={handleCopyPrompt} className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300"><Copy size={12}/> 复制</button>
+                    <button onClick={handleCopyPrompt} className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300"><Copy size={12} /> 复制</button>
                   )}
-                  <button onClick={() => setShowPromptInfo(false)}><X size={14} className="text-gray-500 hover:text-white"/></button>
+                  <button onClick={() => setShowPromptInfo(false)}><X size={14} className="text-gray-500 hover:text-white" /></button>
                 </div>
               </div>
               <div className="text-sm text-gray-400 font-mono leading-relaxed bg-[#0A0A0A] p-4 rounded-lg border border-white/5 break-words">
@@ -295,6 +307,7 @@ export default function VideoDetail({ params }: any) {
             <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-gray-200">
               <MessageSquare size={18} /> 评论 ({comments.length})
             </h3>
+
             <div className="flex gap-4 mb-8">
               <div className="w-10 h-10 rounded-full flex-shrink-0 bg-white/5 overflow-hidden border border-white/10">
                 {userProfile?.avatar_url ? (
@@ -306,7 +319,7 @@ export default function VideoDetail({ params }: any) {
                 )}
               </div>
               <div className="flex-1 relative">
-                <textarea 
+                <textarea
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder={user ? "发表你的观点..." : "请先登录参与讨论"}
@@ -318,18 +331,17 @@ export default function VideoDetail({ params }: any) {
                 </button>
               </div>
             </div>
-            
+
             <div className="space-y-6">
               {comments.map((comment) => (
                 <div key={comment.id} className="flex gap-4">
-                  {/* 👇 头像：现在会正确显示头像了 (如果数据库有外键的话) */}
                   <div className="w-8 h-8 rounded-full flex-shrink-0 bg-white/5 overflow-hidden border border-white/10 flex items-center justify-center">
                     {/* @ts-ignore */}
                     {comment.profiles?.avatar_url ? (
-                      <img 
+                      <img
                         // @ts-ignore
-                        src={comment.profiles.avatar_url} 
-                        className="w-full h-full object-cover" 
+                        src={comment.profiles.avatar_url}
+                        className="w-full h-full object-cover"
                       />
                     ) : (
                       <span className="text-xs text-gray-500 font-bold">
@@ -339,7 +351,6 @@ export default function VideoDetail({ params }: any) {
                   </div>
                   <div>
                     <div className="flex items-baseline gap-2 mb-1">
-                      {/* 👇 名字：优先显示昵称 */}
                       <span className="text-sm font-bold text-gray-300">
                         {/* @ts-ignore */}
                         {comment.profiles?.username || comment.user_email?.split('@')[0]}
@@ -357,29 +368,25 @@ export default function VideoDetail({ params }: any) {
         {/* 右侧侧边栏 */}
         <div className="h-fit space-y-6">
           <div className="bg-white/5 rounded-xl border border-white/5 p-6 backdrop-blur-sm">
-            {/* 👇 标题旁加了小灯泡图标 */}
             <h3 className="text-lg font-bold mb-4 text-gray-200 flex items-center gap-2">
               <Lightbulb size={18} className="text-gray-400" />
               猜你喜欢
             </h3>
-            
             <div className="space-y-4">
               {relatedVideos.length > 0 ? relatedVideos.map((item) => (
-                // 👇 增加了 border-b 分割线
                 <Link href={`/video/${item.id}`} key={item.id} className="group flex gap-3 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors border-b border-white/5 pb-4 mb-2 last:border-0 last:mb-0 last:pb-0">
                   <div className="w-24 h-16 bg-gray-900 rounded overflow-hidden flex-shrink-0 relative">
-                     {item.thumbnail_url ? (
-                       <img src={item.thumbnail_url} className="w-full h-full object-cover" />
-                     ) : (
-                       <Play className="text-gray-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" size={20} />
-                     )}
+                    {item.thumbnail_url ? (
+                      <img src={item.thumbnail_url} className="w-full h-full object-cover" />
+                    ) : (
+                      <Play className="text-gray-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" size={20} />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-between">
                     <div>
                       <h4 className="font-bold text-gray-300 text-xs truncate mb-1 group-hover:text-purple-400 transition-colors">{item.title}</h4>
                       <p className="text-[10px] text-gray-500">@{item.author}</p>
                     </div>
-                    {/* 👇 增加了灰色的分类文字 */}
                     {item.category && (
                       <span className="text-[10px] text-gray-600">{item.category}</span>
                     )}
