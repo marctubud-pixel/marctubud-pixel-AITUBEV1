@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-// 👇 使用 || '' 给个空字符串兜底，防止构建时报错
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
+// 👇 直接把引号里的内容替换成你在 Supabase 后台看到的真实数据
+const supabaseUrl = 'https://muwpfhwzfxocqlcxbsoa.supabase.co'
+const supabaseAnonKey = 'sb_publishable_tI4N_nE0fvZqwW2gyMldfQ_i3hOuoMj'
 
 // 创建客户端
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
