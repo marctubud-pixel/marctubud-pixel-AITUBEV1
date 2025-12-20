@@ -1,14 +1,14 @@
 'use client';
 
-// 👇 1. 引入 use (修复报错的关键)
+// 👇 引入 use (修复 params 报错)
 import React, { useState, useEffect, use } from 'react';
 import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, ChevronDown, ChevronUp, X, ThumbsUp, Flame, Lightbulb } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 
-// 👇 2. 修改 Props 类型定义，params 现在是一个 Promise
+// 👇 类型定义：params 是 Promise
 export default function VideoDetail({ params }: { params: Promise<{ id: string }> }) {
-  // 👇 3. 使用 use() 解包 params，获取 id
+  // 👇 解包 params 获取 id
   const { id } = use(params);
 
   const [video, setVideo] = useState<any>(null);
@@ -169,7 +169,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
       <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
 
-          {/* 👇 核心播放器区域：完美保留了之前的 B站/MP4 兼容逻辑 */}
+          {/* 👇 播放器区域：去除了 sandbox 限制，增加了 referrerPolicy */}
           <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden relative flex items-center justify-center border border-white/5 shadow-2xl">
             {video.video_url ? (
               // 判断是否是 Bilibili 链接
@@ -183,7 +183,8 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                   frameBorder="no"
                   framespacing="0"
                   allowFullScreen={true}
-                  sandbox="allow-top-navigation allow-same-origin allow-forms allow-scripts"
+                  // 👇 关键修改：移除 sandbox，添加 referrerPolicy
+                  referrerPolicy="no-referrer" 
                 ></iframe>
               ) : (
                 // 否则假定是普通视频文件 (mp4)
@@ -201,6 +202,12 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
               <Play size={64} className="text-gray-700" />
             )}
           </div>
+          
+          {/* 👇 调试用的，确认链接对不对 (如果上线后觉得丑可以删掉) */}
+          <div className="text-xs text-gray-600 font-mono break-all bg-black p-2 rounded">
+            [DEBUG] 视频链接: {video.video_url || '空'}
+          </div>
+          
           {/* 👆 播放器结束 */}
 
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
