@@ -199,3 +199,4 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     </div>
   );
 }
+
