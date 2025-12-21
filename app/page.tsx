@@ -19,7 +19,7 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTag, setSelectedTag] = useState('近期热门');
   const [currentBanner, setCurrentBanner] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(8);
+  const [visibleCount, setVisibleCount] = useState(10);
 
   const categories = ["近期热门", "编辑精选", "获奖作品", "动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告", "实验短片"];
 
@@ -84,7 +84,7 @@ export default function Home() {
   const hasMore = visibleCount < filteredVideos.length;
 
   const handleLoadMore = () => {
-    setVisibleCount(prev => prev + 8);
+    setVisibleCount(prev => prev + 10);
   };
 
   const formatViews = (num: number) => {
@@ -228,7 +228,7 @@ export default function Home() {
             {hasMore && (
               <div className="mt-10 flex justify-center">
                 <button onClick={handleLoadMore} className="bg-white/5 border border-white/10 text-gray-300 px-8 py-3 rounded-full hover:bg-white/10 hover:text-white transition-colors flex items-center gap-2 text-sm font-medium">
-                  加载更多内容 ({filteredVideos.length - visibleCount})
+                  加载更多灵感 ({filteredVideos.length - visibleCount})
                 </button>
               </div>
             )}
