@@ -21,7 +21,6 @@ export default function Home() {
   const [currentBanner, setCurrentBanner] = useState(0);
   const [visibleCount, setVisibleCount] = useState(8);
 
-  // 统一的分类列表 (包含精选和获奖)
   const categories = ["近期热门", "编辑精选", "获奖作品", "动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告", "实验短片"];
 
   useEffect(() => {
@@ -120,7 +119,7 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-4">
-          <Link href="/upload">
+          <Link href="/admin/dashboard">
             <button className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-purple-900/20">
               <Upload size={18} /> <span>投稿</span>
             </button>
@@ -168,7 +167,7 @@ export default function Home() {
           </Link>
         )}
 
-        {/* 分类栏 (居中，无图标) */}
+        {/* 分类栏 */}
         <div className="flex gap-3 overflow-x-auto pb-6 mb-4 scrollbar-hide justify-center">
           {categories.map((tag) => (
             <button 
@@ -181,7 +180,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 提示信息 */}
         {searchTerm && <div className="mb-4 text-sm text-gray-500 text-center">🔍 搜索 "{searchTerm}" 的结果 ({filteredVideos.length})</div>}
 
         {loading ? (
@@ -196,18 +194,19 @@ export default function Home() {
                     <div className="aspect-video relative overflow-hidden bg-gray-900">
                        <img src={video.thumbnail_url} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                        
-                       {/* 🏆 右上角荣誉角标 (透明徽章风格) */}
+                       {/* 🏆 左上角：强制显示分类 */}
+                       {video.category && (
+                         <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white font-medium border border-white/10">
+                           {video.category}
+                         </div>
+                       )}
+
+                       {/* 🥇 右上角：荣誉角标 */}
                        <div className="absolute top-2 right-2 flex gap-1">
                          {video.is_selected && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/50 text-yellow-400 shadow-lg" title="编辑精选"><Crown size={12} fill="currentColor"/></div>}
                          {video.is_award && <div className="w-6 h-6 bg-purple-500/20 backdrop-blur rounded-full flex items-center justify-center border border-purple-500/50 text-purple-400 shadow-lg" title="获奖作品"><Medal size={12} fill="currentColor"/></div>}
                        </div>
 
-                       {/* 左上角分类Tag (如果不是精选/获奖，且在全部/搜索模式下才显示) */}
-                       {!video.is_selected && !video.is_award && (selectedTag === '近期热门' || searchTerm) && video.category && (
-                         <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white font-medium border border-white/10">{video.category}</div>
-                       )}
-
-                       {/* 播放量 */}
                        <div className="absolute bottom-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
                          <Eye size={10} className="text-gray-300"/> <span>{formatViews(video.views)}</span>
                        </div>
@@ -216,7 +215,6 @@ export default function Home() {
                       <h3 className="font-bold text-gray-200 text-sm leading-snug line-clamp-2 group-hover:text-white transition-colors mb-2">{video.title}</h3>
                       <div className="mt-auto flex items-center justify-between text-xs text-gray-500">
                         <span className="truncate max-w-[60%] hover:text-gray-300 transition-colors">@{video.author}</span>
-                        {/* 底部保留工具标签 (最多显示2个) */}
                         {video.tag && <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px] max-w-[40%] truncate">{video.tag.split(',')[0]}</span>}
                       </div>
                     </div>
