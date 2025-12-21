@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-// 👇 这里是关键，退回3层去引用 lib
-import { supabase } from '@/app/lib/supabaseClient'; 
+
+// 👇 修改点：使用最稳妥的相对路径，退一层去找 lib
+import { supabase } from '../lib/supabaseClient'; 
+
 import { ArrowLeft, Upload, Link as LinkIcon, RefreshCw, Save } from 'lucide-react';
 import Link from 'next/link';
 
@@ -22,7 +24,7 @@ export default function UploadPage() {
     video_url: '',
   });
 
-  // 👇 这里填你自己的邮箱
+  // 👇 请确认这个邮箱完全正确
   const ADMIN_EMAIL = 'marctubud@gmail.com'; 
 
   useEffect(() => {
