@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, Flame, Filter, MonitorPlay } from 'lucide-react';
+import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, Flame, Filter, MonitorPlay, Medal, Star } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -17,12 +17,12 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTag, setSelectedTag] = useState('近期热门');
+  const [selectedTag, setSelectedTag] = useState('近期热门'); // 默认选中
   const [currentBanner, setCurrentBanner] = useState(0);
   const [visibleCount, setVisibleCount] = useState(8);
 
-  // 👇 这里加上了新的分类
-  const categories = ["近期热门", "编辑精选", "获奖作品", "动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告"];
+  // 普通分类 (不包含精选/获奖，因为它们是独立维度)
+  const categories = ["动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告", "实验短片"];
 
   useEffect(() => {
     async function initData() {
@@ -57,11 +57,22 @@ export default function Home() {
     router.refresh();
   }
 
+  // 🔍 核心筛选逻辑
   const filteredVideos = videos.filter(video => {
-    const matchCategory = selectedTag === '近期热门' 
-      ? video.is_hot === true 
-      : (selectedTag === '全部' || video.category === selectedTag);
+    // 1. 荣誉/分类筛选
+    let matchCategory = false;
+    if (selectedTag === '近期热门') {
+      matchCategory = video.is_hot === true;
+    } else if (selectedTag === '编辑精选') {
+      matchCategory = video.is_selected === true;
+    } else if (selectedTag === '获奖作品') {
+      matchCategory = video.is_award === true;
+    } else {
+      // 普通分类
+      matchCategory = video.category === selectedTag;
+    }
 
+    // 2. 搜索筛选
     const searchLower = searchTerm.toLowerCase();
     const matchSearch = !searchTerm || 
                         video.title?.toLowerCase().includes(searchLower) || 
@@ -161,27 +172,42 @@ export default function Home() {
           </Link>
         )}
 
-        {/* 分类栏 */}
-        <div className="flex gap-3 overflow-x-auto pb-6 mb-4 scrollbar-hide justify-center">
+        {/* 👇 顶部筛选栏 (特殊分类 + 普通分类) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-6 mb-4 scrollbar-hide">
+          {/* 特殊分类组 */}
+          <button onClick={() => { setSelectedTag('近期热门'); setVisibleCount(8); setSearchTerm(''); }} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1 ${selectedTag === '近期热门' ? 'bg-white text-black' : 'bg-[#1A1A1A] text-gray-400 hover:text-white'}`}>
+            🔥 近期热门
+          </button>
+          <div className="w-px h-6 bg-white/10 mx-2"></div>
+          
+          <button onClick={() => { setSelectedTag('编辑精选'); setVisibleCount(8); setSearchTerm(''); }} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1 ${selectedTag === '编辑精选' ? 'bg-yellow-500 text-black' : 'bg-[#1A1A1A] text-gray-400 hover:text-yellow-500'}`}>
+            <Crown size={14}/> 编辑精选
+          </button>
+          <button onClick={() => { setSelectedTag('获奖作品'); setVisibleCount(8); setSearchTerm(''); }} className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1 ${selectedTag === '获奖作品' ? 'bg-purple-600 text-white' : 'bg-[#1A1A1A] text-gray-400 hover:text-purple-500'}`}>
+            <Medal size={14}/> 获奖作品
+          </button>
+          
+          <div className="w-px h-6 bg-white/10 mx-2"></div>
+
+          {/* 普通分类循环 */}
           {categories.map((tag) => (
             <button 
               key={tag} 
               onClick={() => { setSelectedTag(tag); setVisibleCount(8); setSearchTerm(''); }}
-              className={`px-5 py-2 rounded-full text-sm whitespace-nowrap transition-all duration-300 border cursor-pointer ${selectedTag === tag ? 'bg-white text-black border-white font-bold transform scale-105 shadow-lg shadow-white/10' : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10 hover:text-white hover:border-white/20'}`}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all border cursor-pointer ${selectedTag === tag ? 'bg-white text-black border-white' : 'bg-[#1A1A1A] text-gray-400 border-white/5 hover:text-white'}`}
             >
               {tag}
             </button>
           ))}
         </div>
 
-        {/* 提示信息：只在有搜索词时显示 */}
+        {/* 提示信息 */}
         {searchTerm && <div className="mb-4 text-sm text-gray-500 text-center">🔍 搜索 "{searchTerm}" 的结果 ({filteredVideos.length})</div>}
 
         {loading ? (
           <div className="text-center text-gray-500 py-20 flex items-center justify-center gap-2"><Loader2 className="animate-spin" /> 加载中...</div>
         ) : (
           <>
-            {/* 网格布局：限制最大5列 (grid-cols-5) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {displayVideos.length > 0 ? (
                 displayVideos.map((video: any) => (
@@ -189,14 +215,15 @@ export default function Home() {
                     <div className="aspect-video relative overflow-hidden bg-gray-900">
                        <img src={video.thumbnail_url} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                        
-                       {/* 分类Tag：移到左上角，且仅在'近期热门'或'搜索'模式下显示 */}
-                       {(selectedTag === '近期热门' || searchTerm) && video.category && (
-                         <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white font-medium border border-white/10">
-                           {video.category}
-                         </div>
-                       )}
+                       {/* 👇 左上角角标逻辑：优先显示荣誉标签，没有才显示分类 */}
+                       <div className="absolute top-2 left-2 flex gap-1">
+                         {video.is_selected && <div className="bg-yellow-500/90 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-black font-bold flex items-center gap-1 shadow-lg"><Crown size={10}/> 精选</div>}
+                         {video.is_award && <div className="bg-purple-600/90 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white font-bold flex items-center gap-1 shadow-lg"><Medal size={10}/> 获奖</div>}
+                         {!video.is_selected && !video.is_award && selectedTag !== '全部' && video.category && (
+                           <div className="bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white font-medium border border-white/10">{video.category}</div>
+                         )}
+                       </div>
 
-                       {/* 播放量：图标换成了 Eye */}
                        <div className="absolute bottom-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
                          <Eye size={10} className="text-gray-300"/> <span>{formatViews(video.views)}</span>
                        </div>
@@ -205,7 +232,6 @@ export default function Home() {
                       <h3 className="font-bold text-gray-200 text-sm leading-snug line-clamp-2 group-hover:text-white transition-colors mb-2">{video.title}</h3>
                       <div className="mt-auto flex items-center justify-between text-xs text-gray-500">
                         <span className="truncate max-w-[60%] hover:text-gray-300 transition-colors">@{video.author}</span>
-                        {/* 底部保留工具标签 */}
                         {video.tag && <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">{video.tag}</span>}
                       </div>
                     </div>
