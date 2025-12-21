@@ -1,14 +1,11 @@
 'use client';
 
-// 引入 use 以兼容 Next.js 15
 import React, { useState, useEffect, use } from 'react';
 import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, ChevronDown, ChevronUp, X, ThumbsUp, Flame, Lightbulb } from 'lucide-react';
 import Link from 'next/link';
-// 👇 这里用相对路径 ../../lib/supabaseClient 或者 @/app/lib/supabaseClient 都可以，确保能找到就行
 import { supabase } from '../../lib/supabaseClient';
 
 export default function VideoDetail({ params }: { params: Promise<{ id: string }> }) {
-  // 解包 params
   const { id } = use(params);
 
   const [video, setVideo] = useState<any>(null);
@@ -40,13 +37,14 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     if (!id) return;
     fetchData();
     fetchComments();
-    setLikeCount(Math.floor(Math.random() * 500) + 10);
   }, [id]);
 
   async function fetchData() {
     const { data: videoData } = await supabase.from('videos').select('*').eq('id', id).single();
     if (videoData) {
       setVideo(videoData);
+      setLikeCount(videoData.likes || Math.floor(Math.random() * 500)); // 如果数据库没likes字段，暂用随机数兜底
+      
       if (videoData.category) {
         const { data: related } = await supabase.from('videos').select('*').eq('category', videoData.category).neq('id', id).limit(4);
         if (related) setRelatedVideos(related);
@@ -68,6 +66,18 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
       .order('created_at', { ascending: false });
     if (data) setComments(data);
   }
+
+  // 格式化播放量 (1.2万)
+  const formatViews = (num: number) => {
+    if (!num) return '0';
+    if (num >= 10000) return (num / 10000).toFixed(1) + '万';
+    return num;
+  };
+
+  // 实时人气值计算 (播放*1 + 点赞*5 + 评论*10)
+  const popularity = ((video?.views || 0) * 1) + (likeCount * 5) + (comments.length * 10);
+
+  // --- 交互逻辑开始 ---
 
   const handleDownloadStoryboard = async () => {
     if (!user) return alert('请先登录后下载！');
@@ -152,7 +162,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     navigator.clipboard.writeText(window.location.href).then(() => alert('链接已复制，快去分享吧！'));
   };
 
-  const popularity = (likeCount * 5) + (comments.length * 10) + 100;
+  // --- 交互逻辑结束 ---
 
   if (!video) return <div className="min-h-screen bg-[#0A0A0A] text-white flex items-center justify-center">加载中...</div>;
 
@@ -169,7 +179,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
       <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           
-          {/* 👇 播放器区域：支持 Bilibili (iframe) 和普通 MP4 */}
+          {/* 播放器 */}
           <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden relative flex items-center justify-center border border-white/5 shadow-2xl">
             {video.video_url ? (
               video.video_url.includes('player.bilibili.com') ? (
@@ -194,11 +204,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                 />
               )
             ) : video.thumbnail_url ? (
-              <img 
-                src={video.thumbnail_url} 
-                referrerPolicy="no-referrer" 
-                className="w-full h-full object-cover opacity-50" 
-              />
+              <img src={video.thumbnail_url} referrerPolicy="no-referrer" className="w-full h-full object-cover opacity-50" />
             ) : (
               <Play size={64} className="text-gray-700" />
             )}
@@ -218,10 +224,10 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
               <div className="flex items-center gap-6 text-sm text-gray-400 pl-1 mt-3 font-mono">
                 <span className="text-gray-300 font-bold font-sans">@{video.author}</span>
                 <div className="flex items-center gap-1.5 opacity-80">
-                  <Eye size={14} /> {video.views} 播放
+                  <Eye size={14} /> {formatViews(video.views)} 播放
                 </div>
                 <div className="flex items-center gap-1.5 opacity-80">
-                  <Flame size={14} /> {popularity} 人气
+                  <Flame size={14} /> {formatViews(popularity)} 人气
                 </div>
               </div>
             </div>
