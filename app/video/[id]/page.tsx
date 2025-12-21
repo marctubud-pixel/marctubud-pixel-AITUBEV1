@@ -175,38 +175,19 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div className="flex-1">
               <div className="flex items-start gap-3 mb-2">
-                {video.category && (
-                  <span className="flex-shrink-0 bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded mt-1 shadow-lg shadow-purple-900/30">
-                    {video.category}
-                  </span>
-                )}
+                {video.category && <span className="flex-shrink-0 bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded mt-1 shadow-lg shadow-purple-900/30">{video.category}</span>}
                 <h1 className="text-2xl font-bold text-white leading-tight">{video.title}</h1>
               </div>
-
               <div className="flex items-center gap-6 text-sm text-gray-400 pl-1 mt-3 font-mono">
                 <span className="text-gray-300 font-bold font-sans">@{video.author}</span>
-                <div className="flex items-center gap-1.5 opacity-80">
-                  <Eye size={14} /> {formatViews(video.views)} 播放
-                </div>
-                <div className="flex items-center gap-1.5 opacity-80">
-                  <Flame size={14} /> {formatViews(popularity)} 人气
-                </div>
+                <div className="flex items-center gap-1.5 opacity-80"><Eye size={14} /> {formatViews(video.views)} 播放</div>
+                <div className="flex items-center gap-1.5 opacity-80"><Flame size={14} /> {formatViews(popularity)} 人气</div>
               </div>
             </div>
-
             <div className="flex items-center gap-2">
-              <button onClick={handleLike} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isLiked ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}>
-                <ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} />
-                <span>{formatViews(likeCount)}</span>
-              </button>
-              <button onClick={handleToggleFavorite} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isFavorited ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}>
-                <Heart size={16} fill={isFavorited ? "currentColor" : "none"} />
-                <span>收藏</span>
-              </button>
-              <button onClick={handleShare} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white transition-all">
-                <Share2 size={16} />
-                <span>分享</span>
-              </button>
+              <button onClick={handleLike} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isLiked ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}><ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} /><span>{formatViews(likeCount)}</span></button>
+              <button onClick={handleToggleFavorite} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isFavorited ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}><Heart size={16} fill={isFavorited ? "currentColor" : "none"} /><span>收藏</span></button>
+              <button onClick={handleShare} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white transition-all"><Share2 size={16} /><span>分享</span></button>
             </div>
           </div>
 
@@ -218,12 +199,8 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
               </button>
             )}
             <div className="h-6 w-px bg-white/10 mx-2"></div>
-            <button onClick={() => { setShowToolInfo(!showToolInfo); setShowPromptInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showToolInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}>
-              <PenTool size={14} /> 查看工具
-            </button>
-            <button onClick={() => { setShowPromptInfo(!showPromptInfo); setShowToolInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showPromptInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}>
-              <FileText size={14} /> 查看提示词
-            </button>
+            <button onClick={() => { setShowToolInfo(!showToolInfo); setShowPromptInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showToolInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><PenTool size={14} /> 查看工具</button>
+            <button onClick={() => { setShowPromptInfo(!showPromptInfo); setShowToolInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showPromptInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><FileText size={14} /> 查看提示词</button>
             
             {/* 👇 教程按钮 (灰色风格) */}
             {video.tutorial_url && (
