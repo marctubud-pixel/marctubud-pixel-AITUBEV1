@@ -21,7 +21,7 @@ export default function Home() {
   const [currentBanner, setCurrentBanner] = useState(0);
   const [visibleCount, setVisibleCount] = useState(8);
 
-  const categories = ["近期热门", "动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告"];
+  const categories = ["近期热门", "编辑精选", "获奖作品"，"动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告"];
 
   useEffect(() => {
     async function initData() {
