@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye } from 'lucide-react';
+import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, Flame, Filter, MonitorPlay } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -13,6 +13,7 @@ export default function Home() {
   // 核心数据状态
   const [videos, setVideos] = useState<any[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
+  const [hotVideos, setHotVideos] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -36,9 +37,15 @@ export default function Home() {
         if (profile) setUserProfile(profile);
       }
 
+      // 获取所有视频 (用于搜索和分类)
       const { data: videoData } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
-      if (videoData) setVideos(videoData);
+      if (videoData) {
+        setVideos(videoData);
+        // 筛选热门视频
+        setHotVideos(videoData.filter((v: any) => v.is_hot === true).slice(0, 4));
+      }
 
+      // 获取 Banner
       const { data: bannerData } = await supabase.from('banners').select('*').eq('is_active', true).order('sort_order', { ascending: true });
       if (bannerData) setBanners(bannerData);
 
@@ -63,16 +70,28 @@ export default function Home() {
     router.refresh();
   }
 
+  // 🔍 核心修复：更智能的筛选逻辑
   const filteredVideos = videos.filter(video => {
-    // 逻辑修正：如果是"近期热门"，则筛选 is_hot=true 的视频，而不是看 category 字段
+    // 1. 分类筛选
+    // 如果选了“近期热门”，只显示 is_hot=true 的视频
+    // 否则显示对应 category 的视频
     const matchCategory = selectedTag === '近期热门' 
       ? video.is_hot === true 
-      : video.category === selectedTag;
+      : (selectedTag === '全部' || video.category === selectedTag);
 
-    const matchSearch = video.title?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                        video.author?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        video.tag?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchCategory && matchSearch;
+    // 2. 搜索筛选 (全字段匹配：标题、作者、标签、分类、提示词)
+    const searchLower = searchTerm.toLowerCase();
+    const matchSearch = !searchTerm || 
+                        video.title?.toLowerCase().includes(searchLower) || 
+                        video.author?.toLowerCase().includes(searchLower) ||
+                        video.tag?.toLowerCase().includes(searchLower) ||
+                        video.category?.toLowerCase().includes(searchLower) ||
+                        video.prompt?.toLowerCase().includes(searchLower);
+
+    // 如果用户输入了搜索词，我们可以忽略分类限制，在全站搜索 (可选体验优化)
+    if (searchTerm) return matchSearch;
+
+    return matchCategory;
   });
 
   const displayVideos = filteredVideos.slice(0, visibleCount);
@@ -97,7 +116,7 @@ export default function Home() {
           onClick={() => {setSelectedTag('近期热门'); setSearchTerm('')}}
         >
           <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Play fill="white" size={16} />
+            <MonitorPlay fill="white" size={16} />
           </div>
           <span className="text-xl font-bold tracking-tight">AI Tube</span>
         </div>
@@ -106,7 +125,7 @@ export default function Home() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input 
             type="text" 
-            placeholder="搜索 test!!!, Runway 或 标题..." 
+            placeholder="搜索 Sora2, 可灵, 即梦..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-10 pr-4 focus:outline-none focus:border-purple-600 transition-all text-sm"
@@ -119,9 +138,9 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-4">
-          <Link href="/upload">
+          <Link href="/admin/dashboard">
             <button className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-purple-900/20">
-              <Upload size={18} /> <span>上传</span>
+              <Upload size={18} /> <span>投稿</span>
             </button>
           </Link>
           
@@ -155,8 +174,8 @@ export default function Home() {
 
       <main className="p-6 max-w-7xl mx-auto">
         
-        {/* 轮播图区域 */}
-        {banners.length > 0 && (
+        {/* Banner 区域 */}
+        {banners.length > 0 && !searchTerm && (
           <Link href={banners[currentBanner].link_url || '#'} className="block mb-10 relative group rounded-2xl overflow-hidden aspect-[21/9] md:aspect-[3/1] bg-gray-900 cursor-pointer shadow-2xl border border-white/5">
             <div 
               className="absolute inset-0 bg-cover bg-center transition-all duration-700 ease-in-out transform group-hover:scale-105"
@@ -166,12 +185,19 @@ export default function Home() {
             </div>
 
             <div className="absolute bottom-0 left-0 p-6 md:p-10 w-full md:w-3/4 z-30 pointer-events-none">
-              {/* 这里改用了 tag 字段，如果你数据库是 is_vip，请改成 is_vip 逻辑 */}
-              {banners[currentBanner].tag && (
-                <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded mb-2 inline-block font-bold shadow-lg">
-                  {banners[currentBanner].tag}
-                </span>
-              )}
+              <div className="flex gap-2 mb-2">
+                {banners[currentBanner].tag && (
+                  <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded inline-block font-bold shadow-lg">
+                    {banners[currentBanner].tag}
+                  </span>
+                )}
+                {/* 兼容旧的 is_vip 字段，或者用 tag 判断 */}
+                {(banners[currentBanner].is_vip || banners[currentBanner].tag === '会员') && (
+                   <span className="bg-yellow-500 text-black text-xs px-2 py-1 rounded inline-flex items-center gap-1 font-bold shadow-lg">
+                     <Crown size={12}/> 会员专享
+                   </span>
+                )}
+              </div>
               <h2 className="text-lg md:text-2xl font-bold leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] line-clamp-2">
                 {banners[currentBanner].title}
               </h2>
@@ -216,7 +242,7 @@ export default function Home() {
           {categories.map((tag) => (
             <button 
               key={tag} 
-              onClick={() => { setSelectedTag(tag); setVisibleCount(8); }}
+              onClick={() => { setSelectedTag(tag); setVisibleCount(8); setSearchTerm(''); }}
               className={`px-5 py-2 rounded-full text-sm whitespace-nowrap transition-all duration-300 border cursor-pointer ${
                 selectedTag === tag 
                   ? 'bg-white text-black border-white font-bold transform scale-105 shadow-lg shadow-white/10' 
@@ -229,8 +255,8 @@ export default function Home() {
         </div>
 
         <div className="mb-4 text-sm text-gray-500 text-center">
-          {searchTerm && <span>搜索 "{searchTerm}" </span>}
-          {selectedTag !== '近期热门' && <span>分类 "{selectedTag}" </span>}
+          {searchTerm && <span>🔍 搜索 "{searchTerm}" 的结果 ({filteredVideos.length})</span>}
+          {!searchTerm && selectedTag !== '近期热门' && <span>📂 分类 "{selectedTag}"</span>}
         </div>
 
         {loading ? (
@@ -261,6 +287,9 @@ export default function Home() {
                            {video.category}
                          </div>
                        )}
+                       <div className="absolute bottom-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
+                         <Play size={8} fill="currentColor"/> {formatViews(video.views)}
+                       </div>
                     </div>
                     <div className="p-3 flex flex-col flex-1">
                       <h3 className="font-bold text-gray-200 text-sm leading-snug line-clamp-2 group-hover:text-white transition-colors mb-2">
@@ -271,10 +300,7 @@ export default function Home() {
                         <span className="truncate max-w-[60%] hover:text-gray-300 transition-colors">
                           @{video.author}
                         </span>
-                        <div className="flex items-center gap-1 text-gray-400">
-                          <Eye size={12} />
-                          <span>{formatViews(video.views)}</span>
-                        </div>
+                        {video.tag && <span className="bg-white/10 px-1.5 py-0.5 rounded text-[10px]">{video.tag}</span>}
                       </div>
                     </div>
                   </Link>
