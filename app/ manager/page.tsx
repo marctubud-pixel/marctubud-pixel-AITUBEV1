@@ -3,15 +3,16 @@
 import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// 👇 咱们这次先不从 lib 引用，直接硬编码，排除引用路径错误的风险！
-// 请去 Supabase 后台 -> Settings -> API 复制你的 URL 和 Anon Key 填在这里
+// 👇 直接硬编码，排除引用路径错误的风险
 const supabaseUrl = 'https://muwpfhwzfxocqlcxbsoa.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11d3BmaHd6ZnhvY3FsY3hic29hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4ODI4NjEsImV4cCI6MjA4MTQ1ODg2MX0.GvW2cklrWrU1wyipjSiEPfA686Uoy3lRFY75p_UkNzo';
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function ManagerPage() {
+  // 修正：去掉了这里的反斜杠
   const [bvid, setBvid] = useState('');
-  
+
   // 简易测试函数
   const testUpload = async () => {
     if(!bvid) return alert('请输入BVID');
