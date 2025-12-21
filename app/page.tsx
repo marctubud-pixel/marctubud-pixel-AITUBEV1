@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import * as React from 'react';
+import { useEffect, useState } from 'react';
 import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
@@ -94,7 +95,7 @@ export default function Home() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input 
             type="text" 
-            placeholder="搜索 Sora, Runway 或 标题..." 
+            placeholder="搜索 test!!!, Runway 或 标题..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-10 pr-4 focus:outline-none focus:border-purple-600 transition-all text-sm"
