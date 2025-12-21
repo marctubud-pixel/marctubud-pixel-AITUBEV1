@@ -112,7 +112,7 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-4">
-          <Link href="/upload">
+          <Link href="/admin/dashboard">
             <button className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-purple-900/20">
               <Upload size={18} /> <span>投稿</span>
             </button>
@@ -173,7 +173,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 提示信息：只在有搜索词时显示，分类时不显示了 */}
+        {/* 提示信息：只在有搜索词时显示 */}
         {searchTerm && <div className="mb-4 text-sm text-gray-500 text-center">🔍 搜索 "{searchTerm}" 的结果 ({filteredVideos.length})</div>}
 
         {loading ? (
