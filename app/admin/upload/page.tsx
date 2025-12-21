@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+// 👇 这里是关键，退回3层去引用 lib
+import { supabase } from '../../lib/supabaseClient'; 
 import { ArrowLeft, Upload, Link as LinkIcon, RefreshCw, Save } from 'lucide-react';
 import Link from 'next/link';
 
@@ -9,20 +10,19 @@ export default function UploadPage() {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // 表单数据
   const [bilibiliLink, setBilibiliLink] = useState('');
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     author: '',
-    category: 'Sora', // 默认分类
+    category: 'Sora',
     prompt: '',
-    tag: '', // 工具标签
+    tag: '',
     thumbnail_url: '',
     video_url: '',
   });
 
-  // 👇 请在这里填入你自己的邮箱，防止别人乱上传！
+  // 👇 这里填你自己的邮箱
   const ADMIN_EMAIL = 'marctubud@gmail.com'; 
 
   useEffect(() => {
@@ -39,15 +39,12 @@ export default function UploadPage() {
     }
   }
 
-  // 1. 提取 BVID 并抓取信息
   const handleFetchInfo = async () => {
     if (!bilibiliLink) return alert('请先填入 B 站链接');
-    
-    // 简单的正则提取 BV 号
     const match = bilibiliLink.match(/(BV\w+)/);
     const bvid = match ? match[1] : null;
 
-    if (!bvid) return alert('链接里没找到 BV 号，请检查格式');
+    if (!bvid) return alert('链接里没找到 BV 号');
 
     setLoading(true);
     try {
@@ -56,7 +53,6 @@ export default function UploadPage() {
 
       if (data.error) throw new Error(data.error);
 
-      // 自动填入表单
       setFormData(prev => ({
         ...prev,
         title: data.title,
@@ -65,7 +61,7 @@ export default function UploadPage() {
         video_url: data.video_url,
       }));
       
-      alert('抓取成功！请补充 Prompt 和分类。');
+      alert('抓取成功！请补充信息。');
 
     } catch (err: any) {
       alert('抓取失败: ' + err.message);
@@ -74,9 +70,8 @@ export default function UploadPage() {
     }
   };
 
-  // 2. 提交到 Supabase
   const handleSubmit = async () => {
-    if (!formData.title || !formData.video_url) return alert('标题和视频链接不能为空');
+    if (!formData.title || !formData.video_url) return alert('信息不完整');
 
     try {
       const { error } = await supabase.from('videos').insert([
@@ -88,7 +83,7 @@ export default function UploadPage() {
           tag: formData.tag,
           thumbnail_url: formData.thumbnail_url,
           video_url: formData.video_url,
-          views: 0, // 初始播放量
+          views: 0,
           created_at: new Date().toISOString()
         }
       ]);
@@ -96,7 +91,6 @@ export default function UploadPage() {
       if (error) throw error;
 
       alert('✅ 发布成功！');
-      // 清空表单，准备下一次
       setFormData({
         title: '',
         author: '',
@@ -113,8 +107,8 @@ export default function UploadPage() {
     }
   };
 
-  if (!user) return <div className="p-10 text-white">请先登录</div>;
-  if (!isAdmin) return <div className="p-10 text-white">你不是管理员，无权访问此页面。</div>;
+  if (!user) return <div className="p-10 text-white flex justify-center">请先登录</div>;
+  if (!isAdmin) return <div className="p-10 text-white flex justify-center">你不是管理员 (权限不足)</div>;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans p-6">
@@ -128,7 +122,6 @@ export default function UploadPage() {
           </Link>
         </div>
 
-        {/* 第一步：抓取区域 */}
         <div className="bg-gray-900/50 p-6 rounded-xl border border-white/10 mb-8">
           <label className="block text-sm font-bold text-gray-400 mb-2">1. 输入 Bilibili 视频链接</label>
           <div className="flex gap-3">
@@ -136,7 +129,7 @@ export default function UploadPage() {
               type="text" 
               value={bilibiliLink}
               onChange={(e) => setBilibiliLink(e.target.value)}
-              placeholder="例如: https://www.bilibili.com/video/BV1xxxx..."
+              placeholder="https://www.bilibili.com/video/BV..."
               className="flex-1 bg-black border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-purple-500 outline-none"
             />
             <button 
@@ -150,7 +143,6 @@ export default function UploadPage() {
           </div>
         </div>
 
-        {/* 第二步：编辑区域 */}
         <div className="space-y-4 bg-gray-900/50 p-6 rounded-xl border border-white/10">
           <h2 className="text-lg font-bold text-white mb-4">2. 确认并发布信息</h2>
           
@@ -167,7 +159,7 @@ export default function UploadPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">分类 (Category)</label>
+              <label className="block text-xs text-gray-500 mb-1">分类</label>
               <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded px-3 py-2 text-sm">
                 <option value="Sora">Sora</option>
                 <option value="Runway">Runway</option>
@@ -178,17 +170,16 @@ export default function UploadPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">使用工具 (Tag)</label>
+              <label className="block text-xs text-gray-500 mb-1">使用工具</label>
               <input type="text" placeholder="例如: Runway Gen-2" value={formData.tag} onChange={e => setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded px-3 py-2 text-sm"/>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 mb-1">提示词 (Prompt) - 核心价值！</label>
-            <textarea rows={4} value={formData.prompt} onChange={e => setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded px-3 py-2 text-sm" placeholder="在这里粘贴该视频的 AI 提示词..."></textarea>
+            <label className="block text-xs text-gray-500 mb-1">提示词 (Prompt)</label>
+            <textarea rows={4} value={formData.prompt} onChange={e => setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded px-3 py-2 text-sm" placeholder="AI 提示词..."></textarea>
           </div>
 
-          {/* 预览封面 */}
           {formData.thumbnail_url && (
             <div>
               <label className="block text-xs text-gray-500 mb-1">封面预览</label>
