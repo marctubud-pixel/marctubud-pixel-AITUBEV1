@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, Flame, Filter, MonitorPlay, Medal, Star } from 'lucide-react';
+import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, Flame, Filter, MonitorPlay, Medal, Star, Trophy  } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -204,7 +204,7 @@ export default function Home() {
                        {/* 🥇 右上角：荣誉角标 */}
                        <div className="absolute top-2 right-2 flex gap-1">
                          {video.is_selected && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/50 text-yellow-400 shadow-lg" title="编辑精选"><Crown size={12} fill="currentColor"/></div>}
-                         {video.is_award && <div className="w-6 h-6 bg-purple-500/20 backdrop-blur rounded-full flex items-center justify-center border border-purple-500/50 text-purple-400 shadow-lg" title="获奖作品"><Medal size={12} fill="currentColor"/></div>}
+                         {video.is_award && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-purple-500/50 text-purple-400 shadow-lg" title="获奖作品"><Trophy size={12} fill="currentColor"/></div>}
                        </div>
 
                        <div className="absolute bottom-2 right-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
