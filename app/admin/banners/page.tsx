@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ArrowLeft, Save, Trash2, Eye, EyeOff, Edit, Upload, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Eye, EyeOff, Edit, Upload, Image as ImageIcon, RefreshCw  } from 'lucide-react';
 import Link from 'next/link';
 
 const supabaseUrl = 'https://muwpfhwzfxocqlcxbsoa.supabase.co';
