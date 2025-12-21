@@ -18,7 +18,9 @@ export async function GET(request: Request) {
       author: info.owner.name,
       thumbnail_url: info.pic.replace('http:', 'https:'),
       video_url: `https://player.bilibili.com/player.html?bvid=${bvid}&high_quality=1&autoplay=0`,
-      description: info.desc
+      description: info.desc,
+      // 👇 新增：抓取播放量
+      views: info.stat.view 
     });
   } catch (error) {
     return NextResponse.json({ error: 'Server Error' }, { status: 500 });
