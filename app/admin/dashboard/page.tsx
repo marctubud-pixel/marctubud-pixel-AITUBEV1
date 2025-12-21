@@ -23,7 +23,8 @@ export default function Dashboard() {
 
   const [bilibiliLink, setBilibiliLink] = useState('');
   const [formData, setFormData] = useState({
-    title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false, tutorial_url: ''
+    title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
+    is_hot: false, is_selected: false, is_award: false, tutorial_url: ''
   });
 
   useEffect(() => { checkUser(); }, []);
@@ -92,7 +93,8 @@ export default function Dashboard() {
   const openEdit = (video: any) => {
     setFormData({
       title: video.title, author: video.author, category: video.category, prompt: video.prompt || '',
-      tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, is_hot: video.is_hot || false,
+      tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, 
+      is_hot: video.is_hot || false, is_selected: video.is_selected || false, is_award: video.is_award || false,
       tutorial_url: video.tutorial_url || ''
     });
     setBilibiliLink('');
@@ -102,7 +104,7 @@ export default function Dashboard() {
   };
 
   const openNew = () => {
-    setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false, tutorial_url: '' });
+    setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false, is_selected: false, is_award: false, tutorial_url: '' });
     setBilibiliLink('');
     setEditMode(false);
     setIsModalOpen(true);
@@ -125,7 +127,7 @@ export default function Dashboard() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table className="w-full text-left text-sm text-gray-400">
             <thead className="bg-gray-800 text-gray-200 font-bold">
-              <tr><th className="p-4">封面</th><th className="p-4">标题/作者</th><th className="p-4">分类/工具</th><th className="p-4">数据/热门</th><th className="p-4 text-right">操作</th></tr>
+              <tr><th className="p-4">封面</th><th className="p-4">标题/作者</th><th className="p-4">分类/工具</th><th className="p-4">数据/标签</th><th className="p-4 text-right">操作</th></tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
               {videos.map(v => (
@@ -133,7 +135,14 @@ export default function Dashboard() {
                   <td className="p-4 w-24"><img src={v.thumbnail_url} referrerPolicy="no-referrer" className="w-16 h-10 object-cover rounded bg-black"/></td>
                   <td className="p-4"><div>{v.title}</div><div className="text-xs text-gray-600">@{v.author}</div></td>
                   <td className="p-4"><span className="bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded text-xs mr-2">{v.category}</span>{v.tag && <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">{v.tag}</span>}</td>
-                  <td className="p-4 font-mono">{v.views} views {v.is_hot && <span className="ml-2 text-red-500 font-bold">🔥HOT</span>}</td>
+                  <td className="p-4 font-mono text-xs">
+                    <div>{v.views} views</div>
+                    <div className="flex gap-1 mt-1">
+                      {v.is_hot && <span className="text-red-500 font-bold">🔥</span>}
+                      {v.is_selected && <span className="text-yellow-500 font-bold">🏆</span>}
+                      {v.is_award && <span className="text-purple-500 font-bold">🥇</span>}
+                    </div>
+                  </td>
                   <td className="p-4 text-right"><button onClick={() => openEdit(v)} className="text-blue-400 mr-4"><Edit size={18}/></button><button onClick={() => handleDelete(v.id)} className="text-red-500"><Trash2 size={18}/></button></td>
                 </tr>
               ))}
@@ -162,8 +171,6 @@ export default function Dashboard() {
                     <label className="text-xs text-gray-500 block mb-1">分类 (必选)</label>
                     <select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
                       <option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>写实短片</option><option>创意广告</option><option>AI教程</option>
-                      <option>编辑精选</option> {/* 👈 新增 */}
-                      <option>获奖作品</option> {/* 👈 新增 */}
                     </select>
                   </div>
                   <div>
@@ -176,7 +183,6 @@ export default function Dashboard() {
                 </div>
                 <div><label className="text-xs text-gray-500 block mb-1">工具标签 (Tag)</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                 
-                {/* 👇 新增：教程链接输入框 */}
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">关联教程链接 (可选)</label>
                   <input placeholder="https://... 或 /video/123" value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
@@ -184,9 +190,20 @@ export default function Dashboard() {
 
                 <div><label className="text-xs text-gray-500 block mb-1">提示词</label><textarea rows={4} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"></textarea></div>
                 
-                <div className="flex items-center gap-2 bg-gray-900 p-3 rounded border border-gray-700">
-                  <input type="checkbox" id="isHot" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-purple-600"/>
-                  <label htmlFor="isHot" className="text-sm font-bold text-white cursor-pointer select-none">🔥 设为“近期热门”推荐</label>
+                {/* 👇 新增：3个并排的开关 */}
+                <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="isHot" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/>
+                    <label htmlFor="isHot" className="text-sm font-bold text-white cursor-pointer select-none">🔥 近期热门</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="isSelected" checked={formData.is_selected} onChange={e => setFormData({ ...formData, is_selected: e.target.checked })} className="w-5 h-5 accent-yellow-500"/>
+                    <label htmlFor="isSelected" className="text-sm font-bold text-yellow-500 cursor-pointer select-none">🏆 编辑精选</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="isAward" checked={formData.is_award} onChange={e => setFormData({ ...formData, is_award: e.target.checked })} className="w-5 h-5 accent-purple-500"/>
+                    <label htmlFor="isAward" className="text-sm font-bold text-purple-500 cursor-pointer select-none">🥇 获奖作品</label>
+                  </div>
                 </div>
 
                 <button onClick={handleSubmit} className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded font-bold mt-4">{editMode ? '保存修改' : '确认发布'}</button>
