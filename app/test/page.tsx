@@ -11,7 +11,7 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // 👇 2. 管理员邮箱 (一定要改对，否则你会看到“权限不足”)
-const ADMIN_EMAIL = 'marctubud@gmail.com';
+const ADMIN_EMAIL = '782567903@qq.com';
 
 export default function UploadPage() {
   const [user, setUser] = useState<any>(null);
