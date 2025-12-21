@@ -64,7 +64,7 @@ export default function Dashboard() {
         thumbnail_url: data.thumbnail_url,
         video_url: data.video_url,
         views: data.views || 0,
-        tag: data.tag || prev.tag,
+        tag: data.tag || prev.tag, // 这里现在会自动填入 "Sora, Runway" 这种多工具格式
       }));
       
       alert('✅ 抓取成功！请手动选择分类。');
@@ -73,14 +73,20 @@ export default function Dashboard() {
 
   const handleSubmit = async () => {
     if (!formData.title) return alert('标题不能为空');
-    const payload = { ...formData };
+    // 确保布尔值存在
+    const payload = { 
+      ...formData,
+      is_hot: !!formData.is_hot,
+      is_selected: !!formData.is_selected,
+      is_award: !!formData.is_award
+    };
     
     if (editMode && currentId) {
       const { error } = await supabase.from('videos').update(payload).eq('id', currentId);
-      if (!error) { alert('更新成功'); setIsModalOpen(false); fetchVideos(); }
+      if (!error) { alert('更新成功'); setIsModalOpen(false); fetchVideos(); } else { alert(error.message); }
     } else {
       const { error } = await supabase.from('videos').insert([{ ...payload, created_at: new Date().toISOString() }]);
-      if (!error) { alert('发布成功'); setIsModalOpen(false); fetchVideos(); }
+      if (!error) { alert('发布成功'); setIsModalOpen(false); fetchVideos(); } else { alert(error.message); }
     }
   };
 
@@ -181,7 +187,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
-                <div><label className="text-xs text-gray-500 block mb-1">工具标签 (Tag)</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                <div><label className="text-xs text-gray-500 block mb-1">工具标签 (多选用逗号分隔)</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                 
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">关联教程链接 (可选)</label>
@@ -190,20 +196,10 @@ export default function Dashboard() {
 
                 <div><label className="text-xs text-gray-500 block mb-1">提示词</label><textarea rows={4} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"></textarea></div>
                 
-                {/* 👇 新增：3个并排的开关 */}
                 <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="isHot" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/>
-                    <label htmlFor="isHot" className="text-sm font-bold text-white cursor-pointer select-none">🔥 近期热门</label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="isSelected" checked={formData.is_selected} onChange={e => setFormData({ ...formData, is_selected: e.target.checked })} className="w-5 h-5 accent-yellow-500"/>
-                    <label htmlFor="isSelected" className="text-sm font-bold text-yellow-500 cursor-pointer select-none">🏆 编辑精选</label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="isAward" checked={formData.is_award} onChange={e => setFormData({ ...formData, is_award: e.target.checked })} className="w-5 h-5 accent-purple-500"/>
-                    <label htmlFor="isAward" className="text-sm font-bold text-purple-500 cursor-pointer select-none">🥇 获奖作品</label>
-                  </div>
+                  <div className="flex items-center gap-2"><input type="checkbox" id="isHot" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/><label htmlFor="isHot" className="text-sm font-bold text-white cursor-pointer select-none">🔥 近期热门</label></div>
+                  <div className="flex items-center gap-2"><input type="checkbox" id="isSelected" checked={formData.is_selected} onChange={e => setFormData({ ...formData, is_selected: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label htmlFor="isSelected" className="text-sm font-bold text-yellow-500 cursor-pointer select-none">🏆 编辑精选</label></div>
+                  <div className="flex items-center gap-2"><input type="checkbox" id="isAward" checked={formData.is_award} onChange={e => setFormData({ ...formData, is_award: e.target.checked })} className="w-5 h-5 accent-purple-500"/><label htmlFor="isAward" className="text-sm font-bold text-purple-500 cursor-pointer select-none">🥇 获奖作品</label></div>
                 </div>
 
                 <button onClick={handleSubmit} className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded font-bold mt-4">{editMode ? '保存修改' : '确认发布'}</button>
