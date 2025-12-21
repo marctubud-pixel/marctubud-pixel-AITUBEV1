@@ -243,7 +243,7 @@ export default function Home() {
                        {video.thumbnail_url ? (
                          <img 
                            src={video.thumbnail_url} 
-                           alt={video.title} 
+                           referrerPolicy="no-referrer"  // 👈 加上这一句
                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                          />
                        ) : (
