@@ -24,7 +24,7 @@ export default function Dashboard() {
 
   const [bilibiliLink, setBilibiliLink] = useState('');
   const [formData, setFormData] = useState({
-    title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false
+    title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false, tutorial_url: ''
   });
 
   useEffect(() => { checkUser(); }, []);
@@ -57,7 +57,6 @@ export default function Dashboard() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      // ✅ 仅填充基本信息和工具标签，分类保留当前选择
       setFormData(prev => ({
         ...prev,
         title: data.title,
@@ -65,8 +64,7 @@ export default function Dashboard() {
         thumbnail_url: data.thumbnail_url,
         video_url: data.video_url,
         views: data.views || 0,
-        tag: data.tag || prev.tag, // 自动填工具名 (Sora, Runway...)
-        // category: data.category // ❌ 已移除自动分类，完全人工选择
+        tag: data.tag || prev.tag,
       }));
       
       alert('✅ 抓取成功！请手动选择分类。');
@@ -95,7 +93,8 @@ export default function Dashboard() {
   const openEdit = (video: any) => {
     setFormData({
       title: video.title, author: video.author, category: video.category, prompt: video.prompt || '',
-      tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, is_hot: video.is_hot || false
+      tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, is_hot: video.is_hot || false,
+      tutorial_url: video.tutorial_url || ''
     });
     setBilibiliLink('');
     setCurrentId(video.id);
@@ -104,7 +103,7 @@ export default function Dashboard() {
   };
 
   const openNew = () => {
-    setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false });
+    setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false, tutorial_url: '' });
     setBilibiliLink('');
     setEditMode(false);
     setIsModalOpen(true);
@@ -119,6 +118,7 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold">后台管理系统</h1>
           <div className="flex gap-4">
             <Link href="/" className="px-4 py-2 bg-gray-800 rounded hover:bg-gray-700">返回首页</Link>
+            <Link href="/admin/banners" className="px-4 py-2 bg-blue-900 text-blue-200 rounded hover:bg-blue-800">Banner管理</Link>
             <button onClick={openNew} className="px-4 py-2 bg-purple-600 rounded font-bold hover:bg-purple-500 flex items-center gap-2"><Upload size={18}/> 上传新视频</button>
           </div>
         </div>
@@ -162,13 +162,7 @@ export default function Dashboard() {
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">分类 (必选)</label>
                     <select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
-                      <option>创意短片</option>
-                      <option>动画短片</option>
-                      <option>实验短片</option>
-                      <option>音乐MV</option>
-                      <option>写实短片</option>
-                      <option>创意广告</option>
-                      <option>AI教程</option>
+                      <option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>写实短片</option><option>创意广告</option><option>AI教程</option>
                     </select>
                   </div>
                   <div>
@@ -180,6 +174,13 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div><label className="text-xs text-gray-500 block mb-1">工具标签 (Tag)</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                
+                {/* 👇 新增：教程链接输入框 */}
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">关联教程链接 (可选)</label>
+                  <input placeholder="https://... 或 /video/123" value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
+                </div>
+
                 <div><label className="text-xs text-gray-500 block mb-1">提示词</label><textarea rows={4} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"></textarea></div>
                 
                 <div className="flex items-center gap-2 bg-gray-900 p-3 rounded border border-gray-700">
