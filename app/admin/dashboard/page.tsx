@@ -5,7 +5,6 @@ import { createClient } from '@supabase/supabase-js';
 import { ArrowLeft, Upload, Link as LinkIcon, RefreshCw, Save, Edit, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 
-// Supabase 配置
 const supabaseUrl = 'https://muwpfhwzfxocqlcxbsoa.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11d3BmaHd6ZnhvY3FsY3hic29hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4ODI4NjEsImV4cCI6MjA4MTQ1ODg2MX0.GvW2cklrWrU1wyipjSiEPfA686Uoy3lRFY75p_UkNzo';
 const supabase = createClient(supabaseUrl, supabaseKey);
