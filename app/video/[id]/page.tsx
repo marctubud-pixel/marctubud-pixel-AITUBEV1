@@ -179,7 +179,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                 />
               )
             ) : video.thumbnail_url ? (
-              <img src={video.thumbnail_url} className="w-full h-full object-cover opacity-50" />
+              <img src={video.thumbnail_url} referrerPolicy="no-referrer" // 👈 加上这一句 className="w-full h-full object-cover opacity-50" />
             ) : (
               <Play size={64} className="text-gray-700" />
             )}
