@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 // 👇 这里是关键，退回3层去引用 lib
-import { supabase } from '../../lib/supabaseClient'; 
+import { supabase } from '@/app/lib/supabaseClient'; 
 import { ArrowLeft, Upload, Link as LinkIcon, RefreshCw, Save } from 'lucide-react';
 import Link from 'next/link';
 
