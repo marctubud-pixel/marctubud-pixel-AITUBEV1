@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, use } from 'react';
-import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -20,6 +20,9 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
   const [relatedVideos, setRelatedVideos] = useState<any[]>([]);
   const [showToolInfo, setShowToolInfo] = useState(false);
   const [showPromptInfo, setShowPromptInfo] = useState(false);
+  
+  // 📋 复制状态反馈
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function getUserData() {
@@ -82,7 +85,9 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
       if (userProfile.free_quota > 0) {
         if (confirm(`这是免费资源，将消耗 1 次新人免费机会。\n剩余机会：${userProfile.free_quota} 次`)) {
           const newQuota = userProfile.free_quota - 1;
-          await supabase.from('profiles').update({ free_quota: newQuota }).eq('id', user.id);
+          const { error } = await supabase.from('profiles').update({ free_quota: newQuota }).eq('id', user.id);
+          if (error) return alert(error.message);
+          
           setUserProfile({ ...userProfile, free_quota: newQuota });
           await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: 0 }]);
           window.open(video.storyboard_url, '_blank');
@@ -94,7 +99,9 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     if (userProfile.points >= price) {
       if (confirm(`下载此分镜将消耗 ${price} 积分。\n当前积分：${userProfile.points}`)) {
         const newPoints = userProfile.points - price;
-        await supabase.from('profiles').update({ points: newPoints }).eq('id', user.id);
+        const { error } = await supabase.from('profiles').update({ points: newPoints }).eq('id', user.id);
+        if (error) return alert(error.message);
+
         setUserProfile({ ...userProfile, points: newPoints });
         await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: price }]);
         window.open(video.storyboard_url, '_blank');
@@ -125,7 +132,10 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
   const handleCopyPrompt = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!video?.prompt) return;
-    navigator.clipboard.writeText(video.prompt).then(() => alert('已复制！'));
+    navigator.clipboard.writeText(video.prompt).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   const handleDeleteVideo = async () => {
@@ -178,11 +188,14 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                 {video.category && <span className="flex-shrink-0 bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded mt-1 shadow-lg shadow-purple-900/30">{video.category}</span>}
                 <h1 className="text-2xl font-bold text-white leading-tight">{video.title}</h1>
               </div>
+              
+              {/* 🕒 这里删除了时长显示，只保留作者、播放量、人气 */}
               <div className="flex items-center gap-6 text-sm text-gray-400 pl-1 mt-3 font-mono">
                 <span className="text-gray-300 font-bold font-sans">@{video.author}</span>
                 <div className="flex items-center gap-1.5 opacity-80"><Eye size={14} /> {formatViews(video.views)} 播放</div>
                 <div className="flex items-center gap-1.5 opacity-80"><Flame size={14} /> {formatViews(popularity)} 人气</div>
               </div>
+
             </div>
             <div className="flex items-center gap-2">
               <button onClick={handleLike} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isLiked ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}><ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} /><span>{formatViews(likeCount)}</span></button>
@@ -202,7 +215,6 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
             <button onClick={() => { setShowToolInfo(!showToolInfo); setShowPromptInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showToolInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><PenTool size={14} /> 查看工具</button>
             <button onClick={() => { setShowPromptInfo(!showPromptInfo); setShowToolInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showPromptInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><FileText size={14} /> 查看提示词</button>
             
-            {/* 👇 教程按钮 (灰色风格) */}
             {video.tutorial_url && (
               <Link 
                 href={video.tutorial_url} 
@@ -227,8 +239,25 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
 
           {showPromptInfo && (
             <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200 relative group">
-              <div className="flex justify-between items-start mb-2"><h3 className="text-sm font-bold text-gray-300">提示词 (Prompt)</h3><div className="flex gap-3">{video.prompt && (<button onClick={handleCopyPrompt} className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300"><Copy size={12} /> 复制</button>)}<button onClick={() => setShowPromptInfo(false)}><X size={14} className="text-gray-500 hover:text-white" /></button></div></div>
-              <div className="text-sm text-gray-400 font-mono leading-relaxed bg-[#0A0A0A] p-4 rounded-lg border border-white/5 break-words">{video.prompt || "作者未填写提示词"}</div>
+              <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-gray-300">提示词 (Prompt)</h3>
+                  <div className="flex gap-2 items-center">
+                    {/* 📋 极简风格的复制按钮 */}
+                    {video.prompt && (
+                        <button 
+                            onClick={handleCopyPrompt} 
+                            className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/10"
+                            title="复制提示词"
+                        >
+                            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                        </button>
+                    )}
+                    <button onClick={() => setShowPromptInfo(false)} className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/10"><X size={16} /></button>
+                  </div>
+              </div>
+              <div className="text-sm text-gray-400 font-mono leading-relaxed bg-[#0A0A0A] p-4 rounded-lg border border-white/5 break-words selection:bg-purple-900 selection:text-white">
+                {video.prompt || "作者未填写提示词"}
+              </div>
             </div>
           )}
 
