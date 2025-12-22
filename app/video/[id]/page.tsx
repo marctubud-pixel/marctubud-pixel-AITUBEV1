@@ -43,8 +43,10 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
   }, [id]);
 
   async function fetchData() {
+    // 🛠️ 调试：确保 prompt 字段被取出来了
     const { data: videoData } = await supabase.from('videos').select('*').eq('id', id).single();
     if (videoData) {
+      console.log("当前视频数据:", videoData); // 👈 打开 F12 控制台可以看到这个
       setVideo(videoData);
       setLikeCount(videoData.likes || Math.floor(Math.random() * 500));
       
@@ -189,7 +191,6 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                 <h1 className="text-2xl font-bold text-white leading-tight">{video.title}</h1>
               </div>
               
-              {/* 🕒 这里删除了时长显示，只保留作者、播放量、人气 */}
               <div className="flex items-center gap-6 text-sm text-gray-400 pl-1 mt-3 font-mono">
                 <span className="text-gray-300 font-bold font-sans">@{video.author}</span>
                 <div className="flex items-center gap-1.5 opacity-80"><Eye size={14} /> {formatViews(video.views)} 播放</div>
@@ -242,12 +243,12 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
               <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-bold text-gray-300">提示词 (Prompt)</h3>
                   <div className="flex gap-2 items-center">
-                    {/* 📋 极简风格的复制按钮 */}
+                    {/* 📋 极简风格的复制按钮：只有当 video.prompt 存在时才显示 */}
                     {video.prompt && (
                         <button 
                             onClick={handleCopyPrompt} 
                             className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/10"
-                            title="复制提示词"
+                            title="复制"
                         >
                             {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
                         </button>
