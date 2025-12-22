@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ArrowLeft, Upload, Link as LinkIcon, RefreshCw, Save, Edit, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Upload, Link as LinkIcon, RefreshCw, Save, Edit, Trash2, X, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 const supabaseUrl = 'https://muwpfhwzfxocqlcxbsoa.supabase.co';
@@ -22,8 +22,11 @@ export default function Dashboard() {
   const [currentId, setCurrentId] = useState<string | null>(null);
 
   const [bilibiliLink, setBilibiliLink] = useState('');
+  
+  // 🆕 修改：增加了 duration 字段的初始化
   const [formData, setFormData] = useState({
     title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
+    duration: '', // 新增字段
     is_hot: false, is_selected: false, is_award: false, tutorial_url: ''
   });
 
@@ -40,6 +43,7 @@ export default function Dashboard() {
 
   async function fetchVideos() {
     setLoading(true);
+    // 确保 select 包含了 duration
     const { data } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
     if (data) setVideos(data);
     setLoading(false);
@@ -64,7 +68,8 @@ export default function Dashboard() {
         thumbnail_url: data.thumbnail_url,
         video_url: data.video_url,
         views: data.views || 0,
-        tag: data.tag || prev.tag, // 这里现在会自动填入 "Sora, Runway" 这种多工具格式
+        tag: data.tag || prev.tag,
+        duration: data.duration || '', // 🆕 自动填入抓取到的时长
       }));
       
       alert('✅ 抓取成功！请手动选择分类。');
@@ -100,6 +105,7 @@ export default function Dashboard() {
     setFormData({
       title: video.title, author: video.author, category: video.category, prompt: video.prompt || '',
       tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, 
+      duration: video.duration || '', // 🆕 填充已有时长
       is_hot: video.is_hot || false, is_selected: video.is_selected || false, is_award: video.is_award || false,
       tutorial_url: video.tutorial_url || ''
     });
@@ -110,7 +116,8 @@ export default function Dashboard() {
   };
 
   const openNew = () => {
-    setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, is_hot: false, is_selected: false, is_award: false, tutorial_url: '' });
+    // 🆕 重置时也包含 duration
+    setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, duration: '', is_hot: false, is_selected: false, is_award: false, tutorial_url: '' });
     setBilibiliLink('');
     setEditMode(false);
     setIsModalOpen(true);
@@ -143,6 +150,8 @@ export default function Dashboard() {
                   <td className="p-4"><span className="bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded text-xs mr-2">{v.category}</span>{v.tag && <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">{v.tag}</span>}</td>
                   <td className="p-4 font-mono text-xs">
                     <div>{v.views} views</div>
+                    {/* 🆕 表格中显示时长 */}
+                    {v.duration && <div className="flex items-center gap-1 text-gray-500 mt-1"><Clock size={12}/> {v.duration}</div>}
                     <div className="flex gap-1 mt-1">
                       {v.is_hot && <span className="text-red-500 font-bold">🔥</span>}
                       {v.is_selected && <span className="text-yellow-500 font-bold">🏆</span>}
@@ -172,7 +181,7 @@ export default function Dashboard() {
                   <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                   <div><label className="text-xs text-gray-500 block mb-1">作者</label><input value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">分类 (必选)</label>
                     <select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
@@ -183,8 +192,17 @@ export default function Dashboard() {
                     <label className="text-xs text-gray-500 block mb-1">播放量</label>
                     <div className="flex gap-2 items-center">
                       <input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/>
-                      <span className="text-sm text-gray-400 whitespace-nowrap min-w-[60px]">{formData.views >= 10000 ? (formData.views / 10000).toFixed(1) + '万' : formData.views}</span>
                     </div>
+                  </div>
+                  {/* 🆕 新增时长输入框 */}
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">时长</label>
+                    <input 
+                        placeholder="04:20" 
+                        value={formData.duration} 
+                        onChange={e=>setFormData({...formData, duration: e.target.value})} 
+                        className="w-full bg-black border border-gray-700 rounded p-2"
+                    />
                   </div>
                 </div>
                 <div><label className="text-xs text-gray-500 block mb-1">工具标签 (多选用逗号分隔)</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
