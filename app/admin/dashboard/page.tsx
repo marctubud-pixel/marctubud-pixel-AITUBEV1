@@ -23,10 +23,9 @@ export default function Dashboard() {
 
   const [bilibiliLink, setBilibiliLink] = useState('');
   
-  // 🆕 修改：增加了 duration 字段的初始化
   const [formData, setFormData] = useState({
     title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
-    duration: '', // 新增字段
+    duration: '', 
     is_hot: false, is_selected: false, is_award: false, tutorial_url: ''
   });
 
@@ -43,7 +42,6 @@ export default function Dashboard() {
 
   async function fetchVideos() {
     setLoading(true);
-    // 确保 select 包含了 duration
     const { data } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
     if (data) setVideos(data);
     setLoading(false);
@@ -69,16 +67,15 @@ export default function Dashboard() {
         video_url: data.video_url,
         views: data.views || 0,
         tag: data.tag || prev.tag,
-        duration: data.duration || '', // 🆕 自动填入抓取到的时长
+        duration: data.duration || '', 
       }));
       
-      alert('✅ 抓取成功！请手动选择分类。');
+      alert('✅ 抓取成功！数据已更新 (含时长)');
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
   const handleSubmit = async () => {
     if (!formData.title) return alert('标题不能为空');
-    // 确保布尔值存在
     const payload = { 
       ...formData,
       is_hot: !!formData.is_hot,
@@ -105,18 +102,29 @@ export default function Dashboard() {
     setFormData({
       title: video.title, author: video.author, category: video.category, prompt: video.prompt || '',
       tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, 
-      duration: video.duration || '', // 🆕 填充已有时长
+      duration: video.duration || '', 
       is_hot: video.is_hot || false, is_selected: video.is_selected || false, is_award: video.is_award || false,
       tutorial_url: video.tutorial_url || ''
     });
-    setBilibiliLink('');
+
+    // ⚡️ 智能提取：如果原视频链接里包含 BV 号，自动填入输入框，方便重新抓取
+    if (video.video_url && video.video_url.includes('bvid=')) {
+        const match = video.video_url.match(/bvid=(BV\w+)/);
+        if (match) {
+            setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
+        } else {
+            setBilibiliLink('');
+        }
+    } else {
+        setBilibiliLink('');
+    }
+
     setCurrentId(video.id);
     setEditMode(true);
     setIsModalOpen(true);
   };
 
   const openNew = () => {
-    // 🆕 重置时也包含 duration
     setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, duration: '', is_hot: false, is_selected: false, is_award: false, tutorial_url: '' });
     setBilibiliLink('');
     setEditMode(false);
@@ -150,8 +158,12 @@ export default function Dashboard() {
                   <td className="p-4"><span className="bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded text-xs mr-2">{v.category}</span>{v.tag && <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">{v.tag}</span>}</td>
                   <td className="p-4 font-mono text-xs">
                     <div>{v.views} views</div>
-                    {/* 🆕 表格中显示时长 */}
-                    {v.duration && <div className="flex items-center gap-1 text-gray-500 mt-1"><Clock size={12}/> {v.duration}</div>}
+                    {/* 显示时长，如果是空的则不显示 */}
+                    {v.duration ? (
+                        <div className="flex items-center gap-1 text-gray-500 mt-1"><Clock size={12}/> {v.duration}</div>
+                    ) : (
+                        <div className="text-red-900/50 mt-1 text-[10px]">无时长</div>
+                    )}
                     <div className="flex gap-1 mt-1">
                       {v.is_hot && <span className="text-red-500 font-bold">🔥</span>}
                       {v.is_selected && <span className="text-yellow-500 font-bold">🏆</span>}
@@ -176,6 +188,17 @@ export default function Dashboard() {
                   <button onClick={handleFetchInfo} className="bg-blue-600 px-4 rounded font-bold hover:bg-blue-500">抓取</button>
                 </div>
               )}
+              {/* 编辑模式下也显示抓取栏，方便更新旧数据 */}
+              {editMode && (
+                <div className="bg-gray-900 p-4 rounded mb-6">
+                    <div className="text-xs text-gray-500 mb-2">更新数据 (时长/播放量)</div>
+                    <div className="flex gap-2">
+                        <input className="flex-1 bg-black border border-gray-700 rounded px-3 py-2" placeholder="粘贴 B 站链接..." value={bilibiliLink} onChange={e => setBilibiliLink(e.target.value)} />
+                        <button onClick={handleFetchInfo} className="bg-blue-600 px-4 rounded font-bold hover:bg-blue-500">刷新抓取</button>
+                    </div>
+                </div>
+              )}
+              
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
@@ -194,7 +217,6 @@ export default function Dashboard() {
                       <input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/>
                     </div>
                   </div>
-                  {/* 🆕 新增时长输入框 */}
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">时长</label>
                     <input 
