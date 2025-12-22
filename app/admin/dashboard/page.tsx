@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { ArrowLeft, Upload, Link as LinkIcon, RefreshCw, Save, Edit, Trash2, X, Clock } from 'lucide-react';
+import { Upload, Save, Edit, Trash2, X, Clock } from 'lucide-react';
 import Link from 'next/link';
 
+// ⚠️ 请确保这里是你自己的 URL 和 KEY
 const supabaseUrl = 'https://muwpfhwzfxocqlcxbsoa.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11d3BmaHd6ZnhvY3FsY3hic29hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4ODI4NjEsImV4cCI6MjA4MTQ1ODg2MX0.GvW2cklrWrU1wyipjSiEPfA686Uoy3lRFY75p_UkNzo';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -15,16 +16,16 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [videos, setVideos] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
-
   const [bilibiliLink, setBilibiliLink] = useState('');
-  
+
+  // 表单数据
   const [formData, setFormData] = useState({
-    title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
+    title: '', author: '', category: '创意短片', 
+    prompt: '', // 👈 重点关注这个字段
+    tag: '', thumbnail_url: '', video_url: '', views: 0, 
     duration: '', 
     is_hot: false, is_selected: false, is_award: false, tutorial_url: ''
   });
@@ -41,11 +42,9 @@ export default function Dashboard() {
   }
 
   async function fetchVideos() {
-    setLoading(true);
-    // 确保 select('*') 获取了所有字段，包括 prompt
-    const { data } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
+    if (error) console.error('加载视频失败:', error);
     if (data) setVideos(data);
-    setLoading(false);
   }
 
   const handleFetchInfo = async () => {
@@ -54,7 +53,6 @@ export default function Dashboard() {
     const bvid = match ? match[1] : null;
     if (!bvid) return alert('无效 BV 号');
 
-    setLoading(true);
     try {
       const res = await fetch(`/api/fetch-bilibili?bvid=${bvid}`);
       const data = await res.json();
@@ -62,51 +60,54 @@ export default function Dashboard() {
 
       setFormData(prev => ({
         ...prev,
-        title: data.title,
-        author: data.author,
-        thumbnail_url: data.thumbnail_url,
-        video_url: data.video_url,
-        views: data.views || 0,
-        tag: data.tag || prev.tag,
+        title: data.title, author: data.author, thumbnail_url: data.thumbnail_url,
+        video_url: data.video_url, views: data.views || 0, tag: data.tag || prev.tag,
         duration: data.duration || '', 
-        // 注意：API 通常不返回 prompt，所以保留原值或为空，避免覆盖用户手填的
+        // 抓取时不覆盖已有的 prompt，除非它是空的
         prompt: prev.prompt || '', 
       }));
-      
-      alert('✅ 抓取成功！数据已更新');
-    } catch (err: any) { alert(err.message); } finally { setLoading(false); }
+      alert('✅ 抓取成功！');
+    } catch (err: any) { alert(err.message); }
   };
 
   const handleSubmit = async () => {
     if (!formData.title) return alert('标题不能为空');
-    
-    // 再次确认 payload 里包含 prompt
+
+    // 🛑 调试：打印一下即将发送的数据，按 F12 可以在控制台看到
+    console.log("正在保存的数据:", formData);
+
     const payload = { 
-      ...formData,
-      is_hot: !!formData.is_hot,
-      is_selected: !!formData.is_selected,
-      is_award: !!formData.is_award,
-      prompt: formData.prompt // 显式确认
+      title: formData.title,
+      author: formData.author,
+      category: formData.category,
+      prompt: formData.prompt, // 👈 确保这里取到了值
+      tag: formData.tag,
+      thumbnail_url: formData.thumbnail_url,
+      video_url: formData.video_url,
+      views: formData.views,
+      duration: formData.duration,
+      is_hot: formData.is_hot,
+      is_selected: formData.is_selected,
+      is_award: formData.is_award,
+      tutorial_url: formData.tutorial_url
     };
-    
+
+    let error;
     if (editMode && currentId) {
-      const { error } = await supabase.from('videos').update(payload).eq('id', currentId);
-      if (!error) { 
-          alert('更新成功'); 
-          setIsModalOpen(false); 
-          fetchVideos(); // 刷新列表
-      } else { 
-          alert('更新失败: ' + error.message); 
-      }
+      const res = await supabase.from('videos').update(payload).eq('id', currentId);
+      error = res.error;
     } else {
-      const { error } = await supabase.from('videos').insert([{ ...payload, created_at: new Date().toISOString() }]);
-      if (!error) { 
-          alert('发布成功'); 
-          setIsModalOpen(false); 
-          fetchVideos(); 
-      } else { 
-          alert('发布失败: ' + error.message); 
-      }
+      const res = await supabase.from('videos').insert([{ ...payload, created_at: new Date().toISOString() }]);
+      error = res.error;
+    }
+
+    if (!error) { 
+        alert('✅ 保存成功！请去前台刷新查看。'); 
+        setIsModalOpen(false); 
+        fetchVideos(); 
+    } else { 
+        alert('❌ 保存失败: ' + error.message); 
+        console.error(error);
     }
   };
 
@@ -117,20 +118,19 @@ export default function Dashboard() {
   };
 
   const openEdit = (video: any) => {
-    // 确保把数据库里的 prompt 加载到编辑框
     setFormData({
       title: video.title, author: video.author, category: video.category, 
-      prompt: video.prompt || '', // 关键点：防止 undefined
+      prompt: video.prompt || '', // 👈 确保从数据库加载了旧数据
       tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, 
       duration: video.duration || '', 
       is_hot: video.is_hot || false, is_selected: video.is_selected || false, is_award: video.is_award || false,
       tutorial_url: video.tutorial_url || ''
     });
-
+    
+    // 自动回填链接以便刷新抓取
     if (video.video_url && video.video_url.includes('bvid=')) {
         const match = video.video_url.match(/bvid=(BV\w+)/);
         if (match) setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
-        else setBilibiliLink('');
     } else {
         setBilibiliLink('');
     }
@@ -179,11 +179,6 @@ export default function Dashboard() {
                     ) : (
                         <div className="text-red-900/50 mt-1 text-[10px]">无时长</div>
                     )}
-                    <div className="flex gap-1 mt-1">
-                      {v.is_hot && <span className="text-red-500 font-bold">🔥</span>}
-                      {v.is_selected && <span className="text-yellow-500 font-bold">🏆</span>}
-                      {v.is_award && <span className="text-purple-500 font-bold">🥇</span>}
-                    </div>
                   </td>
                   <td className="p-4 text-right"><button onClick={() => openEdit(v)} className="text-blue-400 mr-4"><Edit size={18}/></button><button onClick={() => handleDelete(v.id)} className="text-red-500"><Trash2 size={18}/></button></td>
                 </tr>
@@ -227,28 +222,20 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">播放量</label>
-                    <div className="flex gap-2 items-center">
-                      <input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/>
-                    </div>
+                    <input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/>
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">时长</label>
-                    <input 
-                        placeholder="04:20" 
-                        value={formData.duration} 
-                        onChange={e=>setFormData({...formData, duration: e.target.value})} 
-                        className="w-full bg-black border border-gray-700 rounded p-2"
-                    />
+                    <input placeholder="04:20" value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
                   </div>
                 </div>
                 <div><label className="text-xs text-gray-500 block mb-1">工具标签 (多选用逗号分隔)</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                 
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">关联教程链接 (可选)</label>
-                  <input placeholder="https://... 或 /video/123" value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
+                  <input placeholder="https://..." value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
                 </div>
 
-                {/* 👇 重点检查：提示词输入框 */}
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">提示词 (Prompt)</label>
                   <textarea 
