@@ -42,6 +42,7 @@ export default function Dashboard() {
 
   async function fetchVideos() {
     setLoading(true);
+    // 确保 select('*') 获取了所有字段，包括 prompt
     const { data } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
     if (data) setVideos(data);
     setLoading(false);
@@ -68,27 +69,44 @@ export default function Dashboard() {
         views: data.views || 0,
         tag: data.tag || prev.tag,
         duration: data.duration || '', 
+        // 注意：API 通常不返回 prompt，所以保留原值或为空，避免覆盖用户手填的
+        prompt: prev.prompt || '', 
       }));
       
-      alert('✅ 抓取成功！数据已更新 (含时长)');
+      alert('✅ 抓取成功！数据已更新');
     } catch (err: any) { alert(err.message); } finally { setLoading(false); }
   };
 
   const handleSubmit = async () => {
     if (!formData.title) return alert('标题不能为空');
+    
+    // 再次确认 payload 里包含 prompt
     const payload = { 
       ...formData,
       is_hot: !!formData.is_hot,
       is_selected: !!formData.is_selected,
-      is_award: !!formData.is_award
+      is_award: !!formData.is_award,
+      prompt: formData.prompt // 显式确认
     };
     
     if (editMode && currentId) {
       const { error } = await supabase.from('videos').update(payload).eq('id', currentId);
-      if (!error) { alert('更新成功'); setIsModalOpen(false); fetchVideos(); } else { alert(error.message); }
+      if (!error) { 
+          alert('更新成功'); 
+          setIsModalOpen(false); 
+          fetchVideos(); // 刷新列表
+      } else { 
+          alert('更新失败: ' + error.message); 
+      }
     } else {
       const { error } = await supabase.from('videos').insert([{ ...payload, created_at: new Date().toISOString() }]);
-      if (!error) { alert('发布成功'); setIsModalOpen(false); fetchVideos(); } else { alert(error.message); }
+      if (!error) { 
+          alert('发布成功'); 
+          setIsModalOpen(false); 
+          fetchVideos(); 
+      } else { 
+          alert('发布失败: ' + error.message); 
+      }
     }
   };
 
@@ -99,22 +117,20 @@ export default function Dashboard() {
   };
 
   const openEdit = (video: any) => {
+    // 确保把数据库里的 prompt 加载到编辑框
     setFormData({
-      title: video.title, author: video.author, category: video.category, prompt: video.prompt || '',
+      title: video.title, author: video.author, category: video.category, 
+      prompt: video.prompt || '', // 关键点：防止 undefined
       tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, 
       duration: video.duration || '', 
       is_hot: video.is_hot || false, is_selected: video.is_selected || false, is_award: video.is_award || false,
       tutorial_url: video.tutorial_url || ''
     });
 
-    // ⚡️ 智能提取：如果原视频链接里包含 BV 号，自动填入输入框，方便重新抓取
     if (video.video_url && video.video_url.includes('bvid=')) {
         const match = video.video_url.match(/bvid=(BV\w+)/);
-        if (match) {
-            setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
-        } else {
-            setBilibiliLink('');
-        }
+        if (match) setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
+        else setBilibiliLink('');
     } else {
         setBilibiliLink('');
     }
@@ -158,7 +174,6 @@ export default function Dashboard() {
                   <td className="p-4"><span className="bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded text-xs mr-2">{v.category}</span>{v.tag && <span className="bg-gray-700 px-2 py-0.5 rounded text-xs">{v.tag}</span>}</td>
                   <td className="p-4 font-mono text-xs">
                     <div>{v.views} views</div>
-                    {/* 显示时长，如果是空的则不显示 */}
                     {v.duration ? (
                         <div className="flex items-center gap-1 text-gray-500 mt-1"><Clock size={12}/> {v.duration}</div>
                     ) : (
@@ -188,7 +203,6 @@ export default function Dashboard() {
                   <button onClick={handleFetchInfo} className="bg-blue-600 px-4 rounded font-bold hover:bg-blue-500">抓取</button>
                 </div>
               )}
-              {/* 编辑模式下也显示抓取栏，方便更新旧数据 */}
               {editMode && (
                 <div className="bg-gray-900 p-4 rounded mb-6">
                     <div className="text-xs text-gray-500 mb-2">更新数据 (时长/播放量)</div>
@@ -234,7 +248,17 @@ export default function Dashboard() {
                   <input placeholder="https://... 或 /video/123" value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
                 </div>
 
-                <div><label className="text-xs text-gray-500 block mb-1">提示词</label><textarea rows={4} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"></textarea></div>
+                {/* 👇 重点检查：提示词输入框 */}
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">提示词 (Prompt)</label>
+                  <textarea 
+                    rows={4} 
+                    value={formData.prompt} 
+                    onChange={e=>setFormData({...formData, prompt: e.target.value})} 
+                    className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono"
+                    placeholder="在这里粘贴提示词..."
+                  ></textarea>
+                </div>
                 
                 <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700">
                   <div className="flex items-center gap-2"><input type="checkbox" id="isHot" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/><label htmlFor="isHot" className="text-sm font-bold text-white cursor-pointer select-none">🔥 近期热门</label></div>
