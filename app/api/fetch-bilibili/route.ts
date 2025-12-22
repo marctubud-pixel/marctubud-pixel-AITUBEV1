@@ -37,6 +37,9 @@ export async function GET(request: Request) {
     // 去重并取前5个，用逗号连接
     const finalTag = Array.from(new Set(matchedTools)).slice(0, 5).join(', ') || 'AI辅助';
 
+    // 🕒 核心升级：处理时长
+    const durationStr = formatDuration(info.duration || 0);
+
     return NextResponse.json({
       title: info.title,
       author: info.owner.name,
@@ -45,10 +48,25 @@ export async function GET(request: Request) {
       description: info.desc,
       views: info.stat.view,
       tag: finalTag,
+      duration: durationStr, // ✅ 新增：返回格式化后的时长
       // category 不自动识别，留空或默认
     });
 
   } catch (error) {
     return NextResponse.json({ error: 'Server Error' }, { status: 500 });
   }
+}
+
+// 🛠️ 工具函数：将秒数转换为 MM:SS 或 HH:MM:SS
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+
+  // 如果超过1小时，显示 HH:MM:SS
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  // 否则显示 MM:SS
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
