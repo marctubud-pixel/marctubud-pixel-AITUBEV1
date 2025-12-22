@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Search, Upload, Play, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, Flame, Filter, MonitorPlay, Medal, Star, Trophy, Clock } from 'lucide-react';
+import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -32,7 +32,6 @@ export default function Home() {
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         if (profile) setUserProfile(profile);
       }
-      // 确保 select 包含 duration
       const { data: videoData } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
       if (videoData) setVideos(videoData);
       const { data: bannerData } = await supabase.from('banners').select('*').eq('is_active', true).order('sort_order', { ascending: true });
@@ -195,7 +194,10 @@ export default function Home() {
                     <div className="aspect-video relative overflow-hidden bg-gray-900">
                        <img src={video.thumbnail_url} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                        
-                       {/* 🏆 左上角：分类 */}
+                       {/* 增加一个底部渐变，防止白色图片导致文字看不清 */}
+                       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
+
+                       {/* 🏆 左上角：分类 (保留背景块，作为标签) */}
                        {video.category && (
                          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white font-medium border border-white/10">
                            {video.category}
@@ -208,14 +210,14 @@ export default function Home() {
                          {video.is_award && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/500 text-yellow-400 shadow-lg" title="获奖作品"><Trophy size={12} fill="currentColor"/></div>}
                        </div>
 
-                       {/* 👁️ 左下角：播放量 (位置调整) */}
-                       <div className="absolute bottom-2 left-2 bg-black/60 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
-                         <Eye size={10} className="text-gray-300"/> <span>{formatViews(video.views)}</span>
+                       {/* 👁️ 左下角：播放量 (无背景，加投影) */}
+                       <div className="absolute bottom-2 left-2 text-[10px] text-white flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                         <Eye size={12} className="text-white"/> <span className="font-medium">{formatViews(video.views)}</span>
                        </div>
 
-                       {/* 🕒 右下角：时长 (新增功能) */}
+                       {/* 🕒 右下角：时长 (无背景，加投影) */}
                        {video.duration && (
-                         <div className="absolute bottom-2 right-2 bg-black/80 px-1.5 py-0.5 rounded text-[10px] text-white font-mono shadow-sm">
+                         <div className="absolute bottom-2 right-2 text-[10px] text-white font-bold font-mono drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                            {video.duration}
                          </div>
                        )}
