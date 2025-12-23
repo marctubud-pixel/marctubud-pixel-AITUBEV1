@@ -125,7 +125,10 @@ export default function Home() {
                 </Link>
 
                 {/* 占位链接 */}
-                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">灵感工具</button>
+               {/* 🟢 这是你要粘贴的新代码 */}
+                <Link href="/tools" className="text-gray-400 hover:text-white transition-colors font-medium flex items-center gap-1">
+                灵感工具
+                </Link>
                 <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">合作中心</button>
             </div>
 
