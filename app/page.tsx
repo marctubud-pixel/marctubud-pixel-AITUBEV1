@@ -95,6 +95,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
+      
+      {/* 顶部导航 */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-50">
         
         {/* 左侧：Logo */}
@@ -108,21 +110,21 @@ export default function Home() {
           <span className="text-xl font-bold tracking-tight">AI Tube</span>
         </div>
 
-        {/* 中间区域：导航链接 + 搜索栏 (核心修改区) */}
+        {/* 中间区域：导航链接 + 搜索栏 (布局核心修改) */}
         <div className="hidden md:flex flex-1 items-center ml-10 mr-4 gap-8">
             
-            {/* 1. 顶部导航链接 (左侧) */}
+            {/* 1. 导航链接组 (放在搜索栏左侧) */}
             <div className="flex items-center gap-6 text-sm font-medium text-gray-400 flex-shrink-0">
                 <Link href="/academy" className="text-white hover:text-purple-400 transition-colors font-bold">
                     AI 学院
                 </Link>
-                {/* 👇 占位符链接：展示未来规划 */}
-                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="开发中">灵感工具</button>
-                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="开发中">会员专区</button>
-                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="开发中">合作中心</button>
+                {/* 占位链接：置灰显示 */}
+                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">灵感工具</button>
+                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">会员专区</button>
+                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">合作中心</button>
             </div>
 
-            {/* 2. 搜索栏 (右侧) */}
+            {/* 2. 搜索栏 */}
             <div className="relative w-full max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input 
@@ -136,7 +138,7 @@ export default function Home() {
             </div>
         </div>
 
-        {/* 右侧：操作区 */}
+        {/* 右侧：用户操作区 */}
         <div className="flex items-center gap-4 flex-shrink-0">
           <Link href="/upload">
             <button className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-purple-900/20">
@@ -237,6 +239,11 @@ export default function Home() {
                        <div className="absolute top-2 right-2 flex gap-1">
                          {video.is_selected && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/50 text-yellow-400 shadow-lg" title="编辑精选"><Crown size={12} fill="currentColor"/></div>}
                          {video.is_award && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/500 text-yellow-400 shadow-lg" title="获奖作品"><Trophy size={12} fill="currentColor"/></div>}
+                         {video.is_hot && (
+                             <div className="bg-red-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm border border-red-500/50">
+                                 <Flame size={10} fill="currentColor"/> HOT
+                             </div>
+                         )}
                        </div>
 
                        <div className="absolute bottom-2 left-2 text-[10px] text-white flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
