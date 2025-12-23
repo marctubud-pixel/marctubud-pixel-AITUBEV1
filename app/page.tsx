@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play } from 'lucide-react';
+import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play, Clock, Flame } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -95,9 +95,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/80 backdrop-blur-xl z-50">
+      <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-50">
+        
+        {/* 左侧：Logo */}
         <div 
-          className="flex items-center gap-2 cursor-pointer" 
+          className="flex items-center gap-2 cursor-pointer flex-shrink-0" 
           onClick={() => {setSelectedTag('近期热门'); setSearchTerm('')}}
         >
           <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
@@ -106,20 +108,37 @@ export default function Home() {
           <span className="text-xl font-bold tracking-tight">AI Tube</span>
         </div>
 
-        <div className="flex flex-1 max-w-md mx-4 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="搜索 Sora, Runway, 动画..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-10 pr-4 focus:outline-none focus:border-purple-600 transition-all text-sm"
-          />
-          {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"><X size={14} /></button>}
+        {/* 中间区域：导航链接 + 搜索栏 (核心修改区) */}
+        <div className="hidden md:flex flex-1 items-center ml-10 mr-4 gap-8">
+            
+            {/* 1. 顶部导航链接 (左侧) */}
+            <div className="flex items-center gap-6 text-sm font-medium text-gray-400 flex-shrink-0">
+                <Link href="/academy" className="text-white hover:text-purple-400 transition-colors font-bold">
+                    AI 学院
+                </Link>
+                {/* 👇 占位符链接：展示未来规划 */}
+                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="开发中">灵感工具</button>
+                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="开发中">会员专区</button>
+                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="开发中">合作中心</button>
+            </div>
+
+            {/* 2. 搜索栏 (右侧) */}
+            <div className="relative w-full max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input 
+                    type="text" 
+                    placeholder="搜索 Sora, Runway, 动画..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-full py-2 pl-10 pr-4 focus:outline-none focus:border-purple-600 transition-all text-sm focus:bg-[#151515]"
+                />
+                {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"><X size={14} /></button>}
+            </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <Link href="/admin/dashboard">
+        {/* 右侧：操作区 */}
+        <div className="flex items-center gap-4 flex-shrink-0">
+          <Link href="/upload">
             <button className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-purple-900/20">
               <Upload size={18} /> <span>投稿</span>
             </button>
@@ -194,46 +213,36 @@ export default function Home() {
                 displayVideos.map((video: any) => (
                   <Link href={`/video/${video.id}`} key={video.id} className="group flex flex-col bg-[#121212] border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-all duration-300 hover:-translate-y-1">
                     
-                    {/* 👇 唯一修改区域：封面图 */}
                     <div className="aspect-video relative overflow-hidden bg-gray-900">
-                        {/* 1. 增加 group-hover:scale-105 实现呼吸放大 */}
                        <img 
                            src={video.thumbnail_url} 
                            referrerPolicy="no-referrer" 
                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                        />
                        
-                       {/* 2. 增加 Play 按钮动效 (绝对定位，悬停显示) */}
                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[1px]">
                            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white scale-50 group-hover:scale-100 transition-transform duration-300 border border-white/30 shadow-xl">
                                <Play fill="currentColor" size={20} className="ml-1"/>
                            </div>
                        </div>
                        
-                       {/* 3. 底部渐变遮罩 (保持原样) */}
                        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent pointer-events-none"></div>
 
-                       {/* 👇 以下所有角标逻辑完全保留原样 */}
-
-                       {/* 🏆 左上角：分类 */}
                        {video.category && (
                          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white font-medium border border-white/10">
                            {video.category}
                          </div>
                        )}
 
-                       {/* 🥇 右上角：荣誉角标 */}
                        <div className="absolute top-2 right-2 flex gap-1">
                          {video.is_selected && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/50 text-yellow-400 shadow-lg" title="编辑精选"><Crown size={12} fill="currentColor"/></div>}
                          {video.is_award && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/500 text-yellow-400 shadow-lg" title="获奖作品"><Trophy size={12} fill="currentColor"/></div>}
                        </div>
 
-                       {/* 👁️ 左下角：播放量 */}
                        <div className="absolute bottom-2 left-2 text-[10px] text-white flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                          <Eye size={12} className="text-white"/> <span className="font-medium">{formatViews(video.views)}</span>
                        </div>
 
-                       {/* 🕒 右下角：时长 */}
                        {video.duration && (
                          <div className="absolute bottom-2 right-2 text-[10px] text-white font-bold font-mono drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                            {video.duration}
