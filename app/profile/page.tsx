@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+// 👇 修改了这里：从 ../.. 改成了 .. (只往上一层)
+import { supabase } from '../lib/supabaseClient'; 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
