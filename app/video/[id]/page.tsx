@@ -42,7 +42,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
       }
     }
     getUserData();
-  }, [id]); // 添加 id 依赖，确保切换视频时重新检查
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -258,15 +258,15 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
 
           <div className="flex flex-wrap gap-4 pb-6 border-b border-white/5 items-center">
             
-            {/* 👇 智能下载按钮 */}
+            {/* 👇 修改后的下载按钮：风格与右侧按钮一致 */}
             {video.storyboard_url && (
               <button 
                 onClick={handleDownloadStoryboard} 
                 disabled={downloading}
-                className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all shadow-lg ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                     hasPurchased 
-                    ? 'bg-green-600 hover:bg-green-500 text-white shadow-green-900/20' 
-                    : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20'
+                    ? 'border-green-500/50 text-green-400 bg-green-500/10 hover:bg-green-500/20' // 已购：淡绿色描边
+                    : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white' // 未购：默认灰色描边
                 }`}
               >
                 {downloading ? (
@@ -279,7 +279,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                 
                 {downloading ? '处理中...' : (
                     hasPurchased 
-                    ? '再次下载 (已购)' 
+                    ? '再次下载' 
                     : (video.is_vip ? `下载分镜 (${video.price || 10}积分)` : '免费下载分镜')
                 )}
               </button>
