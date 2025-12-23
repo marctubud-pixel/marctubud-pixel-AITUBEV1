@@ -110,17 +110,22 @@ export default function Home() {
           <span className="text-xl font-bold tracking-tight">AI Tube</span>
         </div>
 
-        {/* 中间区域：导航链接 + 搜索栏 (布局核心修改) */}
+        {/* 中间区域：导航链接 + 搜索栏 */}
         <div className="hidden md:flex flex-1 items-center ml-10 mr-4 gap-8">
             
-            {/* 1. 导航链接组 (放在搜索栏左侧) */}
+            {/* 1. 导航链接组 (已激活会员专区) */}
             <div className="flex items-center gap-6 text-sm font-medium text-gray-400 flex-shrink-0">
                 <Link href="/academy" className="text-white hover:text-purple-400 transition-colors font-bold">
                     AI 学院
                 </Link>
-                {/* 占位链接：置灰显示 */}
+                
+                {/* 👇 已激活：会员专区 */}
+                <Link href="/vip" className="text-white hover:text-yellow-400 transition-colors font-bold flex items-center gap-1">
+                    <Crown size={16} /> 会员专区
+                </Link>
+
+                {/* 占位链接 */}
                 <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">灵感工具</button>
-                <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">会员专区</button>
                 <button className="hover:text-white transition-colors cursor-not-allowed opacity-50" title="即将上线">合作中心</button>
             </div>
 
@@ -215,13 +220,16 @@ export default function Home() {
                 displayVideos.map((video: any) => (
                   <Link href={`/video/${video.id}`} key={video.id} className="group flex flex-col bg-[#121212] border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-all duration-300 hover:-translate-y-1">
                     
+                    {/* 封面图区域 */}
                     <div className="aspect-video relative overflow-hidden bg-gray-900">
+                       {/* 1. 呼吸放大 */}
                        <img 
                            src={video.thumbnail_url} 
                            referrerPolicy="no-referrer" 
                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                        />
                        
+                       {/* 2. Play 动效 */}
                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[1px]">
                            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white scale-50 group-hover:scale-100 transition-transform duration-300 border border-white/30 shadow-xl">
                                <Play fill="currentColor" size={20} className="ml-1"/>
