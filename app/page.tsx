@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useEffect, useState, useRef } from 'react';
-import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play, Clock, Flame, Sparkles, Bot, Send, MessageSquare } from 'lucide-react';
+import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play, Clock, Flame, Sparkles, Bot, Send, MessageSquare, GripHorizontal } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -25,13 +25,18 @@ export default function Home() {
   const [currentBanner, setCurrentBanner] = useState(0);
   const [visibleCount, setVisibleCount] = useState(10);
 
-  // 🤖 AI 助手状态
+  // 🤖 AI 助手状态 (含拖拽逻辑)
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: 'ai'|'user', content: string}[]>([
-    { role: 'ai', content: '你好！我是 AI.Tube 创作助手。想找什么灵感？或者我可以帮你拆解视频分镜。' }
+    { role: 'ai', content: '你好！我是 AI.Tube 创作助手。' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // 拖拽相关状态
+  const [position, setPosition] = useState({ x: -1, y: -1 }); // -1 代表尚未初始化，使用默认 CSS
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartPos = useRef({ x: 0, y: 0 }); // 记录按下时的位置，用于判断是点击还是拖拽
 
   const categories = ["近期热门", "编辑精选", "获奖作品", "动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告", "实验短片"];
 
@@ -39,6 +44,11 @@ export default function Home() {
   // 2. 初始化逻辑
   // ----------------------------------------------------------------
   useEffect(() => {
+    // 初始化按钮位置 (右下角)
+    if (typeof window !== 'undefined') {
+        setPosition({ x: window.innerWidth - 80, y: window.innerHeight - 100 });
+    }
+
     async function initData() {
       setLoading(true);
       const { data: { session } } = await supabase.auth.getSession();
@@ -65,13 +75,55 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [banners]);
 
-  // 聊天窗口自动滚动到底部
+  // 聊天窗口自动滚动
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, isChatOpen]);
 
   // ----------------------------------------------------------------
-  // 3. 交互逻辑
+  // 3. 拖拽逻辑处理
+  // ----------------------------------------------------------------
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isDragging) return;
+        // 简单的拖拽跟随
+        setPosition(prev => ({
+            x: prev.x + e.movementX,
+            y: prev.y + e.movementY
+        }));
+    };
+
+    const handleMouseUp = () => {
+        setIsDragging(false);
+    };
+
+    if (isDragging) {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleBotClick = (e: React.MouseEvent) => {
+    // 计算移动距离，如果移动太远，说明是拖拽，不触发点击
+    const moveDist = Math.hypot(e.clientX - dragStartPos.current.x, e.clientY - dragStartPos.current.y);
+    if (moveDist < 5) {
+        setIsChatOpen(!isChatOpen);
+    }
+  };
+
+
+  // ----------------------------------------------------------------
+  // 4. 常规交互逻辑
   // ----------------------------------------------------------------
   const filteredVideos = videos.filter(video => {
     let matchCategory = false;
@@ -110,19 +162,16 @@ export default function Home() {
     return num;
   };
 
-  // 🤖 AI 助手发送逻辑
   const handleSendMessage = () => {
     if (!chatInput.trim()) return;
     const userMsg = chatInput;
     setChatMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setChatInput('');
     
-    // 模拟回复延迟
     setTimeout(() => {
         let aiReply = "这是一个很好的问题！作为一个演示助手，我建议你去「AI 学院」看看相关教程。";
         if (userMsg.includes("分镜")) aiReply = "想生成分镜？你可以去「灵感工具库」使用我们的智能分镜生成器，或者下载首页的 PDF 模板。";
         if (userMsg.includes("会员")) aiReply = "成为 VIP 可以解锁 4K 原片下载权限，现在开通还有优惠哦！";
-        
         setChatMessages(prev => [...prev, { role: 'ai', content: aiReply }]);
     }, 1000);
   };
@@ -130,13 +179,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
       
-      {/* ----------------------------------------------------------------
-         顶部导航
-         修改点：统一了中间 4 个链接的样式
-      ---------------------------------------------------------------- */}
+      {/* 顶部导航 (统一字体和颜色) */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-50">
-        
-        {/* 左侧：Logo */}
         <div 
           className="flex items-center gap-2 cursor-pointer flex-shrink-0" 
           onClick={() => {setSelectedTag('近期热门'); setSearchTerm('')}}
@@ -147,30 +191,23 @@ export default function Home() {
           <span className="text-xl font-bold tracking-tight">AI Tube</span>
         </div>
 
-        {/* 中间区域：统一导航链接 + 搜索栏 */}
         <div className="hidden md:flex flex-1 items-center ml-10 mr-4 gap-8">
-            
             <div className="flex items-center gap-6 text-sm flex-shrink-0">
-                {/* 统一使用 font-bold 和 text-gray-300 作为基准 */}
+                {/* 统一为 text-gray-300 + font-bold */}
                 <Link href="/academy" className="text-gray-300 hover:text-white transition-colors font-bold">
                     AI 学院
                 </Link>
-                
-                {/* 会员专区：悬停时保持金色 */}
                 <Link href="/vip" className="text-gray-300 hover:text-yellow-400 transition-colors font-bold flex items-center gap-1">
                     <Crown size={16} className="mb-0.5" /> 会员专区
                 </Link>
-
                 <Link href="/tools" className="text-gray-300 hover:text-white transition-colors font-bold">
                     灵感工具
                 </Link>
-
                 <Link href="/collaboration" className="text-gray-300 hover:text-white transition-colors font-bold">
                     合作中心
                 </Link>
             </div>
 
-            {/* 搜索栏 */}
             <div className="relative w-full max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input 
@@ -184,7 +221,6 @@ export default function Home() {
             </div>
         </div>
 
-        {/* 右侧：用户操作区 */}
         <div className="flex items-center gap-4 flex-shrink-0">
           <Link href="/upload">
             <button className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-5 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-purple-900/20">
@@ -255,21 +291,14 @@ export default function Home() {
           <div className="text-center text-gray-500 py-20 flex items-center justify-center gap-2"><Loader2 className="animate-spin" /> 加载中...</div>
         ) : (
           <>
-            {/* ----------------------------------------------------------------
-                视频网格
-                修改点：删除了 HOT 角标
-            ---------------------------------------------------------------- */}
+            {/* 视频网格 (已删除 HOT 角标) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {displayVideos.length > 0 ? (
                 displayVideos.map((video: any) => (
                   <Link href={`/video/${video.id}`} key={video.id} className="group flex flex-col bg-[#121212] border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-all duration-300 hover:-translate-y-1">
                     
                     <div className="aspect-video relative overflow-hidden bg-gray-900">
-                       <img 
-                           src={video.thumbnail_url} 
-                           referrerPolicy="no-referrer" 
-                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
-                       />
+                       <img src={video.thumbnail_url} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                        
                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[1px]">
                            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white scale-50 group-hover:scale-100 transition-transform duration-300 border border-white/30 shadow-xl">
@@ -288,7 +317,7 @@ export default function Home() {
                        <div className="absolute top-2 right-2 flex gap-1">
                          {video.is_selected && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/50 text-yellow-400 shadow-lg" title="编辑精选"><Crown size={12} fill="currentColor"/></div>}
                          {video.is_award && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/500 text-yellow-400 shadow-lg" title="获奖作品"><Trophy size={12} fill="currentColor"/></div>}
-                         {/* 🗑️ 已删除：HOT 火焰角标 */}
+                         {/* 已移除 HOT 角标 */}
                        </div>
 
                        <div className="absolute bottom-2 left-2 text-[10px] text-white flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
@@ -325,29 +354,36 @@ export default function Home() {
             )}
           </>
         )}
-
       </main>
 
       {/* ----------------------------------------------------------------
-         🤖 AI 悬浮创作助手
-         新增：右下角悬浮按钮 + 聊天框
+         🤖 AI 悬浮创作助手 (可拖拽 + 幽灵模式)
       ---------------------------------------------------------------- */}
-      <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-4">
-        
-        {/* 聊天窗口 */}
+      <div 
+        style={{ 
+            position: 'fixed', 
+            left: position.x === -1 ? 'auto' : position.x, 
+            top: position.y === -1 ? 'auto' : position.y,
+            right: position.x === -1 ? '32px' : 'auto', // 默认右边距
+            bottom: position.y === -1 ? '32px' : 'auto', // 默认底边距
+            zIndex: 100
+        }}
+        className="flex flex-col items-end gap-4 select-none touch-none"
+      >
+        {/* 聊天窗口 (跟随按钮，出现在按钮上方) */}
         {isChatOpen && (
-            <div className="bg-[#151515] border border-white/10 rounded-2xl w-80 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-300 flex flex-col h-96">
-                <div className="bg-purple-900/20 p-4 border-b border-white/5 flex justify-between items-center">
-                    <div className="flex items-center gap-2 font-bold text-sm">
-                        <Sparkles size={16} className="text-purple-400" /> 创作助手 (Demo)
+            <div className="absolute bottom-12 right-0 bg-[#151515] border border-white/10 rounded-2xl w-80 shadow-2xl overflow-hidden flex flex-col h-96 mb-2 animate-in slide-in-from-bottom-5 fade-in duration-200">
+                <div className="bg-purple-900/20 p-3 border-b border-white/5 flex justify-between items-center cursor-move" onMouseDown={handleMouseDown}>
+                    <div className="flex items-center gap-2 font-bold text-xs text-white">
+                        <Sparkles size={14} className="text-purple-400" /> 创作助手
                     </div>
-                    <button onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white"><X size={16}/></button>
+                    <button onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white"><X size={14}/></button>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0A0A0A]">
+                <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#0A0A0A]">
                     {chatMessages.map((msg, idx) => (
                         <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
                                 msg.role === 'user' 
                                 ? 'bg-purple-600 text-white rounded-br-none' 
                                 : 'bg-gray-800 text-gray-200 rounded-bl-none border border-white/5'
@@ -360,33 +396,38 @@ export default function Home() {
                 </div>
 
                 {/* 快捷指令 */}
-                <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
-                    <button onClick={() => setChatInput('帮我生成分镜')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-3 py-1 text-xs text-gray-400 hover:text-white transition-colors">生成分镜</button>
-                    <button onClick={() => setChatInput('会员有什么权益？')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-3 py-1 text-xs text-gray-400 hover:text-white transition-colors">会员权益</button>
+                <div className="px-3 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
+                    <button onClick={() => setChatInput('帮我生成分镜')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-2 py-0.5 text-[10px] text-gray-400 hover:text-white transition-colors">生成分镜</button>
+                    <button onClick={() => setChatInput('会员有什么权益？')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-2 py-0.5 text-[10px] text-gray-400 hover:text-white transition-colors">会员权益</button>
                 </div>
 
-                <div className="p-3 border-t border-white/5 bg-[#151515] flex gap-2">
+                <div className="p-2 border-t border-white/5 bg-[#151515] flex gap-2">
                     <input 
-                        className="flex-1 bg-black/50 border border-white/10 rounded-full px-3 py-2 text-sm focus:outline-none focus:border-purple-500"
+                        className="flex-1 bg-black/50 border border-white/10 rounded-full px-3 py-1.5 text-xs focus:outline-none focus:border-purple-500 text-white"
                         placeholder="输入问题..."
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     />
-                    <button onClick={handleSendMessage} className="bg-purple-600 hover:bg-purple-500 text-white p-2 rounded-full transition-colors">
-                        <Send size={16} />
+                    <button onClick={handleSendMessage} className="bg-purple-600 hover:bg-purple-500 text-white p-1.5 rounded-full transition-colors">
+                        <Send size={14} />
                     </button>
                 </div>
             </div>
         )}
 
         {/* 悬浮按钮 */}
-        <button 
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            className="w-14 h-14 bg-gradient-to-br from-purple-600 to-blue-600 hover:scale-110 transition-transform rounded-full shadow-lg shadow-purple-900/40 flex items-center justify-center text-white border border-white/10"
+        <div 
+            onMouseDown={handleMouseDown}
+            onClick={handleBotClick}
+            className={`w-10 h-10 rounded-full flex items-center justify-center text-white backdrop-blur-md border border-white/10 transition-all duration-300 cursor-pointer shadow-lg hover:scale-110 active:scale-95
+            ${isChatOpen 
+                ? 'bg-purple-600 border-purple-500 opacity-100' // 打开时：紫色、不透明
+                : 'bg-black/40 hover:bg-black/60 opacity-30 hover:opacity-100' // 关闭时：透明、幽灵模式
+            }`}
         >
-            {isChatOpen ? <X size={24} /> : <Bot size={28} />}
-        </button>
+            {isChatOpen ? <X size={18} /> : <Bot size={20} />}
+        </div>
       </div>
 
     </div>
