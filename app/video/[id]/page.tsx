@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, use } from 'react';
-import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -21,6 +21,10 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
   const [showToolInfo, setShowToolInfo] = useState(false);
   const [showPromptInfo, setShowPromptInfo] = useState(false);
   
+  // 🆕 新增状态：是否已购买
+  const [hasPurchased, setHasPurchased] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  
   // 📋 复制状态反馈
   const [copied, setCopied] = useState(false);
 
@@ -31,10 +35,14 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
         setUser(session.user);
         const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         if (data) setUserProfile(data);
+        
+        // 🆕 检查是否已购买
+        checkPurchaseStatus(session.user.id);
+        checkFavoriteStatus(session.user.id);
       }
     }
     getUserData();
-  }, []);
+  }, [id]); // 添加 id 依赖，确保切换视频时重新检查
 
   useEffect(() => {
     if (!id) return;
@@ -42,11 +50,27 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     fetchComments();
   }, [id]);
 
+  async function checkPurchaseStatus(userId: string) {
+    if (!id) return;
+    const { data } = await supabase
+        .from('downloads')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('video_id', id)
+        .single();
+    
+    if (data) setHasPurchased(true);
+  }
+
+  async function checkFavoriteStatus(userId: string) {
+    if (!id) return;
+    const { data } = await supabase.from('favorites').select('*').eq('video_id', id).eq('user_id', userId).single();
+    if (data) setIsFavorited(true);
+  }
+
   async function fetchData() {
-    // 🛠️ 调试：确保 prompt 字段被取出来了
     const { data: videoData } = await supabase.from('videos').select('*').eq('id', id).single();
     if (videoData) {
-      console.log("当前视频数据:", videoData); // 👈 打开 F12 控制台可以看到这个
       setVideo(videoData);
       setLikeCount(videoData.likes || Math.floor(Math.random() * 500));
       
@@ -54,12 +78,6 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
         const { data: related } = await supabase.from('videos').select('*').eq('category', videoData.category).neq('id', id).limit(4);
         if (related) setRelatedVideos(related);
       }
-    }
-
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const { data: favData } = await supabase.from('favorites').select('*').eq('video_id', id).eq('user_id', session.user.id).single();
-      if (favData) setIsFavorited(true);
     }
   }
 
@@ -80,35 +98,67 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
 
   const popularity = ((video?.views || 0) * 1) + (likeCount * 5) + (comments.length * 10);
 
+  // 🧠 核心升级：智能下载逻辑
   const handleDownloadStoryboard = async () => {
     if (!user) return alert('请先登录后下载！');
     if (!userProfile) return alert('用户信息加载中...');
-    if (!video.is_vip) {
-      if (userProfile.free_quota > 0) {
-        if (confirm(`这是免费资源，将消耗 1 次新人免费机会。\n剩余机会：${userProfile.free_quota} 次`)) {
-          const newQuota = userProfile.free_quota - 1;
-          const { error } = await supabase.from('profiles').update({ free_quota: newQuota }).eq('id', user.id);
-          if (error) return alert(error.message);
-          
-          setUserProfile({ ...userProfile, free_quota: newQuota });
-          await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: 0 }]);
-          window.open(video.storyboard_url, '_blank');
-        }
-      } else { alert('您的免费机会已用完！'); }
-      return;
-    }
-    const price = video.price || 10;
-    if (userProfile.points >= price) {
-      if (confirm(`下载此分镜将消耗 ${price} 积分。\n当前积分：${userProfile.points}`)) {
-        const newPoints = userProfile.points - price;
-        const { error } = await supabase.from('profiles').update({ points: newPoints }).eq('id', user.id);
-        if (error) return alert(error.message);
+    
+    setDownloading(true);
 
-        setUserProfile({ ...userProfile, points: newPoints });
-        await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: price }]);
-        window.open(video.storyboard_url, '_blank');
-      }
-    } else { alert(`积分不足！需要 ${price} 积分。`); }
+    try {
+        // 1. 如果已经买过，直接打开链接，不扣费
+        if (hasPurchased) {
+            window.open(video.storyboard_url, '_blank');
+            setDownloading(false);
+            return;
+        }
+
+        // 2. 如果是 VIP 资源 (需要积分)
+        if (video.is_vip) {
+            const price = video.price || 10;
+            if (userProfile.points >= price) {
+                if (confirm(`下载此分镜将消耗 ${price} 积分。\n当前积分：${userProfile.points}`)) {
+                    // 扣分
+                    const newPoints = userProfile.points - price;
+                    const { error: updateError } = await supabase.from('profiles').update({ points: newPoints }).eq('id', user.id);
+                    if (updateError) throw updateError;
+
+                    // 记录下载
+                    await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: price }]);
+                    
+                    // 更新本地状态
+                    setUserProfile({ ...userProfile, points: newPoints });
+                    setHasPurchased(true); // 标记为已购
+                    window.open(video.storyboard_url, '_blank');
+                }
+            } else { 
+                alert(`积分不足！需要 ${price} 积分，您当前只有 ${userProfile.points} 积分。\n💡 去个人中心签到可以领积分哦！`); 
+            }
+        } 
+        // 3. 如果是免费资源 (扣免费次数)
+        else {
+             if (userProfile.free_quota > 0) {
+                if (confirm(`这是免费资源，将消耗 1 次新人免费机会。\n剩余机会：${userProfile.free_quota} 次`)) {
+                    const newQuota = userProfile.free_quota - 1;
+                    const { error: updateError } = await supabase.from('profiles').update({ free_quota: newQuota }).eq('id', user.id);
+                    if (updateError) throw updateError;
+                    
+                    await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: 0 }]);
+                    
+                    setUserProfile({ ...userProfile, free_quota: newQuota });
+                    setHasPurchased(true);
+                    window.open(video.storyboard_url, '_blank');
+                }
+             } else { 
+                 alert('您的免费机会已用完！成为会员或使用积分可继续下载。'); 
+             }
+        }
+    } catch (error: any) {
+        console.error('Download error:', error);
+        alert('下载失败，请稍后重试');
+    } finally {
+        setDownloading(false);
+    }
   };
 
   const handlePostComment = async () => {
@@ -170,6 +220,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
       <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           
+          {/* 视频播放区 */}
           <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden relative flex items-center justify-center border border-white/5 shadow-2xl">
             {video.video_url ? (
               video.video_url.includes('player.bilibili.com') ? (
@@ -206,12 +257,34 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
           </div>
 
           <div className="flex flex-wrap gap-4 pb-6 border-b border-white/5 items-center">
+            
+            {/* 👇 智能下载按钮 */}
             {video.storyboard_url && (
-              <button onClick={handleDownloadStoryboard} className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white transition-all shadow-lg shadow-purple-900/20">
-                {video.is_vip ? <Lock size={14} /> : <Download size={14} />}
-                {video.is_vip ? `下载分镜 (${video.price || 10}积分)` : '免费下载分镜'}
+              <button 
+                onClick={handleDownloadStoryboard} 
+                disabled={downloading}
+                className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all shadow-lg ${
+                    hasPurchased 
+                    ? 'bg-green-600 hover:bg-green-500 text-white shadow-green-900/20' 
+                    : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20'
+                }`}
+              >
+                {downloading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                ) : hasPurchased ? (
+                    <Check size={14} /> // 已购显示对号
+                ) : (
+                    video.is_vip ? <Lock size={14} /> : <Download size={14} />
+                )}
+                
+                {downloading ? '处理中...' : (
+                    hasPurchased 
+                    ? '再次下载 (已购)' 
+                    : (video.is_vip ? `下载分镜 (${video.price || 10}积分)` : '免费下载分镜')
+                )}
               </button>
             )}
+
             <div className="h-6 w-px bg-white/10 mx-2"></div>
             <button onClick={() => { setShowToolInfo(!showToolInfo); setShowPromptInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showToolInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><PenTool size={14} /> 查看工具</button>
             <button onClick={() => { setShowPromptInfo(!showPromptInfo); setShowToolInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showPromptInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><FileText size={14} /> 查看提示词</button>
@@ -231,6 +304,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
             )}
           </div>
 
+          {/* 工具信息栏 (保持不变) */}
           {showToolInfo && (
             <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200">
               <div className="flex justify-between items-start mb-2"><h3 className="text-sm font-bold text-gray-300">使用工具</h3><button onClick={() => setShowToolInfo(false)}><X size={14} className="text-gray-500 hover:text-white" /></button></div>
@@ -238,18 +312,14 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
+          {/* 提示词栏 (保持不变) */}
           {showPromptInfo && (
             <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200 relative group">
               <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-bold text-gray-300">提示词 (Prompt)</h3>
                   <div className="flex gap-2 items-center">
-                    {/* 📋 极简风格的复制按钮：只有当 video.prompt 存在时才显示 */}
                     {video.prompt && (
-                        <button 
-                            onClick={handleCopyPrompt} 
-                            className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/10"
-                            title="复制"
-                        >
+                        <button onClick={handleCopyPrompt} className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/10" title="复制">
                             {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
                         </button>
                     )}
@@ -262,6 +332,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
+          {/* 评论区 (保持不变) */}
           <div>
             <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-gray-200"><MessageSquare size={18} /> 评论 ({comments.length})</h3>
             <div className="flex gap-4 mb-8">
@@ -293,6 +364,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
           </div>
         </div>
 
+        {/* 右侧推荐栏 (保持不变) */}
         <div className="h-fit space-y-6">
           <div className="bg-white/5 rounded-xl border border-white/5 p-6 backdrop-blur-sm">
             <h3 className="text-lg font-bold mb-4 text-gray-200 flex items-center gap-2"><Lightbulb size={18} className="text-gray-400" /> 猜你喜欢</h3>
