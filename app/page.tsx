@@ -1,8 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { useEffect, useState } from 'react';
-import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play, Clock, Flame } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play, Clock, Flame, Sparkles, Bot, Send, MessageSquare } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -10,19 +10,34 @@ import { useRouter } from 'next/navigation';
 export default function Home() {
   const router = useRouter();
   
+  // ----------------------------------------------------------------
+  // 1. 数据状态
+  // ----------------------------------------------------------------
   const [videos, setVideos] = useState<any[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
+  // 搜索与筛选
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTag, setSelectedTag] = useState('近期热门');
   const [currentBanner, setCurrentBanner] = useState(0);
   const [visibleCount, setVisibleCount] = useState(10);
 
+  // 🤖 AI 助手状态
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{role: 'ai'|'user', content: string}[]>([
+    { role: 'ai', content: '你好！我是 AI.Tube 创作助手。想找什么灵感？或者我可以帮你拆解视频分镜。' }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   const categories = ["近期热门", "编辑精选", "获奖作品", "动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告", "实验短片"];
 
+  // ----------------------------------------------------------------
+  // 2. 初始化逻辑
+  // ----------------------------------------------------------------
   useEffect(() => {
     async function initData() {
       setLoading(true);
@@ -41,6 +56,7 @@ export default function Home() {
     initData();
   }, []);
 
+  // Banner 轮播
   useEffect(() => {
     if (banners.length === 0) return;
     const timer = setInterval(() => {
@@ -49,13 +65,14 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [banners]);
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    setUser(null);
-    setUserProfile(null);
-    router.refresh();
-  }
+  // 聊天窗口自动滚动到底部
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, isChatOpen]);
 
+  // ----------------------------------------------------------------
+  // 3. 交互逻辑
+  // ----------------------------------------------------------------
   const filteredVideos = videos.filter(video => {
     let matchCategory = false;
     if (selectedTag === '近期热门') {
@@ -93,10 +110,30 @@ export default function Home() {
     return num;
   };
 
+  // 🤖 AI 助手发送逻辑
+  const handleSendMessage = () => {
+    if (!chatInput.trim()) return;
+    const userMsg = chatInput;
+    setChatMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setChatInput('');
+    
+    // 模拟回复延迟
+    setTimeout(() => {
+        let aiReply = "这是一个很好的问题！作为一个演示助手，我建议你去「AI 学院」看看相关教程。";
+        if (userMsg.includes("分镜")) aiReply = "想生成分镜？你可以去「灵感工具库」使用我们的智能分镜生成器，或者下载首页的 PDF 模板。";
+        if (userMsg.includes("会员")) aiReply = "成为 VIP 可以解锁 4K 原片下载权限，现在开通还有优惠哦！";
+        
+        setChatMessages(prev => [...prev, { role: 'ai', content: aiReply }]);
+    }, 1000);
+  };
+
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
       
-      {/* 顶部导航 */}
+      {/* ----------------------------------------------------------------
+         顶部导航
+         修改点：统一了中间 4 个链接的样式
+      ---------------------------------------------------------------- */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-50">
         
         {/* 左侧：Logo */}
@@ -110,31 +147,30 @@ export default function Home() {
           <span className="text-xl font-bold tracking-tight">AI Tube</span>
         </div>
 
-        {/* 中间区域：导航链接 + 搜索栏 */}
+        {/* 中间区域：统一导航链接 + 搜索栏 */}
         <div className="hidden md:flex flex-1 items-center ml-10 mr-4 gap-8">
             
-            {/* 1. 导航链接组 (已激活会员专区) */}
-            <div className="flex items-center gap-6 text-sm font-medium text-gray-400 flex-shrink-0">
-                <Link href="/academy" className="text-white hover:text-purple-400 transition-colors font-bold">
+            <div className="flex items-center gap-6 text-sm flex-shrink-0">
+                {/* 统一使用 font-bold 和 text-gray-300 作为基准 */}
+                <Link href="/academy" className="text-gray-300 hover:text-white transition-colors font-bold">
                     AI 学院
                 </Link>
                 
-                {/* 👇 已激活：会员专区 */}
-                <Link href="/vip" className="text-white hover:text-yellow-400 transition-colors font-bold flex items-center gap-1">
-                    <Crown size={16} /> 会员专区
+                {/* 会员专区：悬停时保持金色 */}
+                <Link href="/vip" className="text-gray-300 hover:text-yellow-400 transition-colors font-bold flex items-center gap-1">
+                    <Crown size={16} className="mb-0.5" /> 会员专区
                 </Link>
 
-                {/* 占位链接 */}
-               {/* 🟢 这是你要粘贴的新代码 */}
-                <Link href="/tools" className="text-gray-400 hover:text-white transition-colors font-medium flex items-center gap-1">
-                灵感工具
+                <Link href="/tools" className="text-gray-300 hover:text-white transition-colors font-bold">
+                    灵感工具
                 </Link>
-                <Link href="/collaboration" className="text-gray-400 hover:text-white transition-colors font-medium flex items-center gap-1">
-                合作中心
+
+                <Link href="/collaboration" className="text-gray-300 hover:text-white transition-colors font-bold">
+                    合作中心
                 </Link>
             </div>
 
-            {/* 2. 搜索栏 */}
+            {/* 搜索栏 */}
             <div className="relative w-full max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input 
@@ -175,7 +211,7 @@ export default function Home() {
         </div>
       </nav>
 
-      <main className="p-6 max-w-7xl mx-auto">
+      <main className="p-6 max-w-7xl mx-auto relative">
         
         {/* Banner */}
         {banners.length > 0 && !searchTerm && (
@@ -219,22 +255,22 @@ export default function Home() {
           <div className="text-center text-gray-500 py-20 flex items-center justify-center gap-2"><Loader2 className="animate-spin" /> 加载中...</div>
         ) : (
           <>
-            {/* 网格布局 */}
+            {/* ----------------------------------------------------------------
+                视频网格
+                修改点：删除了 HOT 角标
+            ---------------------------------------------------------------- */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {displayVideos.length > 0 ? (
                 displayVideos.map((video: any) => (
                   <Link href={`/video/${video.id}`} key={video.id} className="group flex flex-col bg-[#121212] border border-gray-800 rounded-xl overflow-hidden hover:border-gray-600 transition-all duration-300 hover:-translate-y-1">
                     
-                    {/* 封面图区域 */}
                     <div className="aspect-video relative overflow-hidden bg-gray-900">
-                       {/* 1. 呼吸放大 */}
                        <img 
                            src={video.thumbnail_url} 
                            referrerPolicy="no-referrer" 
                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                        />
                        
-                       {/* 2. Play 动效 */}
                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[1px]">
                            <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white scale-50 group-hover:scale-100 transition-transform duration-300 border border-white/30 shadow-xl">
                                <Play fill="currentColor" size={20} className="ml-1"/>
@@ -252,11 +288,7 @@ export default function Home() {
                        <div className="absolute top-2 right-2 flex gap-1">
                          {video.is_selected && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/50 text-yellow-400 shadow-lg" title="编辑精选"><Crown size={12} fill="currentColor"/></div>}
                          {video.is_award && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/500 text-yellow-400 shadow-lg" title="获奖作品"><Trophy size={12} fill="currentColor"/></div>}
-                         {video.is_hot && (
-                             <div className="bg-red-600/90 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm border border-red-500/50">
-                                 <Flame size={10} fill="currentColor"/> HOT
-                             </div>
-                         )}
+                         {/* 🗑️ 已删除：HOT 火焰角标 */}
                        </div>
 
                        <div className="absolute bottom-2 left-2 text-[10px] text-white flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
@@ -293,7 +325,70 @@ export default function Home() {
             )}
           </>
         )}
+
       </main>
+
+      {/* ----------------------------------------------------------------
+         🤖 AI 悬浮创作助手
+         新增：右下角悬浮按钮 + 聊天框
+      ---------------------------------------------------------------- */}
+      <div className="fixed bottom-8 right-8 z-50 flex flex-col items-end gap-4">
+        
+        {/* 聊天窗口 */}
+        {isChatOpen && (
+            <div className="bg-[#151515] border border-white/10 rounded-2xl w-80 shadow-2xl overflow-hidden animate-in slide-in-from-bottom-5 fade-in duration-300 flex flex-col h-96">
+                <div className="bg-purple-900/20 p-4 border-b border-white/5 flex justify-between items-center">
+                    <div className="flex items-center gap-2 font-bold text-sm">
+                        <Sparkles size={16} className="text-purple-400" /> 创作助手 (Demo)
+                    </div>
+                    <button onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white"><X size={16}/></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0A0A0A]">
+                    {chatMessages.map((msg, idx) => (
+                        <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                                msg.role === 'user' 
+                                ? 'bg-purple-600 text-white rounded-br-none' 
+                                : 'bg-gray-800 text-gray-200 rounded-bl-none border border-white/5'
+                            }`}>
+                                {msg.content}
+                            </div>
+                        </div>
+                    ))}
+                    <div ref={chatEndRef}></div>
+                </div>
+
+                {/* 快捷指令 */}
+                <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
+                    <button onClick={() => setChatInput('帮我生成分镜')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-3 py-1 text-xs text-gray-400 hover:text-white transition-colors">生成分镜</button>
+                    <button onClick={() => setChatInput('会员有什么权益？')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-3 py-1 text-xs text-gray-400 hover:text-white transition-colors">会员权益</button>
+                </div>
+
+                <div className="p-3 border-t border-white/5 bg-[#151515] flex gap-2">
+                    <input 
+                        className="flex-1 bg-black/50 border border-white/10 rounded-full px-3 py-2 text-sm focus:outline-none focus:border-purple-500"
+                        placeholder="输入问题..."
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    />
+                    <button onClick={handleSendMessage} className="bg-purple-600 hover:bg-purple-500 text-white p-2 rounded-full transition-colors">
+                        <Send size={16} />
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* 悬浮按钮 */}
+        <button 
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className="w-14 h-14 bg-gradient-to-br from-purple-600 to-blue-600 hover:scale-110 transition-transform rounded-full shadow-lg shadow-purple-900/40 flex items-center justify-center text-white border border-white/10"
+        >
+            {isChatOpen ? <X size={24} /> : <Bot size={28} />}
+        </button>
+      </div>
+
     </div>
   );
 }
