@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Upload, Save, Edit, Trash2, X, Clock } from 'lucide-react';
+import { Upload, Save, Edit, Trash2, X, Clock, Link as LinkIcon, Download, Crown, DollarSign, FileUp, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
-// ⚠️ 请确保这里是你自己的 URL 和 KEY
 const supabaseUrl = 'https://muwpfhwzfxocqlcxbsoa.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11d3BmaHd6ZnhvY3FsY3hic29hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4ODI4NjEsImV4cCI6MjA4MTQ1ODg2MX0.GvW2cklrWrU1wyipjSiEPfA686Uoy3lRFY75p_UkNzo';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -20,13 +19,20 @@ export default function Dashboard() {
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
+  
+  // 🆕 文件上传相关
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   // 表单数据
   const [formData, setFormData] = useState({
     title: '', author: '', category: '创意短片', 
-    prompt: '', // 👈 重点关注这个字段
-    tag: '', thumbnail_url: '', video_url: '', views: 0, 
+    prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
     duration: '', 
+    storyboard_url: '', 
+    price: 10,
+    is_vip: false,
+    
     is_hot: false, is_selected: false, is_award: false, tutorial_url: ''
   });
 
@@ -63,33 +69,53 @@ export default function Dashboard() {
         title: data.title, author: data.author, thumbnail_url: data.thumbnail_url,
         video_url: data.video_url, views: data.views || 0, tag: data.tag || prev.tag,
         duration: data.duration || '', 
-        // 抓取时不覆盖已有的 prompt，除非它是空的
         prompt: prev.prompt || '', 
       }));
       alert('✅ 抓取成功！');
     } catch (err: any) { alert(err.message); }
   };
 
+  // 📂 核心逻辑：处理文件上传
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    
+    setUploadingFile(true);
+    const file = e.target.files[0];
+    
+    // 生成随机文件名，防止中文乱码或重名
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    
+    try {
+        // 1. 上传到 storyboards 桶
+        const { error: uploadError } = await supabase.storage
+            .from('storyboards') // 👈 确保你在 Supabase 创建了这个名字的 bucket
+            .upload(fileName, file, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        // 2. 获取公开链接
+        const { data } = supabase.storage.from('storyboards').getPublicUrl(fileName);
+        
+        // 3. 自动填入表单
+        setFormData(prev => ({ ...prev, storyboard_url: data.publicUrl }));
+        alert('✅ 文件上传成功！链接已自动填入。');
+
+    } catch (error: any) {
+        console.error(error);
+        alert('上传失败: ' + error.message);
+    } finally {
+        setUploadingFile(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!formData.title) return alert('标题不能为空');
 
-    // 🛑 调试：打印一下即将发送的数据，按 F12 可以在控制台看到
-    console.log("正在保存的数据:", formData);
-
     const payload = { 
-      title: formData.title,
-      author: formData.author,
-      category: formData.category,
-      prompt: formData.prompt, // 👈 确保这里取到了值
-      tag: formData.tag,
-      thumbnail_url: formData.thumbnail_url,
-      video_url: formData.video_url,
-      views: formData.views,
-      duration: formData.duration,
-      is_hot: formData.is_hot,
-      is_selected: formData.is_selected,
-      is_award: formData.is_award,
-      tutorial_url: formData.tutorial_url
+      ...formData,
+      views: Number(formData.views),
+      price: Number(formData.price),
     };
 
     let error;
@@ -102,12 +128,11 @@ export default function Dashboard() {
     }
 
     if (!error) { 
-        alert('✅ 保存成功！请去前台刷新查看。'); 
+        alert('✅ 保存成功！'); 
         setIsModalOpen(false); 
         fetchVideos(); 
     } else { 
         alert('❌ 保存失败: ' + error.message); 
-        console.error(error);
     }
   };
 
@@ -120,14 +145,16 @@ export default function Dashboard() {
   const openEdit = (video: any) => {
     setFormData({
       title: video.title, author: video.author, category: video.category, 
-      prompt: video.prompt || '', // 👈 确保从数据库加载了旧数据
+      prompt: video.prompt || '', 
       tag: video.tag || '', thumbnail_url: video.thumbnail_url, video_url: video.video_url, views: video.views, 
       duration: video.duration || '', 
+      storyboard_url: video.storyboard_url || '',
+      price: video.price || 10,
+      is_vip: video.is_vip || false,
       is_hot: video.is_hot || false, is_selected: video.is_selected || false, is_award: video.is_award || false,
       tutorial_url: video.tutorial_url || ''
     });
     
-    // 自动回填链接以便刷新抓取
     if (video.video_url && video.video_url.includes('bvid=')) {
         const match = video.video_url.match(/bvid=(BV\w+)/);
         if (match) setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
@@ -141,7 +168,11 @@ export default function Dashboard() {
   };
 
   const openNew = () => {
-    setFormData({ title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, duration: '', is_hot: false, is_selected: false, is_award: false, tutorial_url: '' });
+    setFormData({ 
+        title: '', author: '', category: '创意短片', prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, duration: '', 
+        storyboard_url: '', price: 10, is_vip: false,
+        is_hot: false, is_selected: false, is_award: false, tutorial_url: '' 
+    });
     setBilibiliLink('');
     setEditMode(false);
     setIsModalOpen(true);
@@ -176,9 +207,8 @@ export default function Dashboard() {
                     <div>{v.views} views</div>
                     {v.duration ? (
                         <div className="flex items-center gap-1 text-gray-500 mt-1"><Clock size={12}/> {v.duration}</div>
-                    ) : (
-                        <div className="text-red-900/50 mt-1 text-[10px]">无时长</div>
-                    )}
+                    ) : (<div className="text-red-900/50 mt-1 text-[10px]">无时长</div>)}
+                    {v.storyboard_url && <div className="flex items-center gap-1 text-green-500 mt-1" title="有分镜"><Download size={12}/> 分镜</div>}
                   </td>
                   <td className="p-4 text-right"><button onClick={() => openEdit(v)} className="text-blue-400 mr-4"><Edit size={18}/></button><button onClick={() => handleDelete(v.id)} className="text-red-500"><Trash2 size={18}/></button></td>
                 </tr>
@@ -215,36 +245,66 @@ export default function Dashboard() {
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="text-xs text-gray-500 block mb-1">分类 (必选)</label>
+                    <label className="text-xs text-gray-500 block mb-1">分类</label>
                     <select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
                       <option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>写实短片</option><option>创意广告</option><option>AI教程</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">播放量</label>
-                    <input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">时长</label>
-                    <input placeholder="04:20" value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
-                  </div>
-                </div>
-                <div><label className="text-xs text-gray-500 block mb-1">工具标签 (多选用逗号分隔)</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-                
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">关联教程链接 (可选)</label>
-                  <input placeholder="https://..." value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/>
+                  <div><label className="text-xs text-gray-500 block mb-1">播放量</label><input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                  <div><label className="text-xs text-gray-500 block mb-1">时长</label><input placeholder="04:20" value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                 </div>
 
+                {/* 👇 升级后的资源配置区 */}
+                <div className="bg-white/5 border border-white/10 p-4 rounded-lg space-y-3">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Download size={12}/> 资源配置</h3>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">分镜下载链接 (支持文件上传)</label>
+                        <div className="flex gap-2">
+                            <input 
+                                placeholder="粘贴链接，或点击右侧上传..." 
+                                value={formData.storyboard_url} 
+                                onChange={e=>setFormData({...formData, storyboard_url: e.target.value})} 
+                                className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm text-green-500"
+                            />
+                            {/* 📤 文件上传按钮 */}
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingFile}
+                                className="bg-gray-700 hover:bg-gray-600 px-4 rounded text-xs font-bold flex items-center gap-2"
+                            >
+                                {uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <FileUp size={14} />}
+                                上传文件
+                            </button>
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                hidden 
+                                onChange={handleFileUpload} 
+                                // 支持 PDF, Excel, Word, 图片等
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.png,.jpg,.jpeg" 
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs text-gray-500 block mb-1">消耗积分</label>
+                            <div className="flex items-center gap-2 bg-black border border-gray-700 rounded px-2">
+                                <DollarSign size={14} className="text-gray-500"/>
+                                <input type="number" value={formData.price} onChange={e=>setFormData({...formData, price: parseInt(e.target.value) || 0})} className="w-full bg-transparent p-2 outline-none"/>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 pt-5">
+                            <input type="checkbox" id="isVip" checked={formData.is_vip} onChange={e => setFormData({ ...formData, is_vip: e.target.checked })} className="w-5 h-5 accent-yellow-500"/>
+                            <label htmlFor="isVip" className="text-sm font-bold text-yellow-500 cursor-pointer select-none flex items-center gap-1"><Crown size={14}/> 会员专享</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div><label className="text-xs text-gray-500 block mb-1">工具标签</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                <div><label className="text-xs text-gray-500 block mb-1">教程链接</label><input placeholder="https://..." value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">提示词 (Prompt)</label>
-                  <textarea 
-                    rows={4} 
-                    value={formData.prompt} 
-                    onChange={e=>setFormData({...formData, prompt: e.target.value})} 
-                    className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono"
-                    placeholder="在这里粘贴提示词..."
-                  ></textarea>
+                  <label className="text-xs text-gray-500 block mb-1">提示词</label>
+                  <textarea rows={4} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono" placeholder="粘贴提示词..."></textarea>
                 </div>
                 
                 <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700">
