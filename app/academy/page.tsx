@@ -1,136 +1,187 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient'; // ⚠️ 注意路径
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BookOpen, Clock, ChevronRight, GraduationCap, Star, Zap, Layout, ArrowLeft } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient'; // ⚠️ 路径检查：app/academy/page.tsx -> ../lib
+import { BookOpen, Play, Clock, Star, ChevronRight, Search, GraduationCap, Flame, Layout, Filter } from 'lucide-react';
 
 export default function AcademyPage() {
+  const [activeCategory, setActiveCategory] = useState('全部');
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState('全部');
 
-  const filters = ['全部', '新手入门', '工具实战', '变现指南'];
-
+  // 1. 初始化：去数据库拉取文章
   useEffect(() => {
     fetchArticles();
   }, []);
 
   async function fetchArticles() {
-    const { data } = await supabase.from('articles').select('*').eq('is_published', true).order('created_at', { ascending: false });
-    if (data) setArticles(data);
+    setLoading(true);
+    // 从 articles 表查数据，按创建时间倒序
+    const { data, error } = await supabase
+      .from('articles')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+        setArticles(data);
+    } else {
+        console.error('Error fetching articles:', error);
+    }
     setLoading(false);
   }
 
-  const filteredArticles = activeFilter === '全部' 
+  // 2. 本地筛选逻辑 (根据 activeCategory 过滤)
+  const filteredArticles = activeCategory === '全部' 
     ? articles 
-    : articles.filter(a => a.category === activeFilter);
+    : articles.filter(article => article.category === activeCategory || (activeCategory === '会员专享' && article.is_vip));
+
+  const categories = [
+    { id: 'all', name: '全部', icon: <Layout size={16}/> },
+    { id: 'sora', name: 'Sora', icon: <Play size={16}/> },
+    { id: 'midjourney', name: 'Midjourney', icon: <Star size={16}/> },
+    { id: 'runway', name: 'Runway', icon: <Flame size={16}/> },
+    { id: 'stable-diffusion', name: 'Stable Diffusion', icon: <Filter size={16}/> },
+    { id: 'monetization', name: '变现实战', icon: <GraduationCap size={16}/> },
+  ];
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30 pb-20">
+    <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
+      
       {/* 顶部导航 */}
       <nav className="flex items-center justify-between px-6 py-6 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-50">
-        <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
-          <ArrowLeft size={20} />
+        <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
+          <ChevronRight size={20} className="rotate-180 group-hover:-translate-x-1 transition-transform"/>
           <span className="font-bold">返回首页</span>
         </Link>
         <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-purple-900/20">
                 <GraduationCap fill="white" size={16} />
             </div>
             <span className="text-xl font-bold tracking-tight">AI 学院</span>
         </div>
-        <div className="w-20"></div> {/* 占位 */}
+        <div className="w-20"></div>
       </nav>
 
-      <main className="max-w-6xl mx-auto p-6 mt-8">
+      <main className="max-w-7xl mx-auto p-6 flex flex-col md:flex-row gap-8 mt-6">
         
-        {/* 头部：学习路线图 (静态展示) */}
-        <div className="mb-16 text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600">
-                从零开始，成为 AI 视频大师
-            </h1>
-            <p className="text-gray-400 max-w-2xl mx-auto mb-10">
-                系统化的学习路径，精选的实战教程。无论你是想做第一部短片，还是想通过 AI 接单变现，这里都有你需要的知识。
-            </p>
-            
-            {/* 路线 Step */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-                <div className="bg-[#111] p-6 rounded-2xl border border-white/5 hover:border-blue-500/50 transition-colors group relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <Star size={64} />
-                    </div>
-                    <div className="text-blue-500 font-bold text-lg mb-2 flex items-center gap-2">01 新手入门 <ChevronRight size={16}/></div>
-                    <p className="text-sm text-gray-500">了解基础概念，注册必备工具，完成你的第一个 5 秒镜头。</p>
+        {/* 左侧侧边栏：分类导航 */}
+        <aside className="w-full md:w-64 flex-shrink-0">
+            <div className="bg-[#151515] rounded-2xl p-4 border border-white/5 sticky top-24">
+                <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-4 px-2">学习路径</h3>
+                <div className="space-y-1">
+                    {categories.map((cat) => (
+                        <button
+                            key={cat.id}
+                            onClick={() => setActiveCategory(cat.name)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
+                                activeCategory === cat.name 
+                                ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/20' 
+                                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                            }`}
+                        >
+                            {cat.icon}
+                            {cat.name}
+                        </button>
+                    ))}
                 </div>
-                <div className="bg-[#111] p-6 rounded-2xl border border-white/5 hover:border-purple-500/50 transition-colors group relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <Zap size={64} />
-                    </div>
-                    <div className="text-purple-500 font-bold text-lg mb-2 flex items-center gap-2">02 工具进阶 <ChevronRight size={16}/></div>
-                    <p className="text-sm text-gray-500">掌握分镜控制、角色一致性、运镜技巧，制作完整的叙事短片。</p>
-                </div>
-                <div className="bg-[#111] p-6 rounded-2xl border border-white/5 hover:border-green-500/50 transition-colors group relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <Layout size={64} />
-                    </div>
-                    <div className="text-green-500 font-bold text-lg mb-2 flex items-center gap-2">03 商业实战 <ChevronRight size={16}/></div>
-                    <p className="text-sm text-gray-500">对接真实需求，学习报价与交付，将你的 AI 技能转化为收入。</p>
+
+                <div className="mt-8 pt-6 border-t border-white/5">
+                     <div className="bg-gradient-to-br from-yellow-600/20 to-orange-600/20 rounded-xl p-4 border border-yellow-500/20">
+                        <h4 className="font-bold text-yellow-500 flex items-center gap-2 mb-2"><Star size={14} fill="currentColor"/> 会员特权</h4>
+                        <p className="text-xs text-yellow-200/60 mb-3">解锁高阶实战课程与变现案例。</p>
+                        <Link href="/vip">
+                            <button className="w-full bg-yellow-500 text-black text-xs font-bold py-2 rounded-lg hover:bg-yellow-400 transition-colors">
+                                立即升级
+                            </button>
+                        </Link>
+                     </div>
                 </div>
             </div>
-        </div>
+        </aside>
 
-        {/* 筛选栏 */}
-        <div className="flex justify-center gap-2 mb-10">
-            {filters.map(filter => (
-                <button
-                    key={filter}
-                    onClick={() => setActiveFilter(filter)}
-                    className={`px-5 py-2 rounded-full text-sm font-bold transition-all border ${
-                        activeFilter === filter 
-                        ? 'bg-white text-black border-white' 
-                        : 'bg-transparent text-gray-500 border-white/10 hover:text-white'
-                    }`}
-                >
-                    {filter}
-                </button>
-            ))}
-        </div>
+        {/* 右侧：课程列表 */}
+        <div className="flex-1">
+            
+            <div className="flex items-center justify-between mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold mb-2">探索 AI 创作的无限可能</h1>
+                    <p className="text-gray-400 text-sm">共找到 {filteredArticles.length} 门相关课程</p>
+                </div>
+                <div className="relative hidden md:block">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16}/>
+                    <input type="text" placeholder="搜索教程..." className="bg-[#151515] border border-white/10 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-purple-500 w-64 transition-all"/>
+                </div>
+            </div>
 
-        {/* 文章列表 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {loading ? (
-                <div className="col-span-full text-center py-20 text-gray-500">加载知识中...</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[1,2,3].map(i => (
+                        <div key={i} className="bg-[#151515] rounded-2xl h-80 animate-pulse border border-white/5"></div>
+                    ))}
+                </div>
             ) : filteredArticles.length > 0 ? (
-                filteredArticles.map(article => (
-                    <article key={article.id} className="group bg-[#111] rounded-2xl overflow-hidden border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 cursor-pointer">
-                        <div className="aspect-[4/3] overflow-hidden relative">
-                            <img src={article.cover_url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                            <div className="absolute top-3 left-3 bg-black/60 backdrop-blur px-2 py-1 rounded text-xs font-bold text-white border border-white/10">
-                                {article.category}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredArticles.map((course) => (
+                        <div key={course.id} className="group bg-[#151515] border border-white/5 rounded-2xl overflow-hidden hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl cursor-pointer flex flex-col">
+                            {/* 封面图 */}
+                            <div className="aspect-video bg-gray-900 relative overflow-hidden">
+                                <img src={course.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-[#151515] to-transparent opacity-60"></div>
+                                <div className="absolute top-3 right-3 flex gap-2">
+                                    <span className="bg-black/60 backdrop-blur text-white text-[10px] px-2 py-1 rounded-md font-bold border border-white/10 flex items-center gap-1">
+                                        <Clock size={10}/> {course.duration}
+                                    </span>
+                                    {course.is_vip && (
+                                        <span className="bg-yellow-500 text-black text-[10px] px-2 py-1 rounded-md font-bold flex items-center gap-1 shadow-lg">
+                                            <Star size={10} fill="black"/> VIP
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            {/* 内容 */}
+                            <div className="p-5 flex-1 flex flex-col">
+                                <div className="flex justify-between items-start mb-3">
+                                    <span className={`text-[10px] font-bold px-2 py-1 rounded border ${
+                                        course.difficulty === '入门' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                                        course.difficulty === '进阶' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                        'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                    }`}>
+                                        {course.difficulty}
+                                    </span>
+                                    <span className="text-xs text-gray-500">{course.category}</span>
+                                </div>
+                                
+                                <h3 className="text-lg font-bold mb-2 line-clamp-2 group-hover:text-purple-400 transition-colors">{course.title}</h3>
+                                <p className="text-gray-400 text-sm line-clamp-2 mb-4 leading-relaxed flex-1">
+                                    {course.description}
+                                </p>
+                                
+                                <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-auto">
+                                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                                        <div className="w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-[8px]">
+                                            AI
+                                        </div>
+                                        {course.author}
+                                    </div>
+                                    <button className="text-xs font-bold flex items-center gap-1 text-white group-hover:translate-x-1 transition-transform">
+                                        开始学习 <ChevronRight size={12}/>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        <div className="p-6">
-                            <h2 className="text-xl font-bold text-white mb-3 group-hover:text-blue-400 transition-colors line-clamp-2">
-                                {article.title}
-                            </h2>
-                            <p className="text-sm text-gray-500 mb-4 line-clamp-2 h-10">
-                                {article.description}
-                            </p>
-                            <div className="flex items-center justify-between text-xs text-gray-600 border-t border-white/5 pt-4">
-                                <span className="flex items-center gap-1"><BookOpen size={12}/> {article.author}</span>
-                                <span className="flex items-center gap-1"><Clock size={12}/> {article.read_time} min 阅读</span>
-                            </div>
-                        </div>
-                    </article>
-                ))
+                    ))}
+                </div>
             ) : (
-                <div className="col-span-full text-center py-20 bg-[#111] rounded-2xl border border-dashed border-white/10 text-gray-500">
-                    暂时还没有相关教程，正在加紧撰写中... ✍️
+                <div className="text-center py-20 text-gray-500 bg-[#151515] rounded-2xl border border-dashed border-white/5">
+                    <BookOpen size={48} className="mx-auto mb-4 opacity-20"/>
+                    <p>该分类下暂无课程</p>
+                    <p className="text-xs mt-2">试试切换其他分类，或者去后台发布一篇？</p>
                 </div>
             )}
-        </div>
 
+        </div>
       </main>
     </div>
   );
