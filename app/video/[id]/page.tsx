@@ -1,27 +1,36 @@
 'use client';
 
 import React, { useState, useEffect, use } from 'react';
-import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check, Loader2, Crown } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
+import { useRouter } from 'next/navigation';
 
 export default function VideoDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
 
   const [video, setVideo] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  
+  // 💛 视频本身的收藏/点赞状态
   const [isFavorited, setIsFavorited] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  
+  // ❤️ 🆕 新增：提示词收藏状态
+  const [isPromptSaved, setIsPromptSaved] = useState(false);
+
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
   const [relatedVideos, setRelatedVideos] = useState<any[]>([]);
-  const [showToolInfo, setShowToolInfo] = useState(false);
-  const [showPromptInfo, setShowPromptInfo] = useState(false);
   
-  // 🆕 新增状态：是否已购买
+  // 工具栏展示状态 (提示词现在默认展示，不再需要 showPromptInfo)
+  const [showToolInfo, setShowToolInfo] = useState(false);
+  
+  // 🆕 购买状态
   const [hasPurchased, setHasPurchased] = useState(false);
   const [downloading, setDownloading] = useState(false);
   
@@ -36,9 +45,10 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
         const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
         if (data) setUserProfile(data);
         
-        // 🆕 检查是否已购买
+        // 检查各种状态
         checkPurchaseStatus(session.user.id);
         checkFavoriteStatus(session.user.id);
+        checkPromptSavedStatus(session.user.id); // 🆕 检查提示词收藏
       }
     }
     getUserData();
@@ -50,15 +60,12 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     fetchComments();
   }, [id]);
 
+  // ----------------------------------------------------------------
+  // 1. 状态检查函数
+  // ----------------------------------------------------------------
   async function checkPurchaseStatus(userId: string) {
     if (!id) return;
-    const { data } = await supabase
-        .from('downloads')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('video_id', id)
-        .single();
-    
+    const { data } = await supabase.from('downloads').select('*').eq('user_id', userId).eq('video_id', id).single();
     if (data) setHasPurchased(true);
   }
 
@@ -66,6 +73,20 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     if (!id) return;
     const { data } = await supabase.from('favorites').select('*').eq('video_id', id).eq('user_id', userId).single();
     if (data) setIsFavorited(true);
+  }
+
+  // 🆕 检查提示词是否已收藏
+  async function checkPromptSavedStatus(userId: string) {
+    if (!id) return;
+    // 这里我们用 prompt_text 或者是 video_id 来判断都可以，为了精准，我们查关联
+    const { data } = await supabase
+        .from('saved_prompts')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('video_id', id) 
+        .single();
+    
+    if (data) setIsPromptSaved(true);
   }
 
   async function fetchData() {
@@ -90,15 +111,48 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     if (data) setComments(data);
   }
 
-  const formatViews = (num: number) => {
-    if (!num) return '0';
-    if (num >= 10000) return (num / 10000).toFixed(1) + '万';
-    return num;
+  // ----------------------------------------------------------------
+  // 2. 核心交互逻辑
+  // ----------------------------------------------------------------
+
+  // ❤️ 🆕 核心功能：收藏提示词逻辑
+  const handleSavePrompt = async () => {
+    if (!user) {
+        alert("请先登录！");
+        router.push('/login');
+        return;
+    }
+    if (!video.prompt) return;
+
+    if (isPromptSaved) {
+        // 如果已收藏，执行取消收藏逻辑
+        const { error } = await supabase
+            .from('saved_prompts')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('video_id', id);
+        
+        if (!error) {
+            setIsPromptSaved(false);
+        }
+    } else {
+        // 未收藏，执行添加逻辑
+        const { error } = await supabase.from('saved_prompts').insert({
+            user_id: user.id,
+            prompt_text: video.prompt,
+            source: `视频: ${video.title}`,
+            video_id: video.id
+        });
+
+        if (!error) {
+            setIsPromptSaved(true);
+            // alert("✅ 收藏成功！已加入您的灵感词典。"); // 可选：不喜欢弹窗可以去掉
+        } else {
+            alert("收藏失败：" + error.message);
+        }
+    }
   };
 
-  const popularity = ((video?.views || 0) * 1) + (likeCount * 5) + (comments.length * 10);
-
-  // 🧠 核心升级：智能下载逻辑
   const handleDownloadStoryboard = async () => {
     if (!user) return alert('请先登录后下载！');
     if (!userProfile) return alert('用户信息加载中...');
@@ -106,36 +160,29 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     setDownloading(true);
 
     try {
-        // 1. 如果已经买过，直接打开链接，不扣费
         if (hasPurchased) {
             window.open(video.storyboard_url, '_blank');
             setDownloading(false);
             return;
         }
 
-        // 2. 如果是 VIP 资源 (需要积分)
         if (video.is_vip) {
             const price = video.price || 10;
             if (userProfile.points >= price) {
                 if (confirm(`下载此分镜将消耗 ${price} 积分。\n当前积分：${userProfile.points}`)) {
-                    // 扣分
                     const newPoints = userProfile.points - price;
                     const { error: updateError } = await supabase.from('profiles').update({ points: newPoints }).eq('id', user.id);
                     if (updateError) throw updateError;
 
-                    // 记录下载
                     await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: price }]);
-                    
-                    // 更新本地状态
                     setUserProfile({ ...userProfile, points: newPoints });
-                    setHasPurchased(true); // 标记为已购
+                    setHasPurchased(true);
                     window.open(video.storyboard_url, '_blank');
                 }
             } else { 
                 alert(`积分不足！需要 ${price} 积分，您当前只有 ${userProfile.points} 积分。\n💡 去个人中心签到可以领积分哦！`); 
             }
         } 
-        // 3. 如果是免费资源 (扣免费次数)
         else {
              if (userProfile.free_quota > 0) {
                 if (confirm(`这是免费资源，将消耗 1 次新人免费机会。\n剩余机会：${userProfile.free_quota} 次`)) {
@@ -144,7 +191,6 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                     if (updateError) throw updateError;
                     
                     await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: 0 }]);
-                    
                     setUserProfile({ ...userProfile, free_quota: newQuota });
                     setHasPurchased(true);
                     window.open(video.storyboard_url, '_blank');
@@ -181,8 +227,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     }
   };
 
-  const handleCopyPrompt = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCopyPrompt = () => {
     if (!video?.prompt) return;
     navigator.clipboard.writeText(video.prompt).then(() => {
         setCopied(true);
@@ -204,6 +249,14 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href).then(() => alert('链接已复制，快去分享吧！'));
   };
+
+  const formatViews = (num: number) => {
+    if (!num) return '0';
+    if (num >= 10000) return (num / 10000).toFixed(1) + '万';
+    return num;
+  };
+
+  const popularity = ((video?.views || 0) * 1) + (likeCount * 5) + (comments.length * 10);
 
   if (!video) return <div className="min-h-screen bg-[#0A0A0A] text-white flex items-center justify-center">加载中...</div>;
 
@@ -251,89 +304,14 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
             </div>
             <div className="flex items-center gap-2">
               <button onClick={handleLike} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isLiked ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}><ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} /><span>{formatViews(likeCount)}</span></button>
-              <button onClick={handleToggleFavorite} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isFavorited ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}><Heart size={16} fill={isFavorited ? "currentColor" : "none"} /><span>收藏</span></button>
+              {/* 这里是视频本身的收藏，不是提示词收藏 */}
+              <button onClick={handleToggleFavorite} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isFavorited ? 'bg-purple-600/20 text-purple-400' : 'bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white'}`}><Heart size={16} fill={isFavorited ? "currentColor" : "none"} /><span>喜欢</span></button>
               <button onClick={handleShare} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-[#1A1A1A] text-gray-400 hover:bg-white/10 hover:text-white transition-all"><Share2 size={16} /><span>分享</span></button>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-4 pb-6 border-b border-white/5 items-center">
-            
-            {/* 👇 修改后的下载按钮：风格与右侧按钮一致 */}
-            {video.storyboard_url && (
-              <button 
-                onClick={handleDownloadStoryboard} 
-                disabled={downloading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                    hasPurchased 
-                    ? 'border-green-500/50 text-green-400 bg-green-500/10 hover:bg-green-500/20' // 已购：淡绿色描边
-                    : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white' // 未购：默认灰色描边
-                }`}
-              >
-                {downloading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                ) : hasPurchased ? (
-                    <Check size={14} /> // 已购显示对号
-                ) : (
-                    video.is_vip ? <Lock size={14} /> : <Download size={14} />
-                )}
-                
-                {downloading ? '处理中...' : (
-                    hasPurchased 
-                    ? '再次下载' 
-                    : (video.is_vip ? `下载分镜 (${video.price || 10}积分)` : '免费下载分镜')
-                )}
-              </button>
-            )}
-
-            <div className="h-6 w-px bg-white/10 mx-2"></div>
-            <button onClick={() => { setShowToolInfo(!showToolInfo); setShowPromptInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showToolInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><PenTool size={14} /> 查看工具</button>
-            <button onClick={() => { setShowPromptInfo(!showPromptInfo); setShowToolInfo(false); }} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${showPromptInfo ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white'}`}><FileText size={14} /> 查看提示词</button>
-            
-            {video.tutorial_url && (
-              <Link 
-                href={video.tutorial_url} 
-                target={video.tutorial_url.startsWith('/') ? '_self' : '_blank'}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-white/10 text-gray-400 hover:border-white/30 hover:text-white transition-all"
-              >
-                <BookOpen size={14} /> 查看教程
-              </Link>
-            )}
-
-            {user && video.author === user.email.split('@')[0] && (
-              <button onClick={handleDeleteVideo} className="ml-auto text-xs text-red-500 hover:text-red-400 px-3 py-2">删除作品</button>
-            )}
-          </div>
-
-          {/* 工具信息栏 (保持不变) */}
-          {showToolInfo && (
-            <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200">
-              <div className="flex justify-between items-start mb-2"><h3 className="text-sm font-bold text-gray-300">使用工具</h3><button onClick={() => setShowToolInfo(false)}><X size={14} className="text-gray-500 hover:text-white" /></button></div>
-              <div className="text-sm text-gray-400">{video.tag ? (<div className="flex items-center gap-2"><span className="px-3 py-1 bg-white/5 rounded-md text-white border border-white/10">{video.tag}</span></div>) : "暂无工具信息"}</div>
-            </div>
-          )}
-
-          {/* 提示词栏 (保持不变) */}
-          {showPromptInfo && (
-            <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200 relative group">
-              <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-sm font-bold text-gray-300">提示词 (Prompt)</h3>
-                  <div className="flex gap-2 items-center">
-                    {video.prompt && (
-                        <button onClick={handleCopyPrompt} className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/10" title="复制">
-                            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
-                        </button>
-                    )}
-                    <button onClick={() => setShowPromptInfo(false)} className="p-1.5 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/10"><X size={16} /></button>
-                  </div>
-              </div>
-              <div className="text-sm text-gray-400 font-mono leading-relaxed bg-[#0A0A0A] p-4 rounded-lg border border-white/5 break-words selection:bg-purple-900 selection:text-white">
-                {video.prompt || "作者未填写提示词"}
-              </div>
-            </div>
-          )}
-
-          {/* 评论区 (保持不变) */}
-          <div>
+          {/* 评论区 */}
+          <div className="pt-6 border-t border-white/5">
             <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-gray-200"><MessageSquare size={18} /> 评论 ({comments.length})</h3>
             <div className="flex gap-4 mb-8">
               <div className="w-10 h-10 rounded-full flex-shrink-0 bg-white/5 overflow-hidden border border-white/10">
@@ -364,24 +342,114 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
           </div>
         </div>
 
-        {/* 右侧推荐栏 (保持不变) */}
+        {/* 右侧边栏：工具、提示词、下载 */}
         <div className="h-fit space-y-6">
-          <div className="bg-white/5 rounded-xl border border-white/5 p-6 backdrop-blur-sm">
-            <h3 className="text-lg font-bold mb-4 text-gray-200 flex items-center gap-2"><Lightbulb size={18} className="text-gray-400" /> 猜你喜欢</h3>
+          
+          {/* 🆕 1. 提示词卡片 (永久展示，替代了之前的折叠按钮) */}
+          <div className="bg-[#151515] rounded-xl p-5 border border-white/10 relative group">
+              <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                      <FileText size={14}/> Prompt
+                  </h3>
+                  <div className="flex gap-2">
+                      {/* ❤️ 提示词收藏按钮 */}
+                      <button 
+                          onClick={handleSavePrompt}
+                          className={`p-1.5 rounded-lg transition-all ${
+                              isPromptSaved 
+                              ? 'text-red-500 bg-red-500/10' 
+                              : 'text-gray-500 hover:text-red-500 hover:bg-white/10'
+                          }`}
+                          title={isPromptSaved ? "已收藏" : "收藏提示词"}
+                      >
+                          <Heart size={16} fill={isPromptSaved ? "currentColor" : "none"} />
+                      </button>
+                      <button 
+                          onClick={handleCopyPrompt}
+                          className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                          title="复制"
+                      >
+                          {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16} />}
+                      </button>
+                  </div>
+              </div>
+              <div className="font-mono text-sm text-gray-300 leading-relaxed bg-[#0A0A0A] p-4 rounded-lg border border-white/5 break-words select-all max-h-60 overflow-y-auto custom-scrollbar">
+                  {video.prompt || "作者未填写提示词"}
+              </div>
+          </div>
+
+          {/* 2. 下载区域 */}
+          <div className="bg-[#151515] rounded-xl p-5 border border-white/10">
+             {video.storyboard_url ? (
+               <>
+                 <button 
+                   onClick={handleDownloadStoryboard} 
+                   disabled={downloading}
+                   className={`w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
+                       hasPurchased 
+                       ? 'bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/20' 
+                       : (video.is_vip 
+                           ? 'bg-gradient-to-r from-yellow-600 to-yellow-400 text-black hover:scale-[1.02]' 
+                           : 'bg-white text-black hover:bg-gray-200'
+                         )
+                   }`}
+                 >
+                   {downloading ? (
+                       <Loader2 size={18} className="animate-spin" />
+                   ) : hasPurchased ? (
+                       <><Check size={18} /> 已获取权限</>
+                   ) : (
+                       video.is_vip ? <><Lock size={18}/> 升级 VIP 下载</> : <><Download size={18}/> 免费下载资源</>
+                   )}
+                 </button>
+                 <p className="text-center text-xs text-gray-500 mt-3">
+                     {hasPurchased ? "您可以随时无限次下载此资源" : (video.is_vip ? `VIP 专享资源 · 需消耗 ${video.price || 10} 积分` : "免费资源 · 需消耗 1 次免费下载额度")}
+                 </p>
+               </>
+             ) : (
+                 <div className="text-center text-gray-500 py-4 text-sm bg-white/5 rounded-lg border border-white/5 border-dashed">
+                     暂无下载资源
+                 </div>
+             )}
+          </div>
+
+          {/* 3. 工具信息 (改为可折叠或直接展示) */}
+          <div className="bg-[#151515] rounded-xl p-5 border border-white/10">
+              <div className="flex justify-between items-center mb-2">
+                 <h3 className="text-sm font-bold text-gray-400 flex items-center gap-2"><PenTool size={14}/> 使用工具</h3>
+              </div>
+              <div className="text-sm text-gray-300">
+                 {video.tag ? (
+                     <div className="flex flex-wrap gap-2">
+                         {video.tag.split(',').map((t: string, i: number) => (
+                             <span key={i} className="px-2 py-1 bg-white/5 rounded text-xs border border-white/10">{t.trim()}</span>
+                         ))}
+                     </div>
+                 ) : "暂无工具信息"}
+              </div>
+          </div>
+          
+          {/* 4. 相关推荐 */}
+          <div className="bg-white/5 rounded-xl border border-white/5 p-5 backdrop-blur-sm">
+            <h3 className="text-sm font-bold mb-4 text-gray-200 flex items-center gap-2"><Lightbulb size={16} className="text-gray-400" /> 猜你喜欢</h3>
             <div className="space-y-4">
               {relatedVideos.length > 0 ? relatedVideos.map((item) => (
                 <Link href={`/video/${item.id}`} key={item.id} className="group flex gap-3 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors border-b border-white/5 pb-4 mb-2 last:border-0 last:mb-0 last:pb-0">
-                  <div className="w-24 h-16 bg-gray-900 rounded overflow-hidden flex-shrink-0 relative">
+                  <div className="w-20 h-14 bg-gray-900 rounded overflow-hidden flex-shrink-0 relative">
                     {item.thumbnail_url ? (<img src={item.thumbnail_url} referrerPolicy="no-referrer" className="w-full h-full object-cover" />) : (<Play className="text-gray-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" size={20} />)}
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-between">
                     <div><h4 className="font-bold text-gray-300 text-xs truncate mb-1 group-hover:text-purple-400 transition-colors">{item.title}</h4><p className="text-[10px] text-gray-500">@{item.author}</p></div>
-                    {item.category && (<span className="text-[10px] text-gray-600">{item.category}</span>)}
                   </div>
                 </Link>
               )) : (<div className="text-gray-500 text-xs text-center py-4">暂无相关推荐</div>)}
             </div>
           </div>
+
+          {user && video.author === user.email.split('@')[0] && (
+               <button onClick={handleDeleteVideo} className="w-full border border-red-500/20 text-red-500 hover:bg-red-500/10 hover:text-red-400 px-3 py-2 rounded-lg text-sm transition-colors">删除此作品</button>
+          )}
+
         </div>
       </main>
     </div>
