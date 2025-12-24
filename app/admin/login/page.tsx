@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, ArrowRight } from 'lucide-react';
+import { Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'; // 1. 引入 Eye 和 EyeOff 图标
 
 export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false); // 2. 新增状态：控制密码可见性
   const router = useRouter();
 
-  // 检查是否已经登录过
   useEffect(() => {
     const isAuth = localStorage.getItem('admin_auth');
     if (isAuth === 'true') {
@@ -19,10 +19,9 @@ export default function AdminLogin() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // 🔐 你的设定密码
     if (password === 'Marcgetrich$2026') {
-        localStorage.setItem('admin_auth', 'true'); // 写入令牌
-        router.push('/admin'); // 跳转后台
+        localStorage.setItem('admin_auth', 'true');
+        router.push('/admin');
     } else {
         setError('密码错误，请重试');
     }
@@ -40,17 +39,28 @@ export default function AdminLogin() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
-            <div>
+            <div className="relative"> {/* 3. 增加 relative 容器以便定位图标 */}
                 <input 
-                    type="password" 
+                    type={showPassword ? "text" : "password"} // 4. 根据状态动态切换类型
                     placeholder="输入密码" 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition-all text-center tracking-widest"
+                    // 为了保持文字视觉居中且不被图标遮挡，左右 padding 都设为 12 (pl-12 pr-12)
+                    className="w-full bg-black/50 border border-white/10 rounded-xl pl-12 pr-12 py-3 text-white focus:outline-none focus:border-purple-500 transition-all text-center tracking-widest"
                 />
+                
+                {/* 5. 切换按钮 */}
+                <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                    title={showPassword ? "隐藏密码" : "显示密码"}
+                >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
             </div>
             
-            {error && <p className="text-red-500 text-xs text-center">{error}</p>}
+            {error && <p className="text-red-500 text-xs text-center animate-pulse">{error}</p>}
 
             <button type="submit" className="w-full bg-white text-black font-bold py-3 rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
                 进入系统 <ArrowRight size={16}/>
