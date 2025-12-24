@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { supabase } from '../../../lib/supabaseClient'; // ⚠️ 注意路径：app/academy/[id]/page.tsx -> ../../../lib
+import { supabase } from '../../lib/supabaseClient'; // ⚠️ 注意路径：app/academy/[id]/page.tsx -> ../../../lib
 import { ArrowLeft, Clock, Calendar, User, Share2, BookOpen, Lock, Star, ThumbsUp } from 'lucide-react';
 
 export default function ArticleDetailPage({ params }: { params: Promise<{ id: string }> }) {
