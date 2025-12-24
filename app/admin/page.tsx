@@ -417,7 +417,13 @@ export default function AdminDashboard() {
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">分类</label>
                                 <select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
-                                    <option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>Sora</option><option>Midjourney</option><option>Runway</option>
+                                    <option>创意短片</option>
+                                    <option>动画短片</option>
+                                    <option>实验短片</option>
+                                    <option>音乐MV</option>
+                                    <option>写实短片</option>
+                                    <option>AI教程</option>
+                                    <option>创意广告</option>
                                 </select>
                             </div>
                         </div>
