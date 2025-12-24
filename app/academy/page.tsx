@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { supabase } from '../lib/supabaseClient'; // ⚠️ 路径检查：app/academy/page.tsx -> ../lib
+import { supabase } from '../lib/supabaseClient'; 
 import { BookOpen, Play, Clock, Star, ChevronRight, Search, GraduationCap, Flame, Layout, Filter } from 'lucide-react';
 
 export default function AcademyPage() {
@@ -10,28 +10,21 @@ export default function AcademyPage() {
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. 初始化：去数据库拉取文章
   useEffect(() => {
     fetchArticles();
   }, []);
 
   async function fetchArticles() {
     setLoading(true);
-    // 从 articles 表查数据，按创建时间倒序
     const { data, error } = await supabase
       .from('articles')
       .select('*')
       .order('created_at', { ascending: false });
     
-    if (data) {
-        setArticles(data);
-    } else {
-        console.error('Error fetching articles:', error);
-    }
+    if (data) setArticles(data);
     setLoading(false);
   }
 
-  // 2. 本地筛选逻辑 (根据 activeCategory 过滤)
   const filteredArticles = activeCategory === '全部' 
     ? articles 
     : articles.filter(article => article.category === activeCategory || (activeCategory === '会员专享' && article.is_vip));
@@ -48,7 +41,6 @@ export default function AcademyPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
       
-      {/* 顶部导航 */}
       <nav className="flex items-center justify-between px-6 py-6 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-50">
         <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
           <ChevronRight size={20} className="rotate-180 group-hover:-translate-x-1 transition-transform"/>
@@ -65,7 +57,7 @@ export default function AcademyPage() {
 
       <main className="max-w-7xl mx-auto p-6 flex flex-col md:flex-row gap-8 mt-6">
         
-        {/* 左侧侧边栏：分类导航 */}
+        {/* 左侧侧边栏 */}
         <aside className="w-full md:w-64 flex-shrink-0">
             <div className="bg-[#151515] rounded-2xl p-4 border border-white/5 sticky top-24">
                 <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-4 px-2">学习路径</h3>
@@ -100,9 +92,8 @@ export default function AcademyPage() {
             </div>
         </aside>
 
-        {/* 右侧：课程列表 */}
+        {/* 右侧列表 */}
         <div className="flex-1">
-            
             <div className="flex items-center justify-between mb-8">
                 <div>
                     <h1 className="text-3xl font-bold mb-2">探索 AI 创作的无限可能</h1>
@@ -123,8 +114,8 @@ export default function AcademyPage() {
             ) : filteredArticles.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredArticles.map((course) => (
-                        <div key={course.id} className="group bg-[#151515] border border-white/5 rounded-2xl overflow-hidden hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl cursor-pointer flex flex-col">
-                            {/* 封面图 */}
+                        // 👇 关键修改：把 div 换成了 Link
+                        <Link href={`/academy/${course.id}`} key={course.id} className="group bg-[#151515] border border-white/5 rounded-2xl overflow-hidden hover:border-purple-500/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl cursor-pointer flex flex-col">
                             <div className="aspect-video bg-gray-900 relative overflow-hidden">
                                 <img src={course.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                                 <div className="absolute inset-0 bg-gradient-to-t from-[#151515] to-transparent opacity-60"></div>
@@ -140,7 +131,6 @@ export default function AcademyPage() {
                                 </div>
                             </div>
                             
-                            {/* 内容 */}
                             <div className="p-5 flex-1 flex flex-col">
                                 <div className="flex justify-between items-start mb-3">
                                     <span className={`text-[10px] font-bold px-2 py-1 rounded border ${
@@ -170,7 +160,7 @@ export default function AcademyPage() {
                                     </button>
                                 </div>
                             </div>
-                        </div>
+                        </Link>
                     ))}
                 </div>
             ) : (
@@ -180,7 +170,6 @@ export default function AcademyPage() {
                     <p className="text-xs mt-2">试试切换其他分类，或者去后台发布一篇？</p>
                 </div>
             )}
-
         </div>
       </main>
     </div>
