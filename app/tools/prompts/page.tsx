@@ -1,26 +1,67 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Copy, Check, Heart, Zap, Lock, Diamond, Image as ImageIcon, Sparkles, Loader2, Upload, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Heart, Zap, Lock, Diamond, Image as ImageIcon, Sparkles, Loader2, Upload, RefreshCw, Trash2 } from 'lucide-react';
+import { supabase } from '../../../lib/supabaseClient'; // ⚠️ 注意：根据文件层级，这里通常是 ../../../lib
 
 export default function PromptsPage() {
-  const [activeTab, setActiveTab] = useState<'favorites' | 'expert' | 'advanced' | 'rewriter'>('expert');
+  // 默认进入 'favorites' 标签，方便你直接看到刚才在视频页收藏的效果
+  const [activeTab, setActiveTab] = useState<'favorites' | 'expert' | 'advanced' | 'rewriter'>('favorites');
   const [copiedText, setCopiedText] = useState<string | null>(null);
   
-  // 模拟用户信息 (实际开发中从 Supabase 读取)
+  // 模拟用户信息
   const [userPoints, setUserPoints] = useState(100);
 
   // ------------------------------------------------------------------
-  // 1. ❤️ 收藏数据 (模拟)
+  // 1. ❤️ 真实收藏数据 (已连接 Supabase)
   // ------------------------------------------------------------------
-  const [favorites, setFavorites] = useState([
-    { id: 1, text: "Cyberpunk street, neon lights, rain, reflection, 8k", source: "视频: 赛博朋克2077概念" },
-    { id: 2, text: "Studio Ghibli style, green grass, blue sky, fluffy clouds", source: "视频: 宫崎骏风格测试" }
-  ]);
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [loadingFavs, setLoadingFavs] = useState(false);
+
+  // 初始化：获取收藏数据
+  useEffect(() => {
+    fetchFavorites();
+  }, []);
+
+  // 监听 Tab 切换，如果切到收藏，刷新一下数据（确保数据最新）
+  useEffect(() => {
+    if (activeTab === 'favorites') {
+        fetchFavorites();
+    }
+  }, [activeTab]);
+
+  // 从 Supabase 获取收藏
+  async function fetchFavorites() {
+    setLoadingFavs(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        const { data, error } = await supabase
+            .from('saved_prompts')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false }); // 最新收藏在最前
+        
+        if (data) setFavorites(data);
+        if (error) console.error('Error fetching favorites:', error);
+    }
+    setLoadingFavs(false);
+  }
+
+  // 删除收藏逻辑
+  async function handleDeleteFavorite(id: number) {
+      // 乐观更新 UI (先删界面，再删数据库，体验更快)
+      setFavorites(prev => prev.filter(item => item.id !== id));
+      
+      const { error } = await supabase.from('saved_prompts').delete().eq('id', id);
+      if (error) {
+          alert("删除失败，请重试");
+          fetchFavorites(); // 失败了就重新拉取数据恢复界面
+      }
+  }
 
   // ------------------------------------------------------------------
-  // 2. ⚡ 大神精选数据
+  // 2. ⚡ 大神精选数据 (静态)
   // ------------------------------------------------------------------
   const expertPrompts = [
     { id: 101, tool: "Midjourney", tag: "人像摄影", text: "Portrait of an old man, wrinkles, detailed skin texture, rembrandt lighting, 85mm lens, f/1.8 --v 6.0" },
@@ -29,7 +70,7 @@ export default function PromptsPage() {
   ];
 
   // ------------------------------------------------------------------
-  // 3. 💎 进阶提示词数据 (带锁)
+  // 3. 💎 进阶提示词数据 (静态)
   // ------------------------------------------------------------------
   const [advancedPrompts, setAdvancedPrompts] = useState([
     { id: 201, title: "好莱坞级电影质感公式", price: 10, isUnlocked: false, text: "Cinematic shot, anamorphic lens, 2.39:1 aspect ratio, teal and orange color grading, volumetric fog, dramatic shadows, Arri Alexa Mini LF" },
@@ -38,7 +79,7 @@ export default function PromptsPage() {
   ]);
 
   // ------------------------------------------------------------------
-  // 4. 🪄 改写工具状态
+  // 4. 🪄 改写工具状态 (静态)
   // ------------------------------------------------------------------
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -99,8 +140,8 @@ export default function PromptsPage() {
         {/* 顶部 Tab 切换 */}
         <div className="flex flex-wrap gap-2 mb-8 bg-[#151515] p-1.5 rounded-xl border border-white/10 w-fit">
             {[
-                { id: 'expert', label: '大神精选', icon: <Zap size={16}/> },
                 { id: 'favorites', label: '我的收藏', icon: <Heart size={16}/> },
+                { id: 'expert', label: '大神精选', icon: <Zap size={16}/> },
                 { id: 'advanced', label: '进阶专区', icon: <Lock size={16}/> },
                 { id: 'rewriter', label: 'AI 改写工具', icon: <Sparkles size={16}/> },
             ].map(tab => (
@@ -118,7 +159,54 @@ export default function PromptsPage() {
             ))}
         </div>
 
-        {/* ----------------- 1. 大神精选 Tab ----------------- */}
+        {/* ----------------- 1. 我的收藏 Tab (真实数据) ----------------- */}
+        {activeTab === 'favorites' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {loadingFavs ? (
+                    <div className="text-center py-20 text-gray-500"><Loader2 className="animate-spin mx-auto"/> 加载中...</div>
+                ) : favorites.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4">
+                        {favorites.map(item => (
+                            <div key={item.id} className="bg-[#121212] p-6 rounded-xl border border-white/5 hover:border-red-500/30 transition-all group">
+                                <div className="flex justify-between items-center mb-3">
+                                    <div className="text-xs text-red-400 flex items-center gap-1 font-bold">
+                                        <Heart size={12} fill="currentColor"/> {item.source || '未知来源'}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => handleDeleteFavorite(item.id)} 
+                                            className="text-gray-600 hover:text-red-500 text-xs p-2 hover:bg-red-500/10 rounded-lg transition-colors" 
+                                            title="移除"
+                                        >
+                                            <Trash2 size={16}/>
+                                        </button>
+                                        <button onClick={() => handleCopy(item.prompt_text)} className="text-gray-500 hover:text-white transition-colors">
+                                            {copiedText === item.prompt_text ? <Check size={16} className="text-green-500"/> : <Copy size={16}/>}
+                                        </button>
+                                    </div>
+                                </div>
+                                <p className="text-gray-300 font-mono text-sm leading-relaxed select-all">
+                                    {item.prompt_text}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-20 text-gray-500 bg-[#121212] rounded-xl border border-dashed border-white/10">
+                        <Heart size={48} className="mx-auto mb-4 opacity-20"/>
+                        <p>还没有收藏任何提示词哦</p>
+                        <p className="text-xs mt-2">去视频详情页点击“收藏”按钮即可添加</p>
+                        <Link href="/">
+                            <button className="mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full text-sm font-bold transition-all">
+                                去逛逛
+                            </button>
+                        </Link>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* ----------------- 2. 大神精选 Tab ----------------- */}
         {activeTab === 'expert' && (
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 p-6 rounded-2xl border border-white/10 mb-6">
@@ -146,38 +234,6 @@ export default function PromptsPage() {
             </div>
         )}
 
-        {/* ----------------- 2. 我的收藏 Tab ----------------- */}
-        {activeTab === 'favorites' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {favorites.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4">
-                        {favorites.map(item => (
-                            <div key={item.id} className="bg-[#121212] p-6 rounded-xl border border-white/5 hover:border-red-500/30 transition-all group">
-                                <div className="flex justify-between items-center mb-3">
-                                    <div className="text-xs text-red-400 flex items-center gap-1 font-bold">
-                                        <Heart size={12} fill="currentColor"/> {item.source}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button className="text-gray-600 hover:text-red-500 text-xs">移除</button>
-                                        <button onClick={() => handleCopy(item.text)} className="text-gray-500 hover:text-white transition-colors">
-                                            {copiedText === item.text ? <Check size={16} className="text-green-500"/> : <Copy size={16}/>}
-                                        </button>
-                                    </div>
-                                </div>
-                                <p className="text-gray-300 font-mono text-sm leading-relaxed">{item.text}</p>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="text-center py-20 text-gray-500 bg-[#121212] rounded-xl border border-dashed border-white/10">
-                        <Heart size={48} className="mx-auto mb-4 opacity-20"/>
-                        <p>还没有收藏任何提示词哦</p>
-                        <p className="text-xs mt-2">去视频详情页点击“收藏”按钮即可添加</p>
-                    </div>
-                )}
-            </div>
-        )}
-
         {/* ----------------- 3. 进阶提示词 Tab ----------------- */}
         {activeTab === 'advanced' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -200,7 +256,7 @@ export default function PromptsPage() {
                                 )}
                             </div>
                             
-                            {/* 内容区域：未解锁时模糊处理 */}
+                            {/* 内容区域 */}
                             <div className="relative">
                                 <p className={`font-mono text-sm leading-relaxed p-4 rounded-lg bg-black/50 ${item.isUnlocked ? 'text-gray-300 select-all' : 'text-gray-600 blur-sm select-none'}`}>
                                     {item.text}
