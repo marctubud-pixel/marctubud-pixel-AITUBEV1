@@ -70,7 +70,7 @@ export default function AdminDashboard() {
     is_hot: false, is_selected: false, is_award: false, tutorial_url: '',
     
     // 文章
-    description: '', image_url: '', difficulty: '入门',
+    description: '', image_url: '', difficulty: '入门', content: '',
     
     // 需求
     budget: '', company: '', deadline: '', status: 'open', applicants: 0,
@@ -91,7 +91,8 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      setFormData(prev => ({
+      // 🛠️ 修复点：显式标注 prev 为 any 类型
+      setFormData((prev: any) => ({
         ...prev,
         title: data.title, author: data.author, thumbnail_url: data.thumbnail_url,
         video_url: data.video_url, views: data.views || 0, tag: data.tag || prev.tag,
@@ -114,7 +115,9 @@ export default function AdminDashboard() {
         const { error: uploadError } = await supabase.storage.from('storyboards').upload(fileName, file, { upsert: true });
         if (uploadError) throw uploadError;
         const { data } = supabase.storage.from('storyboards').getPublicUrl(fileName);
-        setFormData(prev => ({ ...prev, storyboard_url: data.publicUrl }));
+        
+        // 🛠️ 修复点：显式标注 prev 为 any 类型
+        setFormData((prev: any) => ({ ...prev, storyboard_url: data.publicUrl }));
         alert('✅ 文件上传成功！');
     } catch (error: any) {
         alert('上传失败: ' + error.message);
@@ -128,16 +131,15 @@ export default function AdminDashboard() {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
-    const fileName = `banner-${Date.now()}-${file.name}`; // 加个前缀区分
+    const fileName = `banner-${Date.now()}-${file.name}`; 
     
     try {
-        // 这里假设不管是文章还是Banner，都传到 banners 桶里方便管理，或者你可以改成分别传
         const { error } = await supabase.storage.from('banners').upload(fileName, file);
         if (error) throw error;
         const { data } = supabase.storage.from('banners').getPublicUrl(fileName);
         
-        // 自动回填到 image_url 字段
-        setFormData(prev => ({ ...prev, image_url: data.publicUrl }));
+        // 🛠️ 修复点：显式标注 prev 为 any 类型
+        setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
         alert('✅ 图片上传成功！');
     } catch (error: any) {
         alert('上传失败: ' + error.message);
@@ -165,7 +167,7 @@ export default function AdminDashboard() {
         payload = {
             title: formData.title, description: formData.description, category: formData.category,
             difficulty: formData.difficulty, duration: formData.duration, image_url: formData.image_url,
-            is_vip: formData.is_vip
+            content: formData.content, is_vip: formData.is_vip
         };
     } else if (activeTab === 'jobs') {
         payload = {
@@ -229,7 +231,7 @@ export default function AdminDashboard() {
         prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
         duration: '', storyboard_url: '', price: 10, is_vip: false,
         is_hot: false, is_selected: false, is_award: false, tutorial_url: '',
-        description: '', image_url: '', difficulty: '入门',
+        description: '', image_url: '', difficulty: '入门', content: '',
         budget: '', company: '', deadline: '', status: 'open', applicants: 0,
         link_url: '', is_active: true, sort_order: 0
     });
@@ -424,20 +426,42 @@ export default function AdminDashboard() {
                     </>
                 )}
 
-                {/* 3. 文章特有字段 */}
+                {/* 3. 文章特有字段 (增强版) */}
                 {activeTab === 'articles' && (
                     <>
                          <div>
                             <label className="text-xs text-gray-500 block mb-1">封面图 URL (支持上传)</label>
                             <div className="flex gap-2">
-                                <input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/>
+                                <input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm" placeholder="https://..."/>
                                 <button onClick={() => imageInputRef.current?.click()} disabled={uploadingFile} className="bg-gray-700 hover:bg-gray-600 px-4 rounded text-xs font-bold flex items-center gap-2">
                                     {uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14} />} 上传
                                 </button>
                                 <input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} />
                             </div>
                         </div>
-                        <div><label className="text-xs text-gray-500 block mb-1">简介</label><textarea rows={3} value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                        <div className="grid grid-cols-3 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">分类</label>
+                                <select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
+                                    <option>Sora</option><option>Midjourney</option><option>Runway</option><option>Stable Diffusion</option><option>变现实战</option><option>行业洞察</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">难度</label>
+                                <select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
+                                    <option>入门</option><option>进阶</option><option>高阶</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">阅读时长</label>
+                                <input value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2" placeholder="e.g. 10 min"/>
+                            </div>
+                        </div>
+                        <div><label className="text-xs text-gray-500 block mb-1">简介</label><textarea rows={2} value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm"/></div>
+                        <div>
+                            <label className="text-xs text-gray-500 block mb-1">文章正文 (支持 HTML/Markdown)</label>
+                            <textarea rows={10} value={formData.content} onChange={e=>setFormData({...formData, content: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono" placeholder="输入文章正文..."></textarea>
+                        </div>
                     </>
                 )}
 
