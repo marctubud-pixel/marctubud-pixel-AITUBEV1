@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Copy, Check, Heart, Zap, Lock, Diamond, Image as ImageIcon, Sparkles, Loader2, Upload, RefreshCw, Trash2 } from 'lucide-react';
-import { supabase } from '../../../lib/supabaseClient'; // ⚠️ 注意：根据文件层级，这里通常是 ../../../lib
+import { supabase } from '../../lib/supabaseClient'; // ⚠️ 注意：根据文件层级，这里通常是 ../../../lib
 
 export default function PromptsPage() {
   // 默认进入 'favorites' 标签，方便你直接看到刚才在视频页收藏的效果
