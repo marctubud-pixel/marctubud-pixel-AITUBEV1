@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../lib/supabaseClient'; // ⚠️ 注意路径：app/admin/page.tsx -> ../lib
+import { supabase } from '../lib/supabaseClient'; 
 import { 
     LayoutDashboard, Video, FileText, Image as ImageIcon, Briefcase, 
     Plus, Trash2, Edit, X, LogOut, Upload, Loader2, Link as LinkIcon, 
-    Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, RefreshCw, ArrowLeft
+    Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, 
+    Flame, Trophy, Star, ExternalLink 
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -36,7 +37,6 @@ export default function AdminDashboard() {
     setLoading(true);
     let query = supabase.from(table).select('*');
     
-    // Banner 按权重排序，其他按时间倒序
     if (table === 'banners') {
         query = query.order('sort_order', { ascending: true });
     } else {
@@ -56,30 +56,32 @@ export default function AdminDashboard() {
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
   
-  // 文件上传
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  // 文件上传 Refs
+  const fileInputRef = useRef<HTMLInputElement>(null); // 分镜文件
+  const imageInputRef = useRef<HTMLInputElement>(null); // 封面图片
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // 统一大表单 (包含视频、文章、Banner、需求的所有字段)
+  // 📝 统一大表单
   const [formData, setFormData] = useState<any>({
-    // 视频 & 通用
+    // --- 通用/视频字段 ---
     title: '', author: '', category: '创意短片', 
-    prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
-    duration: '', storyboard_url: '', price: 10, is_vip: false,
-    is_hot: false, is_selected: false, is_award: false, tutorial_url: '',
+    prompt: '', tag: '', thumbnail_url: '', video_url: '', 
+    views: 0, duration: '', storyboard_url: '', price: 10, 
+    is_vip: false, tutorial_url: '',
+    // 🔥 找回的视频专属勾选状态
+    is_hot: false, is_selected: false, is_award: false,
     
-    // 文章
-    description: '', image_url: '', difficulty: '入门', content: '',
+    // --- 文章字段 ---
+    description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
     
-    // 需求
+    // --- 需求字段 ---
     budget: '', company: '', deadline: '', status: 'open', applicants: 0,
     
-    // Banner
-    link_url: '', is_active: true, sort_order: 0
+    // --- Banner字段 ---
+    is_active: true, sort_order: 0
   });
 
-  // B站抓取
+  // 📺 B站一键抓取 (完整逻辑)
   const handleFetchInfo = async () => {
     if (!bilibiliLink) return alert('请填入链接');
     const match = bilibiliLink.match(/(BV\w+)/);
@@ -91,19 +93,23 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      // 🛠️ 修复点：显式标注 prev 为 any 类型
+      // 自动回填抓取到的数据
       setFormData((prev: any) => ({
         ...prev,
-        title: data.title, author: data.author, thumbnail_url: data.thumbnail_url,
-        video_url: data.video_url, views: data.views || 0, tag: data.tag || prev.tag,
+        title: data.title, 
+        author: data.author, 
+        thumbnail_url: data.thumbnail_url,
+        video_url: data.video_url, 
+        views: data.views || 0,       // ✅ 找回：播放量提取
+        tag: data.tag || prev.tag,    // ✅ 找回：工具标签提取
         duration: data.duration || '', 
         prompt: prev.prompt || '', 
       }));
-      alert('✅ 抓取成功！');
+      alert('✅ 抓取成功！数据已回填');
     } catch (err: any) { alert(err.message); }
   };
 
-  // 视频分镜上传
+  // 📤 分镜文件上传
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
@@ -116,7 +122,6 @@ export default function AdminDashboard() {
         if (uploadError) throw uploadError;
         const { data } = supabase.storage.from('storyboards').getPublicUrl(fileName);
         
-        // 🛠️ 修复点：显式标注 prev 为 any 类型
         setFormData((prev: any) => ({ ...prev, storyboard_url: data.publicUrl }));
         alert('✅ 文件上传成功！');
     } catch (error: any) {
@@ -126,20 +131,24 @@ export default function AdminDashboard() {
     }
   };
 
-  // Banner/文章封面 图片上传
+  // 🖼️ 图片上传 (Banner/文章封面/视频封面)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
-    const fileName = `banner-${Date.now()}-${file.name}`; 
+    const fileName = `img-${Date.now()}-${file.name}`; 
     
     try {
         const { error } = await supabase.storage.from('banners').upload(fileName, file);
         if (error) throw error;
         const { data } = supabase.storage.from('banners').getPublicUrl(fileName);
         
-        // 🛠️ 修复点：显式标注 prev 为 any 类型
-        setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
+        // 根据当前 Tab 决定填入哪个字段
+        if (activeTab === 'videos') {
+             setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
+        } else {
+             setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
+        }
         alert('✅ 图片上传成功！');
     } catch (error: any) {
         alert('上传失败: ' + error.message);
@@ -148,26 +157,33 @@ export default function AdminDashboard() {
     }
   };
 
-  // 提交保存
+  // 💾 提交保存
   const handleSubmit = async () => {
     if (!formData.title) return alert('标题不能为空');
 
-    // 组装 Payload (只提取当前 Tab 需要的字段)
+    // 组装 Payload
     let payload: any = {};
+    
     if (activeTab === 'videos') {
         payload = {
             title: formData.title, author: formData.author, category: formData.category,
-            prompt: formData.prompt, tag: formData.tag, thumbnail_url: formData.thumbnail_url,
-            video_url: formData.video_url, views: Number(formData.views), duration: formData.duration,
-            storyboard_url: formData.storyboard_url, price: Number(formData.price), is_vip: formData.is_vip,
-            is_hot: formData.is_hot, is_selected: formData.is_selected, is_award: formData.is_award,
+            prompt: formData.prompt, tag: formData.tag, 
+            thumbnail_url: formData.thumbnail_url, video_url: formData.video_url, 
+            views: Number(formData.views), duration: formData.duration,
+            storyboard_url: formData.storyboard_url, price: Number(formData.price), 
+            is_vip: formData.is_vip,
+            // ✅ 找回：三个重要状态
+            is_hot: formData.is_hot, 
+            is_selected: formData.is_selected, 
+            is_award: formData.is_award,
             tutorial_url: formData.tutorial_url
         };
     } else if (activeTab === 'articles') {
         payload = {
             title: formData.title, description: formData.description, category: formData.category,
             difficulty: formData.difficulty, duration: formData.duration, image_url: formData.image_url,
-            content: formData.content, is_vip: formData.is_vip
+            content: formData.content, is_vip: formData.is_vip,
+            link_url: formData.link_url // ✅ 新增：文章跳转链接
         };
     } else if (activeTab === 'jobs') {
         payload = {
@@ -205,7 +221,6 @@ export default function AdminDashboard() {
     if (!error) { alert('已删除'); fetchData(activeTab); }
   };
 
-  // Banner 上下架快捷操作
   const toggleBannerActive = async (item: any) => {
     await supabase.from('banners').update({ is_active: !item.is_active }).eq('id', item.id);
     fetchData('banners');
@@ -226,14 +241,15 @@ export default function AdminDashboard() {
   };
 
   const openNew = () => {
+    // 重置表单
     setFormData({ 
         title: '', author: '', category: activeTab === 'videos' ? '创意短片' : 'Sora', 
         prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
         duration: '', storyboard_url: '', price: 10, is_vip: false,
         is_hot: false, is_selected: false, is_award: false, tutorial_url: '',
-        description: '', image_url: '', difficulty: '入门', content: '',
+        description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
         budget: '', company: '', deadline: '', status: 'open', applicants: 0,
-        link_url: '', is_active: true, sort_order: 0
+        link_url_banner: '', is_active: true, sort_order: 0 // banner用的link_url复用上面的
     });
     setBilibiliLink('');
     setEditMode(false);
@@ -320,6 +336,14 @@ export default function AdminDashboard() {
                                         <div>
                                             <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">
                                                 {item.title || '无标题'}
+                                                {/* 视频专属标签 */}
+                                                {activeTab === 'videos' && (
+                                                    <>
+                                                        {item.is_hot && <span className="text-red-500"><Flame size={12} fill="currentColor"/></span>}
+                                                        {item.is_selected && <span className="text-yellow-500"><Star size={12} fill="currentColor"/></span>}
+                                                        {item.is_award && <span className="text-purple-500"><Trophy size={12} fill="currentColor"/></span>}
+                                                    </>
+                                                )}
                                                 {activeTab === 'banners' && item.tag && <span className="text-[10px] border border-purple-500 text-purple-500 px-1 rounded">{item.tag}</span>}
                                             </div>
                                             {activeTab === 'videos' && <div className="text-xs text-gray-600">@{item.author}</div>}
@@ -348,9 +372,8 @@ export default function AdminDashboard() {
                                     </div>
                                 </td>
                                 <td className="p-4 text-right">
-                                    {/* Banner 专属上下架按钮 */}
                                     {activeTab === 'banners' && (
-                                        <button onClick={() => toggleBannerActive(item)} className="text-gray-400 hover:text-white mr-3 p-2 hover:bg-white/10 rounded" title={item.is_active ? "下架" : "上架"}>
+                                        <button onClick={() => toggleBannerActive(item)} className="text-gray-400 hover:text-white mr-3 p-2 hover:bg-white/10 rounded">
                                             {item.is_active ? <Eye size={16}/> : <EyeOff size={16}/>}
                                         </button>
                                     )}
@@ -398,7 +421,14 @@ export default function AdminDashboard() {
                                 </select>
                             </div>
                         </div>
-                        {/* 分镜上传 */}
+                        
+                        <div className="grid grid-cols-3 gap-4">
+                            <div><label className="text-xs text-gray-500 block mb-1">播放量 (Views)</label><input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                            <div><label className="text-xs text-gray-500 block mb-1">时长</label><input placeholder="04:20" value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                            <div><label className="text-xs text-gray-500 block mb-1">工具标签</label><input placeholder="Midjourney, Runway" value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                        </div>
+
+                        {/* ✅ 找回：资源配置区 (包含分镜上传) */}
                         <div className="bg-white/5 border border-white/10 p-4 rounded-lg space-y-3">
                             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Download size={12}/> 资源配置</h3>
                             <div>
@@ -422,11 +452,20 @@ export default function AdminDashboard() {
                                 </div>
                             </div>
                         </div>
+
+                        <div><label className="text-xs text-gray-500 block mb-1">教程链接</label><input placeholder="https://..." value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                         <div><label className="text-xs text-gray-500 block mb-1">提示词</label><textarea rows={3} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono"></textarea></div>
+
+                        {/* ✅ 找回：推荐/获奖勾选区 */}
+                        <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700">
+                            <div className="flex items-center gap-2"><input type="checkbox" id="isHot" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/><label htmlFor="isHot" className="text-sm font-bold text-white cursor-pointer select-none flex items-center gap-1"><Flame size={12}/> 近期热门</label></div>
+                            <div className="flex items-center gap-2"><input type="checkbox" id="isSelected" checked={formData.is_selected} onChange={e => setFormData({ ...formData, is_selected: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label htmlFor="isSelected" className="text-sm font-bold text-yellow-500 cursor-pointer select-none flex items-center gap-1"><Star size={12}/> 编辑精选</label></div>
+                            <div className="flex items-center gap-2"><input type="checkbox" id="isAward" checked={formData.is_award} onChange={e => setFormData({ ...formData, is_award: e.target.checked })} className="w-5 h-5 accent-purple-500"/><label htmlFor="isAward" className="text-sm font-bold text-purple-500 cursor-pointer select-none flex items-center gap-1"><Trophy size={12}/> 获奖作品</label></div>
+                        </div>
                     </>
                 )}
 
-                {/* 3. 文章特有字段 (增强版) */}
+                {/* 3. 文章特有字段 (含封面上传+跳转链接) */}
                 {activeTab === 'articles' && (
                     <>
                          <div>
@@ -439,6 +478,15 @@ export default function AdminDashboard() {
                                 <input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} />
                             </div>
                         </div>
+                        {/* ✅ 新增：跳转链接 */}
+                        <div>
+                            <label className="text-xs text-gray-500 block mb-1">外部跳转链接 (可选，填写后点击卡片直接跳转)</label>
+                            <div className="flex items-center gap-2 bg-black border border-gray-700 rounded px-2">
+                                <ExternalLink size={14} className="text-gray-500"/>
+                                <input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="w-full bg-transparent p-2 outline-none text-blue-400" placeholder="https://mp.weixin.qq.com/..."/>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-3 gap-4">
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">分类</label>
