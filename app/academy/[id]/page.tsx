@@ -37,14 +37,29 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
-  // ✅ 修复：返回值类型改为 string | undefined (iframe src 不接受 null)
+  // B站播放器解析助手
   const getBilibiliEmbed = (url: string) => {
     if (!url) return undefined;
     const match = url.match(/bvid=(BV\w+)/) || url.match(/\/video\/(BV\w+)/);
     if (match) {
       return `https://player.bilibili.com/player.html?bvid=${match[1]}&high_quality=1&danmaku=0`;
     }
-    return undefined; // 👈 这里改成了 undefined
+    return undefined;
+  };
+
+  // ✅ 智能标签解析函数 (核心修复)
+  const parseTags = (tags: any) => {
+    if (!tags) return [];
+    if (Array.isArray(tags)) return tags;
+    if (typeof tags === 'string') {
+      try {
+        const parsed = JSON.parse(tags);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+      // 清洗数据：去除方括号、引号，按逗号分割
+      return tags.replace(/[\[\]"]/g, '').split(/[,，]/).map(t => t.trim()).filter(Boolean);
+    }
+    return [];
   };
 
   const renderContent = () => {
@@ -125,8 +140,9 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                         <Lock size={12}/> VIP 专享
                     </span>
                 )}
-                {article.tags && article.tags.split(',').map((tag: string) => (
-                    <span key={tag} className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                {/* ✅ 使用 parseTags 处理标签 */}
+                {parseTags(article.tags).map((tag: string, i: number) => (
+                    <span key={i} className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                         <Tag size={12}/> {tag}
                     </span>
                 ))}
@@ -160,7 +176,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                 <div className="aspect-video w-full relative group">
                     {linkedVideo.video_url?.includes('bilibili') ? (
                         <iframe 
-                            src={getBilibiliEmbed(linkedVideo.video_url || '')} // 👈 增加空字符串兜底
+                            src={getBilibiliEmbed(linkedVideo.video_url || '')} 
                             className="w-full h-full" 
                             frameBorder="0" 
                             allowFullScreen
