@@ -8,7 +8,7 @@ import { ArrowLeft, Clock, Calendar, User, Share2, BookOpen, Lock, Star, ThumbsU
 export default function ArticleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [article, setArticle] = useState<any>(null);
-  const [linkedVideo, setLinkedVideo] = useState<any>(null); // ✅ 新增：关联视频状态
+  const [linkedVideo, setLinkedVideo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,7 +17,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
   async function fetchArticle() {
     setLoading(true);
-    // 1. 获取文章详情
     const { data, error } = await supabase
       .from('articles')
       .select('*')
@@ -26,7 +25,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     
     if (data) {
         setArticle(data);
-        // ✅ 2. 如果关联了视频，去 videos 表查详情
         if (data.video_id) {
             const { data: videoData } = await supabase
                 .from('videos')
@@ -39,18 +37,17 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
-  // ✅ B站播放器解析助手
+  // ✅ 修复：返回值类型改为 string | undefined (iframe src 不接受 null)
   const getBilibiliEmbed = (url: string) => {
+    if (!url) return undefined;
     const match = url.match(/bvid=(BV\w+)/) || url.match(/\/video\/(BV\w+)/);
     if (match) {
       return `https://player.bilibili.com/player.html?bvid=${match[1]}&high_quality=1&danmaku=0`;
     }
-    return null;
+    return undefined; // 👈 这里改成了 undefined
   };
 
-  // 📝 模拟正文内容 (保留你原有的逻辑，稍作增强)
   const renderContent = () => {
-    // 如果数据库里真的有 content，优先用数据库的
     if (article.content) {
         return (
             <div className="space-y-6 text-gray-300 leading-relaxed whitespace-pre-wrap">
@@ -59,7 +56,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         );
     }
 
-    // 否则显示你的 Mock 数据
     return (
       <div className="space-y-6 text-gray-300 leading-relaxed">
         <p>
@@ -77,7 +73,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         <p>
             接下来，请打开你的创作工具。我们将从一个简单的案例入手。请注意，参数设置中的 <code>Motion Scale</code> 是控制画面动态幅度的关键，通常设置为 5-7 之间最为自然。
         </p>
-        {/* 这里可以放一个占位图，或者如果有关联视频的缩略图就用它 */}
         <img src={linkedVideo?.thumbnail_url || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80"} className="w-full h-64 object-cover rounded-xl my-6 opacity-80" alt="demo" />
         <p>
             (此处省略详细教程内容...)
@@ -95,7 +90,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
       
-      {/* 顶部进度条 */}
       <div className="fixed top-0 left-0 w-full h-1 bg-white/10 z-50">
         <div className="h-full bg-purple-600 w-1/3"></div>
       </div>
@@ -113,7 +107,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
       <main className="max-w-4xl mx-auto p-6 md:p-10">
         
-        {/* 头部信息 */}
         <header className="mb-10 border-b border-white/5 pb-10">
             <div className="flex flex-wrap gap-3 mb-6">
                 <span className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg shadow-purple-900/40">
@@ -132,7 +125,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                         <Lock size={12}/> VIP 专享
                     </span>
                 )}
-                {/* ✅ 新增：标签展示 */}
                 {article.tags && article.tags.split(',').map((tag: string) => (
                     <span key={tag} className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                         <Tag size={12}/> {tag}
@@ -163,14 +155,12 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             </div>
         </header>
 
-        {/* ✅ 核心逻辑：视频 OR 封面 */}
         <div className="w-full rounded-2xl overflow-hidden mb-10 border border-white/10 bg-gray-900 shadow-2xl">
             {linkedVideo ? (
-                // 📺 视频模式
                 <div className="aspect-video w-full relative group">
                     {linkedVideo.video_url?.includes('bilibili') ? (
                         <iframe 
-                            src={getBilibiliEmbed(linkedVideo.video_url)} 
+                            src={getBilibiliEmbed(linkedVideo.video_url || '')} // 👈 增加空字符串兜底
                             className="w-full h-full" 
                             frameBorder="0" 
                             allowFullScreen
@@ -180,7 +170,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                     )}
                 </div>
             ) : (
-                // 🖼️ 纯文章模式 (封面)
                 <div className="aspect-[21/9] w-full relative">
                     <img src={article.image_url} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] to-transparent opacity-60"></div>
@@ -188,12 +177,10 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             )}
         </div>
 
-        {/* 正文区域 */}
         <article className="prose prose-invert prose-lg max-w-none">
             {renderContent()}
         </article>
 
-        {/* ✅ 新增：外部链接卡片 */}
         {article.link_url && (
             <div className="mt-12 p-6 bg-[#151515] border border-white/10 rounded-xl flex flex-col md:flex-row items-center justify-between group hover:border-purple-500/50 transition-all gap-4">
                 <div className="flex items-center gap-4">
@@ -211,7 +198,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             </div>
         )}
 
-        {/* 底部互动 */}
         <div className="mt-20 pt-10 border-t border-white/5 flex justify-center">
             <button className="flex flex-col items-center gap-2 group">
                 <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 group-hover:bg-purple-600 group-hover:text-white group-hover:scale-110 transition-all duration-300">
