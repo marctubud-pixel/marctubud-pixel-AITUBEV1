@@ -59,7 +59,7 @@ export default function AdminDashboard() {
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
   
-  // 🔍 视频搜索专用状态 (新增)
+  // 🔍 视频搜索专用状态
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
   const [videoSearchResults, setVideoSearchResults] = useState<any[]>([]);
   const [isSearchingVideo, setIsSearchingVideo] = useState(false);
@@ -92,7 +92,7 @@ export default function AdminDashboard() {
     batch_count: 10, duration_days: 30, prefix: 'VIP'
   });
 
-  // 🔎 搜索视频库 (新增功能)
+  // 🔎 搜索视频库
   const searchVideos = async () => {
       if (!videoSearchQuery.trim()) return;
       setIsSearchingVideo(true);
@@ -100,26 +100,24 @@ export default function AdminDashboard() {
           .from('videos')
           .select('id, title, duration, thumbnail_url, author')
           .ilike('title', `%${videoSearchQuery}%`)
-          .limit(5); // 只取前5个，避免太长
-      
+          .limit(5); 
       setVideoSearchResults(data || []);
       setIsSearchingVideo(false);
   };
 
-  // ✅ 选中视频并自动回填 (核心优化)
+  // ✅ 选中视频并自动回填
   const selectVideo = (video: any) => {
       setFormData((prev: any) => ({
           ...prev,
           video_id: video.id,          // 关联 ID
           title: video.title,          // 自动同步标题
           duration: video.duration,    // 自动同步时长
-          image_url: video.thumbnail_url // 自动同步封面作为文章封面
+          image_url: video.thumbnail_url // 自动同步封面
       }));
-      setVideoSearchResults([]); // 清空搜索结果
-      setVideoSearchQuery('');   // 清空搜索框
+      setVideoSearchResults([]); 
+      setVideoSearchQuery('');   
   };
 
-  // ❌ 移除关联
   const removeLinkedVideo = () => {
       setFormData((prev: any) => ({ ...prev, video_id: '' }));
   };
@@ -184,7 +182,7 @@ export default function AdminDashboard() {
     } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
   };
 
-  // 💾 提交保存
+  // 💾 提交保存 (修复了标签提交问题)
   const handleSubmit = async () => {
     // 🎫 批量生成卡密逻辑
     if (activeTab === 'codes' && !editMode) {
@@ -221,12 +219,20 @@ export default function AdminDashboard() {
             tutorial_url: formData.tutorial_url
         };
     } else if (activeTab === 'articles') {
+        // ✅ 核心修复：处理标签 (Tags)
+        // 将逗号分隔的字符串转换为数组，以满足数据库 text[] 类型的要求
+        let formattedTags = [];
+        if (formData.tags) {
+            // 支持中文逗号和英文逗号
+            formattedTags = formData.tags.toString().split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => t.length > 0);
+        }
+
         payload = {
             title: formData.title, description: formData.description, 
             category: formData.category, difficulty: formData.difficulty, 
             duration: formData.duration, image_url: formData.image_url,
             content: formData.content, is_vip: formData.is_vip, link_url: formData.link_url,
-            tags: formData.tags,
+            tags: formattedTags, // 👈 这里传数组了，不再是字符串
             video_id: formData.video_id ? Number(formData.video_id) : null
         };
     } else if (activeTab === 'jobs') {
@@ -267,14 +273,20 @@ export default function AdminDashboard() {
   };
 
   const openEdit = (item: any) => {
-    setFormData({ ...item }); 
+    // 适配标签回显：如果是数组，转回逗号分隔字符串
+    let processedItem = { ...item };
+    if (activeTab === 'articles' && Array.isArray(item.tags)) {
+        processedItem.tags = item.tags.join(', ');
+    }
+
+    setFormData(processedItem); 
     if (activeTab === 'videos' && item.video_url && item.video_url.includes('bvid=')) {
         const match = item.video_url.match(/bvid=(BV\w+)/);
         if (match) setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
     } else {
         setBilibiliLink('');
     }
-    setVideoSearchQuery(''); // 重置搜索
+    setVideoSearchQuery('');
     setVideoSearchResults([]);
     setCurrentId(item.id);
     setEditMode(true);
@@ -283,7 +295,7 @@ export default function AdminDashboard() {
 
   const openNew = () => {
     setFormData({ 
-        title: '', author: '', category: activeTab === 'videos' ? '创意短片' : '新手入门',
+        title: '', author: '', category: activeTab === 'videos' ? '创意短片' : '新手入门', 
         prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
         duration: '', storyboard_url: '', price: 10, is_vip: false,
         is_hot: false, is_selected: false, is_award: false, tutorial_url: '',
@@ -385,7 +397,13 @@ export default function AdminDashboard() {
                                                 <>
                                                     {item.category && <span className="bg-white/10 px-2 py-0.5 rounded">{item.category}</span>}
                                                     {activeTab === 'videos' && <span>{item.views} views</span>}
-                                                    {activeTab === 'articles' && <><span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">{item.difficulty}</span>{item.video_id && <span className="text-blue-400 flex items-center gap-1"><LinkIcon2 size={10}/> 已关联视频</span>}</>}
+                                                    {/* ✅ 文章：显示难度和关联视频状态 */}
+                                                    {activeTab === 'articles' && (
+                                                        <>
+                                                            <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">{item.difficulty}</span>
+                                                            {item.video_id && <span className="text-blue-400 flex items-center gap-1"><LinkIcon2 size={10}/> 已关联视频</span>}
+                                                        </>
+                                                    )}
                                                 </>
                                             )}
                                         </div>
