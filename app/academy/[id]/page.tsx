@@ -2,40 +2,13 @@
 
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-// ⚠️ 如果你的 supabase 客户端文件路径不一样，请修改这里，比如 '../lib/supabaseClient'
-import { supabase } from '@/lib/supabaseClient'; 
-import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, Tag, ExternalLink, Lock } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-
-// 定义接口
-interface Article {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  difficulty?: '入门' | '进阶' | '专家';
-  is_vip: boolean;
-  tags: string | string[];
-  author_name: string;
-  created_at: string;
-  duration?: string;
-  video_id?: string;
-  image_url?: string;
-  link_url?: string;
-}
-
-interface Video {
-  id: string;
-  video_url: string;
-  thumbnail_url: string;
-}
+import { supabase } from '../../lib/supabaseClient'; 
+import { ArrowLeft, Clock, Calendar, User, Share2, BookOpen, Lock, Star, ThumbsUp, Tag, PlayCircle, ExternalLink } from 'lucide-react';
 
 export default function ArticleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  
-  const [article, setArticle] = useState<Article | null>(null);
-  const [linkedVideo, setLinkedVideo] = useState<Video | null>(null);
+  const [article, setArticle] = useState<any>(null);
+  const [linkedVideo, setLinkedVideo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -50,12 +23,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       .eq('id', id)
       .single();
     
-    if (error) {
-        console.error("Error fetching article:", error);
-        setLoading(false);
-        return;
-    }
-
     if (data) {
         setArticle(data);
         if (data.video_id) {
@@ -70,18 +37,18 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
-  // Bilibili 解析器
+  // B站播放器解析助手
   const getBilibiliEmbed = (url: string) => {
     if (!url) return undefined;
-    const match = url.match(/(?:bvid=|video\/)(BV\w+)/);
+    const match = url.match(/bvid=(BV\w+)/) || url.match(/\/video\/(BV\w+)/);
     if (match) {
-      return `https://player.bilibili.com/player.html?bvid=${match[1]}&high_quality=1&danmaku=0&autoplay=0`;
+      return `https://player.bilibili.com/player.html?bvid=${match[1]}&high_quality=1&danmaku=0`;
     }
     return undefined;
   };
 
-  // 标签解析
-  const parseTags = (tags: string | string[] | null) => {
+  // ✅ 智能标签解析函数 (核心修复)
+  const parseTags = (tags: any) => {
     if (!tags) return [];
     if (Array.isArray(tags)) return tags;
     if (typeof tags === 'string') {
@@ -89,29 +56,62 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         const parsed = JSON.parse(tags);
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
+      // 清洗数据：去除方括号、引号，按逗号分割
       return tags.replace(/[\[\]"]/g, '').split(/[,，]/).map(t => t.trim()).filter(Boolean);
     }
     return [];
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center gap-4 text-gray-500">
-        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-        <p>正在加载课程内容...</p>
-    </div>
-  );
-  
+  const renderContent = () => {
+    if (article.content) {
+        return (
+            <div className="space-y-6 text-gray-300 leading-relaxed whitespace-pre-wrap">
+                {article.content}
+            </div>
+        );
+    }
+
+    return (
+      <div className="space-y-6 text-gray-300 leading-relaxed">
+        <p>
+            欢迎来到<strong>《{article.title}》</strong>的学习页面。在本课程中，我们将深入探讨 {article.category} 的核心逻辑与实战技巧。
+        </p>
+        <h3 className="text-xl font-bold text-white mt-8 mb-4">1. 核心概念解析</h3>
+        <p>
+            在开始实操之前，我们需要理解底层的生成逻辑。AI 视频生成并非简单的画面拼接，而是基于潜在空间的去噪过程。通过精确控制提示词的权重，我们可以引导模型生成符合物理规律的运动轨迹。
+        </p>
+        <div className="bg-white/5 border border-white/10 p-4 rounded-lg my-6">
+            <h4 className="font-bold text-purple-400 mb-2">💡 专家提示</h4>
+            <p className="text-sm">在编写 Prompt 时，建议遵循 "主体 + 环境 + 动作 + 运镜 + 风格" 的标准公式，这样能最大程度减少抽卡失败的概率。</p>
+        </div>
+        <h3 className="text-xl font-bold text-white mt-8 mb-4">2. 实战操作步骤</h3>
+        <p>
+            接下来，请打开你的创作工具。我们将从一个简单的案例入手。请注意，参数设置中的 <code>Motion Scale</code> 是控制画面动态幅度的关键，通常设置为 5-7 之间最为自然。
+        </p>
+        <img src={linkedVideo?.thumbnail_url || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80"} className="w-full h-64 object-cover rounded-xl my-6 opacity-80" alt="demo" />
+        <p>
+            (此处省略详细教程内容...)
+        </p>
+        <p>
+            祝你创作愉快！别忘了将你的作品投稿到首页，让更多人看到你的创意。
+        </p>
+      </div>
+    );
+  };
+
+  if (loading) return <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center text-gray-500">加载中...</div>;
   if (!article) return <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center text-gray-500">文章不存在</div>;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
+      
       <div className="fixed top-0 left-0 w-full h-1 bg-white/10 z-50">
         <div className="h-full bg-purple-600 w-1/3"></div>
       </div>
 
       <nav className="flex items-center justify-between px-6 py-6 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-40">
-        <Link href="/academy" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
-          <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform"/>
+        <Link href="/academy" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+          <ArrowLeft size={20} />
           <span className="font-bold">返回学院</span>
         </Link>
         <div className="flex gap-4">
@@ -121,15 +121,16 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       </nav>
 
       <main className="max-w-4xl mx-auto p-6 md:p-10">
+        
         <header className="mb-10 border-b border-white/5 pb-10">
             <div className="flex flex-wrap gap-3 mb-6">
                 <span className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg shadow-purple-900/40">
                     {article.category}
                 </span>
                 {article.difficulty && (
-                    <span className={`bg-white/10 px-3 py-1 rounded-full text-xs font-bold border border-white/10 ${
+                    <span className={`bg-white/10 text-gray-300 px-3 py-1 rounded-full text-xs font-bold border border-white/10 ${
                         article.difficulty === '入门' ? 'text-green-400 border-green-500/30' : 
-                        article.difficulty === '进阶' ? 'text-yellow-400 border-yellow-500/30' : 'text-gray-300'
+                        article.difficulty === '进阶' ? 'text-yellow-400 border-yellow-500/30' : ''
                     }`}>
                         {article.difficulty}
                     </span>
@@ -139,6 +140,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                         <Lock size={12}/> VIP 专享
                     </span>
                 )}
+                {/* ✅ 使用 parseTags 处理标签 */}
                 {parseTags(article.tags).map((tag: string, i: number) => (
                     <span key={i} className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                         <Tag size={12}/> {tag}
@@ -158,10 +160,13 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                     <span className="text-gray-300">{article.author_name || 'AI.Tube'}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                    <Calendar size={14}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}
+                    <Calendar size={14}/> {new Date(article.created_at).toLocaleDateString()}
                 </div>
                 <div className="flex items-center gap-1.5">
                     <Clock size={14}/> {article.duration || '10 min'} 阅读
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <BookOpen size={14}/> {article.id * 12 + 100} 次学习
                 </div>
             </div>
         </header>
@@ -175,35 +180,21 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                             className="w-full h-full" 
                             frameBorder="0" 
                             allowFullScreen
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         ></iframe>
                     ) : (
-                        <video 
-                            src={linkedVideo.video_url} 
-                            controls 
-                            className="w-full h-full" 
-                            poster={linkedVideo.thumbnail_url}
-                        ></video>
+                        <video src={linkedVideo.video_url} controls className="w-full h-full" poster={linkedVideo.thumbnail_url}></video>
                     )}
                 </div>
             ) : (
                 <div className="aspect-[21/9] w-full relative">
-                    <img src={article.image_url || "/api/placeholder/800/400"} className="w-full h-full object-cover" alt={article.title} />
+                    <img src={article.image_url} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] to-transparent opacity-60"></div>
                 </div>
             )}
         </div>
 
-        <article className="prose prose-invert prose-lg max-w-none prose-headings:text-white prose-a:text-purple-400 prose-code:text-purple-300 prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10">
-            {article.content ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {article.content}
-                </ReactMarkdown>
-            ) : (
-                <div className="space-y-6 text-gray-300">
-                    <p>内容加载中...</p>
-                </div>
-            )}
+        <article className="prose prose-invert prose-lg max-w-none">
+            {renderContent()}
         </article>
 
         {article.link_url && (
@@ -217,7 +208,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                         <div className="text-sm text-gray-500">点击访问原始文档或下载资源</div>
                     </div>
                 </div>
-                <a href={article.link_url} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto text-center bg-white text-black px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors">
+                <a href={article.link_url} target="_blank" className="w-full md:w-auto text-center bg-white text-black px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors">
                     立即访问 <ExternalLink size={16}/>
                 </a>
             </div>
