@@ -221,7 +221,7 @@ export default function AdminDashboard() {
     } else if (activeTab === 'articles') {
         // ✅ 核心修复：处理标签 (Tags)
         // 将逗号分隔的字符串转换为数组，以满足数据库 text[] 类型的要求
-        let formattedTags = [];
+        let formattedTags: string[] = [];
         if (formData.tags) {
             // 支持中文逗号和英文逗号
             formattedTags = formData.tags.toString().split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => t.length > 0);
@@ -516,7 +516,7 @@ export default function AdminDashboard() {
                     {/* 通用：标题 (如果关联了视频，会自动填，但允许修改) */}
                     <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
 
-                    {/* 📺 视频表单剩余字段 (保持原样) */}
+                    {/* 📺 视频表单剩余字段 */}
                     {activeTab === 'videos' && (
                         <>
                             <div className="grid grid-cols-2 gap-4">
