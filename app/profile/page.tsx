@@ -27,16 +27,16 @@ export default function ProfilePage() {
   const [hasCheckedIn, setHasCheckedIn] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
 
-  // 🎁 兑换功能状态 (新增)
+  // 🎁 兑换功能状态
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
   const [redeemStatus, setRedeemStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [redeemMsg, setRedeemMsg] = useState('');
 
-  // 🗂️ 选项卡 (增加 prompts)
+  // 🗂️ 选项卡
   const [activeTab, setActiveTab] = useState<'favorites' | 'prompts' | 'uploads' | 'downloads'>('favorites');
   const [favVideos, setFavVideos] = useState<any[]>([]);
-  const [savedPrompts, setSavedPrompts] = useState<any[]>([]); // 新增
+  const [savedPrompts, setSavedPrompts] = useState<any[]>([]); 
   const [myUploads, setMyUploads] = useState<any[]>([]);
   const [myDownloads, setMyDownloads] = useState<any[]>([]);
 
@@ -45,7 +45,7 @@ export default function ProfilePage() {
   }, []);
 
   async function checkUserAndFetchData() {
-    // 强制刷新 session (避免状态不同步)
+    // 强制刷新 session
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       router.push('/login');
@@ -69,7 +69,7 @@ export default function ProfilePage() {
     // 并行获取各类数据
     await Promise.all([
         fetchFavorites(session.user.id),
-        fetchSavedPrompts(session.user.id), // 新增
+        fetchSavedPrompts(session.user.id),
         fetchMyUploads(session.user),
         fetchDownloads(session.user.id)
     ]);
@@ -85,7 +85,6 @@ export default function ProfilePage() {
     }
   }
 
-  // ✨ 新增：获取收藏的 Prompts
   async function fetchSavedPrompts(userId: string) {
     const { data } = await supabase
         .from('saved_prompts')
@@ -176,14 +175,14 @@ export default function ProfilePage() {
     if (!confirm('确定删除？')) return;
     const { error } = await supabase.from('videos').delete().eq('id', videoId);
     if (!error) {
-      setMyUploads(prev => prev.filter(v => v.id !== videoId));
+      setMyUploads((prev: any[]) => prev.filter(v => v.id !== videoId));
     }
   }
 
   async function handleDeletePrompt(id: number) {
     if(!confirm('确定删除这条提示词收藏吗？')) return;
     const { error } = await supabase.from('saved_prompts').delete().eq('id', id);
-    if (!error) setSavedPrompts(prev => prev.filter(p => p.id !== id));
+    if (!error) setSavedPrompts((prev: any[]) => prev.filter(p => p.id !== id));
   }
 
   async function handleLogout() {
@@ -223,8 +222,8 @@ export default function ProfilePage() {
           setRedeemStatus('success');
           setRedeemMsg(`兑换成功！增加 ${codeData.duration_days} 天 VIP`);
           
-          // 更新本地状态
-          setUserProfile(prev => ({ ...prev, is_vip: true, vip_expires_at: newExpiresAt.toISOString() }));
+          // ✅ 修复点：添加 (prev: any) 类型注解
+          setUserProfile((prev: any) => ({ ...prev, is_vip: true, vip_expires_at: newExpiresAt.toISOString() }));
           
           setTimeout(() => {
               setIsRedeemOpen(false);
