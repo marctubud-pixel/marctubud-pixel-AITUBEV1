@@ -7,7 +7,7 @@ import {
     LayoutDashboard, Video, FileText, Image as ImageIcon, Briefcase, Ticket, 
     Plus, Trash2, Edit, X, LogOut, Upload, Loader2, Link as LinkIcon, 
     Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, 
-    Flame, Trophy, Star, ExternalLink, Copy, CheckCircle 
+    Flame, Trophy, Star, ExternalLink, Copy, CheckCircle, Search, Link as LinkIcon2 
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -59,9 +59,14 @@ export default function AdminDashboard() {
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
   
+  // 🔍 视频搜索专用状态 (新增)
+  const [videoSearchQuery, setVideoSearchQuery] = useState('');
+  const [videoSearchResults, setVideoSearchResults] = useState<any[]>([]);
+  const [isSearchingVideo, setIsSearchingVideo] = useState(false);
+  
   // 文件上传 Refs
-  const fileInputRef = useRef<HTMLInputElement>(null); // 分镜文件
-  const imageInputRef = useRef<HTMLInputElement>(null); // 封面图片
+  const fileInputRef = useRef<HTMLInputElement>(null); 
+  const imageInputRef = useRef<HTMLInputElement>(null); 
   const [uploadingFile, setUploadingFile] = useState(false);
 
   // 📝 统一大表单
@@ -71,12 +76,11 @@ export default function AdminDashboard() {
     prompt: '', tag: '', thumbnail_url: '', video_url: '', 
     views: 0, duration: '', storyboard_url: '', price: 10, 
     is_vip: false, tutorial_url: '',
-    // 🔥 找回的视频专属勾选状态
     is_hot: false, is_selected: false, is_award: false,
     
     // --- 文章字段 ---
     description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
-    tags: '', video_id: '', // ✅ 新增：标签和关联视频ID
+    tags: '', video_id: '', // 关联视频ID
     
     // --- 需求字段 ---
     budget: '', company: '', deadline: '', status: 'open', applicants: 0,
@@ -87,6 +91,38 @@ export default function AdminDashboard() {
     // --- 卡密字段 ---
     batch_count: 10, duration_days: 30, prefix: 'VIP'
   });
+
+  // 🔎 搜索视频库 (新增功能)
+  const searchVideos = async () => {
+      if (!videoSearchQuery.trim()) return;
+      setIsSearchingVideo(true);
+      const { data } = await supabase
+          .from('videos')
+          .select('id, title, duration, thumbnail_url, author')
+          .ilike('title', `%${videoSearchQuery}%`)
+          .limit(5); // 只取前5个，避免太长
+      
+      setVideoSearchResults(data || []);
+      setIsSearchingVideo(false);
+  };
+
+  // ✅ 选中视频并自动回填 (核心优化)
+  const selectVideo = (video: any) => {
+      setFormData((prev: any) => ({
+          ...prev,
+          video_id: video.id,          // 关联 ID
+          title: video.title,          // 自动同步标题
+          duration: video.duration,    // 自动同步时长
+          image_url: video.thumbnail_url // 自动同步封面作为文章封面
+      }));
+      setVideoSearchResults([]); // 清空搜索结果
+      setVideoSearchQuery('');   // 清空搜索框
+  };
+
+  // ❌ 移除关联
+  const removeLinkedVideo = () => {
+      setFormData((prev: any) => ({ ...prev, video_id: '' }));
+  };
 
   // 📺 B站一键抓取
   const handleFetchInfo = async () => {
@@ -127,14 +163,9 @@ export default function AdminDashboard() {
         const { error: uploadError } = await supabase.storage.from('storyboards').upload(fileName, file, { upsert: true });
         if (uploadError) throw uploadError;
         const { data } = supabase.storage.from('storyboards').getPublicUrl(fileName);
-        
         setFormData((prev: any) => ({ ...prev, storyboard_url: data.publicUrl }));
         alert('✅ 文件上传成功！');
-    } catch (error: any) {
-        alert('上传失败: ' + error.message);
-    } finally {
-        setUploadingFile(false);
-    }
+    } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
   };
 
   // 🖼️ 图片上传
@@ -143,23 +174,14 @@ export default function AdminDashboard() {
     setUploadingFile(true);
     const file = e.target.files[0];
     const fileName = `img-${Date.now()}-${file.name}`; 
-    
     try {
         const { error } = await supabase.storage.from('banners').upload(fileName, file);
         if (error) throw error;
         const { data } = supabase.storage.from('banners').getPublicUrl(fileName);
-        
-        if (activeTab === 'videos') {
-             setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
-        } else {
-             setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
-        }
+        if (activeTab === 'videos') setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
+        else setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
         alert('✅ 图片上传成功！');
-    } catch (error: any) {
-        alert('上传失败: ' + error.message);
-    } finally {
-        setUploadingFile(false);
-    }
+    } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
   };
 
   // 💾 提交保存
@@ -169,26 +191,15 @@ export default function AdminDashboard() {
         const count = parseInt(formData.batch_count) || 1;
         const days = parseInt(formData.duration_days) || 30;
         const prefix = formData.prefix || 'VIP';
-        
         const newCodes = [];
         for (let i = 0; i < count; i++) {
             const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase(); 
             const timestamp = Date.now().toString().slice(-4); 
-            newCodes.push({
-                code: `${prefix}-${timestamp}-${randomStr}`,
-                duration_days: days,
-                is_used: false
-            });
+            newCodes.push({ code: `${prefix}-${timestamp}-${randomStr}`, duration_days: days, is_used: false });
         }
-        
         const { error } = await supabase.from('redemption_codes').insert(newCodes);
-        if (!error) {
-            alert(`✅ 成功生成 ${count} 个兑换码！`);
-            setIsModalOpen(false);
-            fetchData('codes');
-        } else {
-            alert('生成失败: ' + error.message);
-        }
+        if (!error) { alert(`✅ 成功生成 ${count} 个兑换码！`); setIsModalOpen(false); fetchData('codes'); } 
+        else { alert('生成失败: ' + error.message); }
         return;
     }
 
@@ -212,12 +223,9 @@ export default function AdminDashboard() {
     } else if (activeTab === 'articles') {
         payload = {
             title: formData.title, description: formData.description, 
-            // ✅ 更新：使用新分类逻辑
-            category: formData.category,
-            difficulty: formData.difficulty, duration: formData.duration, image_url: formData.image_url,
-            content: formData.content, is_vip: formData.is_vip,
-            link_url: formData.link_url,
-            // ✅ 新增：标签和视频ID
+            category: formData.category, difficulty: formData.difficulty, 
+            duration: formData.duration, image_url: formData.image_url,
+            content: formData.content, is_vip: formData.is_vip, link_url: formData.link_url,
             tags: formData.tags,
             video_id: formData.video_id ? Number(formData.video_id) : null
         };
@@ -242,13 +250,8 @@ export default function AdminDashboard() {
       error = res.error;
     }
 
-    if (!error) { 
-        alert('✅ 保存成功！'); 
-        setIsModalOpen(false); 
-        fetchData(activeTab); 
-    } else { 
-        alert('❌ 保存失败: ' + error.message); 
-    }
+    if (!error) { alert('✅ 保存成功！'); setIsModalOpen(false); fetchData(activeTab); } 
+    else { alert('❌ 保存失败: ' + error.message); }
   };
 
   const handleDelete = async (id: number) => {
@@ -271,6 +274,8 @@ export default function AdminDashboard() {
     } else {
         setBilibiliLink('');
     }
+    setVideoSearchQuery(''); // 重置搜索
+    setVideoSearchResults([]);
     setCurrentId(item.id);
     setEditMode(true);
     setIsModalOpen(true);
@@ -278,17 +283,19 @@ export default function AdminDashboard() {
 
   const openNew = () => {
     setFormData({ 
-        title: '', author: '', category: activeTab === 'videos' ? '创意短片' : '新手入门', // ✅ 默认分类调整
+        title: '', author: '', category: activeTab === 'videos' ? '创意短片' : '新手入门',
         prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
         duration: '', storyboard_url: '', price: 10, is_vip: false,
         is_hot: false, is_selected: false, is_award: false, tutorial_url: '',
         description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
-        tags: '', video_id: '', // ✅ 重置新字段
+        tags: '', video_id: '', 
         budget: '', company: '', deadline: '', status: 'open', applicants: 0,
         is_active: true, sort_order: 0,
         batch_count: 10, duration_days: 30, prefix: 'VIP'
     });
     setBilibiliLink('');
+    setVideoSearchQuery('');
+    setVideoSearchResults([]);
     setEditMode(false);
     setIsModalOpen(true);
   };
@@ -311,33 +318,15 @@ export default function AdminDashboard() {
                 AI.Tube 后台
             </h1>
         </div>
-        
         <nav className="flex-1 p-4 space-y-2">
-            {[
-                { id: 'videos', label: '视频管理', icon: <Video size={18}/> },
-                { id: 'articles', label: '学院文章', icon: <FileText size={18}/> },
-                { id: 'jobs', label: '合作需求', icon: <Briefcase size={18}/> },
-                { id: 'banners', label: 'Banner 配置', icon: <ImageIcon size={18}/> },
-                { id: 'codes', label: '卡密管理', icon: <Ticket size={18}/> }, 
-            ].map(item => (
-                <button
-                    key={item.id}
-                    onClick={() => { setActiveTab(item.id as any); setData([]); }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                        activeTab === item.id 
-                        ? 'bg-white text-black' 
-                        : 'text-gray-400 hover:text-white hover:bg-white/5'
-                    }`}
-                >
+            {[{ id: 'videos', label: '视频管理', icon: <Video size={18}/> }, { id: 'articles', label: '学院文章', icon: <FileText size={18}/> }, { id: 'jobs', label: '合作需求', icon: <Briefcase size={18}/> }, { id: 'banners', label: 'Banner 配置', icon: <ImageIcon size={18}/> }, { id: 'codes', label: '卡密管理', icon: <Ticket size={18}/> }].map(item => (
+                <button key={item.id} onClick={() => { setActiveTab(item.id as any); setData([]); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-white text-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
                     {item.icon} {item.label}
                 </button>
             ))}
         </nav>
-
         <div className="p-4 border-t border-white/5">
-            <button onClick={handleLogout} className="w-full flex items-center gap-2 text-red-500 px-4 py-2 text-sm font-bold hover:bg-red-500/10 rounded-lg transition-colors">
-                <LogOut size={16}/> 退出登录
-            </button>
+            <button onClick={handleLogout} className="w-full flex items-center gap-2 text-red-500 px-4 py-2 text-sm font-bold hover:bg-red-500/10 rounded-lg transition-colors"><LogOut size={16}/> 退出登录</button>
         </div>
       </aside>
 
@@ -349,39 +338,22 @@ export default function AdminDashboard() {
             </h2>
             <div className="flex gap-4 items-center">
                 <span className="text-gray-500 text-sm">共 {data.length} 条数据</span>
-                
-                {activeTab === 'codes' && (
-                    <button onClick={copyUnusedCodes} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-white/10 text-sm">
-                        <Copy size={16}/> 复制未使用卡密
-                    </button>
-                )}
-
-                <button onClick={openNew} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors">
-                    <Plus size={18}/> {activeTab === 'codes' ? '批量生成卡密' : '新增内容'}
-                </button>
+                {activeTab === 'codes' && <button onClick={copyUnusedCodes} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-white/10 text-sm"><Copy size={16}/> 复制未使用卡密</button>}
+                <button onClick={openNew} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors"><Plus size={18}/> {activeTab === 'codes' ? '批量生成卡密' : '新增内容'}</button>
             </div>
         </div>
 
         {/* 📋 数据列表 */}
-        {loading ? (
-            <div className="text-center py-20 text-gray-500">加载中...</div>
-        ) : (
+        {loading ? <div className="text-center py-20 text-gray-500">加载中...</div> : (
             <div className="bg-[#151515] rounded-2xl border border-white/10 overflow-hidden">
                 <table className="w-full text-left text-sm text-gray-400">
                     <thead className="bg-white/5 text-gray-200 font-bold">
-                        <tr>
-                            <th className="p-4">ID</th>
-                            <th className="p-4">{activeTab === 'codes' ? '兑换码' : '预览/标题'}</th>
-                            <th className="p-4">信息</th>
-                            <th className="p-4 text-right">操作</th>
-                        </tr>
+                        <tr><th className="p-4">ID</th><th className="p-4">{activeTab === 'codes' ? '兑换码' : '预览/标题'}</th><th className="p-4">信息</th><th className="p-4 text-right">操作</th></tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                         {data.map(item => (
                             <tr key={item.id} className={`hover:bg-white/5 transition-colors ${activeTab === 'banners' && !item.is_active ? 'opacity-50' : ''}`}>
                                 <td className="p-4 font-mono text-xs text-gray-600">#{item.id}</td>
-                                
-                                {/* 内容列 */}
                                 <td className="p-4">
                                     {activeTab === 'codes' ? (
                                         <div className="flex items-center gap-3">
@@ -390,30 +362,14 @@ export default function AdminDashboard() {
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-3">
-                                            {(item.thumbnail_url || item.image_url) && (
-                                                <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0">
-                                                    <img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" />
-                                                </div>
-                                            )}
+                                            {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" /></div>}
                                             <div>
-                                                <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">
-                                                    {item.title || '无标题'}
-                                                    {activeTab === 'videos' && (
-                                                        <>
-                                                            {item.is_hot && <span className="text-red-500"><Flame size={12} fill="currentColor"/></span>}
-                                                            {item.is_selected && <span className="text-yellow-500"><Star size={12} fill="currentColor"/></span>}
-                                                            {item.is_award && <span className="text-purple-500"><Trophy size={12} fill="currentColor"/></span>}
-                                                        </>
-                                                    )}
-                                                    {activeTab === 'banners' && item.tag && <span className="text-[10px] border border-purple-500 text-purple-500 px-1 rounded">{item.tag}</span>}
-                                                </div>
+                                                <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">{item.title || '无标题'}</div>
                                                 {activeTab === 'videos' && <div className="text-xs text-gray-600">@{item.author}</div>}
                                             </div>
                                         </div>
                                     )}
                                 </td>
-
-                                {/* 信息列 */}
                                 <td className="p-4">
                                     {activeTab === 'codes' ? (
                                         <div className="text-xs text-gray-500">
@@ -424,43 +380,26 @@ export default function AdminDashboard() {
                                     ) : (
                                         <div className="flex flex-wrap gap-2 text-xs">
                                             {activeTab === 'banners' ? (
-                                                <div className="flex flex-col gap-1">
-                                                    <span>权重: {item.sort_order}</span>
-                                                    <span className="text-gray-600 truncate max-w-[150px]">{item.link_url}</span>
-                                                </div>
+                                                <div className="flex flex-col gap-1"><span>权重: {item.sort_order}</span><span className="text-gray-600 truncate max-w-[150px]">{item.link_url}</span></div>
                                             ) : (
                                                 <>
                                                     {item.category && <span className="bg-white/10 px-2 py-0.5 rounded">{item.category}</span>}
                                                     {activeTab === 'videos' && <span>{item.views} views</span>}
-                                                    {/* ✅ 文章：显示难度和关联视频状态 */}
-                                                    {activeTab === 'articles' && (
-                                                        <>
-                                                            <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">{item.difficulty}</span>
-                                                            {item.video_id && <span className="text-blue-400 flex items-center gap-1"><Video size={10}/> 关联视频</span>}
-                                                        </>
-                                                    )}
+                                                    {activeTab === 'articles' && <><span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">{item.difficulty}</span>{item.video_id && <span className="text-blue-400 flex items-center gap-1"><LinkIcon2 size={10}/> 已关联视频</span>}</>}
                                                 </>
                                             )}
                                         </div>
                                     )}
                                 </td>
-
                                 <td className="p-4 text-right">
-                                    {activeTab === 'banners' && (
-                                        <button onClick={() => toggleBannerActive(item)} className="text-gray-400 hover:text-white mr-3 p-2 hover:bg-white/10 rounded">
-                                            {item.is_active ? <Eye size={16}/> : <EyeOff size={16}/>}
-                                        </button>
-                                    )}
-                                    {activeTab !== 'codes' && (
-                                        <button onClick={() => openEdit(item)} className="text-blue-400 hover:text-blue-300 mr-3 p-2 hover:bg-blue-500/10 rounded"><Edit size={16}/></button>
-                                    )}
+                                    {activeTab === 'banners' && <button onClick={() => toggleBannerActive(item)} className="text-gray-400 hover:text-white mr-3 p-2 hover:bg-white/10 rounded">{item.is_active ? <Eye size={16}/> : <EyeOff size={16}/>}</button>}
+                                    {activeTab !== 'codes' && <button onClick={() => openEdit(item)} className="text-blue-400 hover:text-blue-300 mr-3 p-2 hover:bg-blue-500/10 rounded"><Edit size={16}/></button>}
                                     <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/10 rounded"><Trash2 size={16}/></button>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
-                {data.length === 0 && <div className="text-center py-10 text-gray-600">暂无数据</div>}
             </div>
         )}
 
@@ -474,7 +413,6 @@ export default function AdminDashboard() {
               <h2 className="text-xl font-bold mb-6">{editMode ? '编辑内容' : (activeTab === 'codes' ? '批量生成 VIP 卡密' : '发布新内容')}</h2>
 
               {activeTab === 'codes' ? (
-                  /* 卡密表单 */
                   <div className="space-y-6">
                       <div className="bg-purple-900/20 border border-purple-500/30 p-4 rounded-lg">
                           <h3 className="text-sm font-bold text-purple-400 mb-2">生成器配置</h3>
@@ -488,20 +426,81 @@ export default function AdminDashboard() {
                   </div>
               ) : (
                   <div className="space-y-4">
-                    
-                    {/* 通用：标题 */}
+                    {/* 📺 视频表单：B站抓取 */}
+                    {activeTab === 'videos' && (
+                        <div className="bg-gray-900 p-4 rounded mb-6 flex gap-2">
+                        <input className="flex-1 bg-black border border-gray-700 rounded px-3 py-2 text-sm" placeholder="粘贴 B 站链接 (BV号)..." value={bilibiliLink} onChange={e => setBilibiliLink(e.target.value)} />
+                        <button onClick={handleFetchInfo} className="bg-blue-600 px-4 rounded font-bold hover:bg-blue-500 text-sm">一键抓取</button>
+                        </div>
+                    )}
+
+                    {/* 📚 文章表单：视频搜索与关联 (核心修改) */}
+                    {activeTab === 'articles' && (
+                        <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4">
+                            <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
+                            
+                            {/* 1. 已关联状态 */}
+                            {formData.video_id ? (
+                                <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-12 h-8 bg-gray-800 rounded overflow-hidden">
+                                            {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover"/>}
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-bold text-white line-clamp-1">{formData.title}</div>
+                                            <div className="text-xs text-gray-500">ID: {formData.video_id} | 时长: {formData.duration}</div>
+                                        </div>
+                                    </div>
+                                    <button onClick={removeLinkedVideo} className="text-red-500 hover:text-red-400 p-2 text-xs font-bold">取消关联</button>
+                                </div>
+                            ) : (
+                                /* 2. 搜索框 */
+                                <div className="relative">
+                                    <div className="flex gap-2">
+                                        <input 
+                                            value={videoSearchQuery}
+                                            onChange={e => setVideoSearchQuery(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && searchVideos()}
+                                            className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none"
+                                            placeholder="输入关键词搜索视频库 (如: Midjourney)..."
+                                        />
+                                        <button onClick={searchVideos} className="bg-gray-800 hover:bg-gray-700 px-4 rounded text-gray-300">
+                                            {isSearchingVideo ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
+                                        </button>
+                                    </div>
+                                    {/* 搜索结果下拉 */}
+                                    {videoSearchResults.length > 0 && (
+                                        <div className="absolute top-full left-0 w-full bg-[#181818] border border-gray-700 rounded-lg mt-2 shadow-2xl z-50 max-h-48 overflow-y-auto">
+                                            {videoSearchResults.map(v => (
+                                                <div key={v.id} onClick={() => selectVideo(v)} className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer border-b border-white/5 last:border-0 transition-colors">
+                                                    <div className="w-10 h-6 bg-gray-800 rounded overflow-hidden flex-shrink-0">
+                                                        <img src={v.thumbnail_url} className="w-full h-full object-cover"/>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-sm text-white line-clamp-1">{v.title}</div>
+                                                        <div className="text-xs text-gray-500">时长: {v.duration}</div>
+                                                    </div>
+                                                    <button className="text-xs bg-purple-600 px-2 py-1 rounded text-white">选择</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            
+                            <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs text-gray-500">或者：</span>
+                                <input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="flex-1 bg-black/50 border border-gray-800 rounded px-2 py-1 text-xs text-blue-400 focus:border-blue-500 outline-none" placeholder="填写外部跳转链接 (http://...)"/>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 通用：标题 (如果关联了视频，会自动填，但允许修改) */}
                     <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
 
-                    {/* 📺 视频表单 (保持原样) */}
+                    {/* 📺 视频表单剩余字段 (保持原样) */}
                     {activeTab === 'videos' && (
                         <>
-                            {/* ...保留你之前的视频 B站抓取、分镜上传、价格等所有逻辑... */}
-                            {/* 这里为了节省篇幅展示，实际逻辑已包含在完整代码中，直接复用上面的 fetchBilibili 等 */}
-                            <div className="bg-gray-900 p-4 rounded mb-6 flex gap-2">
-                                <input className="flex-1 bg-black border border-gray-700 rounded px-3 py-2 text-sm" placeholder="粘贴 B 站链接 (BV号)..." value={bilibiliLink} onChange={e => setBilibiliLink(e.target.value)} />
-                                <button onClick={handleFetchInfo} className="bg-blue-600 px-4 rounded font-bold hover:bg-blue-500 text-sm">一键抓取</button>
-                            </div>
-                            {/* ... 其他视频字段 ... */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs text-gray-500 block mb-1">作者</label><input value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">分类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>写实短片</option><option>AI教程</option><option>创意广告</option></select></div>
@@ -511,74 +510,29 @@ export default function AdminDashboard() {
                                 <div><label className="text-xs text-gray-500 block mb-1">时长</label><input value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">工具标签</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                             </div>
-                            {/* 资源配置区 */}
                             <div className="bg-white/5 border border-white/10 p-4 rounded-lg space-y-3">
-                                <div>
-                                    <label className="text-xs text-gray-500 block mb-1">分镜链接 (支持上传)</label>
-                                    <div className="flex gap-2">
-                                        <input value={formData.storyboard_url} onChange={e=>setFormData({...formData, storyboard_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm text-green-500"/>
-                                        <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="bg-gray-700 px-4 rounded text-xs font-bold">{uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <FileUp size={14} />}</button>
-                                        <input type="file" ref={fileInputRef} hidden onChange={handleFileUpload} />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="flex items-center gap-2 bg-black border border-gray-700 rounded px-2"><DollarSign size={14} className="text-gray-500"/><input type="number" value={formData.price} onChange={e=>setFormData({...formData, price: parseInt(e.target.value) || 0})} className="w-full bg-transparent p-2 outline-none"/></div>
-                                    <div className="flex items-center gap-2 pt-2"><input type="checkbox" checked={formData.is_vip} onChange={e => setFormData({ ...formData, is_vip: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label className="text-sm font-bold text-yellow-500">会员专享</label></div>
-                                </div>
+                                <div><label className="text-xs text-gray-500 block mb-1">分镜链接 (支持上传)</label><div className="flex gap-2"><input value={formData.storyboard_url} onChange={e=>setFormData({...formData, storyboard_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm text-green-500"/><button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="bg-gray-700 px-4 rounded text-xs font-bold">{uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <FileUp size={14} />}</button><input type="file" ref={fileInputRef} hidden onChange={handleFileUpload} /></div></div>
+                                <div className="grid grid-cols-2 gap-4"><div className="flex items-center gap-2 bg-black border border-gray-700 rounded px-2"><DollarSign size={14} className="text-gray-500"/><input type="number" value={formData.price} onChange={e=>setFormData({...formData, price: parseInt(e.target.value) || 0})} className="w-full bg-transparent p-2 outline-none"/></div><div className="flex items-center gap-2 pt-2"><input type="checkbox" checked={formData.is_vip} onChange={e => setFormData({ ...formData, is_vip: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label className="text-sm font-bold text-yellow-500">会员专享</label></div></div>
                             </div>
-                            {/* 勾选区 */}
-                            <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700">
-                                <div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/><label className="text-sm text-white">近期热门</label></div>
-                                <div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_selected} onChange={e => setFormData({ ...formData, is_selected: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label className="text-sm text-yellow-500">编辑精选</label></div>
-                                <div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_award} onChange={e => setFormData({ ...formData, is_award: e.target.checked })} className="w-5 h-5 accent-purple-500"/><label className="text-sm text-purple-500">获奖作品</label></div>
-                            </div>
+                            <div><label className="text-xs text-gray-500 block mb-1">教程链接</label><input placeholder="https://..." value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                            <div><label className="text-xs text-gray-500 block mb-1">提示词</label><textarea rows={3} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono"></textarea></div>
+                            <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700"><div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/><label className="text-sm text-white">近期热门</label></div><div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_selected} onChange={e => setFormData({ ...formData, is_selected: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label className="text-sm text-yellow-500">编辑精选</label></div><div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_award} onChange={e => setFormData({ ...formData, is_award: e.target.checked })} className="w-5 h-5 accent-purple-500"/><label className="text-sm text-purple-500">获奖作品</label></div></div>
                         </>
                     )}
 
-                    {/* 📚 文章表单 (本次核心修改) */}
+                    {/* 📚 文章表单剩余字段 */}
                     {activeTab === 'articles' && (
                         <>
-                            {/* 1. 分类与难度 */}
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-xs text-gray-500 block mb-1">大类</label>
-                                    <select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
-                                        <option>新手入门</option><option>工具学习</option><option>高阶玩法</option><option>干货分享</option><option>商业访谈</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-500 block mb-1">难度</label>
-                                    <select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white">
-                                        <option>入门</option><option>中等</option><option>进阶</option>
-                                    </select>
-                                </div>
+                                <div><label className="text-xs text-gray-500 block mb-1">大类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>新手入门</option><option>工具学习</option><option>高阶玩法</option><option>干货分享</option><option>商业访谈</option></select></div>
+                                <div><label className="text-xs text-gray-500 block mb-1">难度</label><select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>入门</option><option>中等</option><option>进阶</option></select></div>
                             </div>
-
-                            {/* 2. 标签与时长 */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs text-gray-500 block mb-1">自定义标签</label><input value={formData.tags} onChange={e=>setFormData({...formData, tags: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2" placeholder="电商, ComfyUI"/></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">阅读时长</label><input value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2" placeholder="10 min"/></div>
                             </div>
-
-                            {/* 3. 关联内容 */}
-                            <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4">
-                                <h3 className="text-xs font-bold text-purple-400 uppercase">内容关联 (二选一)</h3>
-                                <div>
-                                    <label className="text-xs text-gray-500 block mb-1">关联站内视频 ID</label>
-                                    <div className="flex gap-2">
-                                        <input type="number" value={formData.video_id} onChange={e=>setFormData({...formData, video_id: e.target.value})} className="w-24 bg-black border border-gray-700 rounded p-2 font-mono text-center" placeholder="ID"/>
-                                        <div className="flex-1 text-xs text-gray-500 flex items-center">👈 填入视频库中的 ID，详情页自动变播放器</div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-500 block mb-1">或者：外部跳转链接</label>
-                                    <input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-blue-400" placeholder="https://..."/>
-                                </div>
-                            </div>
-
-                            {/* 4. 封面与正文 */}
                             <div>
-                                <label className="text-xs text-gray-500 block mb-1">封面图 URL</label>
+                                <label className="text-xs text-gray-500 block mb-1">封面图 URL (支持上传)</label>
                                 <div className="flex gap-2">
                                     <input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/>
                                     <button onClick={() => imageInputRef.current?.click()} disabled={uploadingFile} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button>
@@ -590,9 +544,8 @@ export default function AdminDashboard() {
                         </>
                     )}
 
-                    {/* Banner & 需求 (略，保持不变) */}
+                    {/* Banner & 需求 (保持原样) */}
                     {activeTab === 'banners' && (
-                        /* ... 原有的 Banner 表单 ... */
                         <>
                             <div><label className="text-xs text-gray-500 block mb-1">图片 URL</label><div className="flex gap-2"><input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/><button onClick={() => imageInputRef.current?.click()} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button><input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} /></div></div>
                             <div><label className="text-xs text-gray-500 block mb-1">跳转链接</label><input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
