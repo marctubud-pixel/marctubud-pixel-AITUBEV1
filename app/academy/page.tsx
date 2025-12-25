@@ -35,10 +35,33 @@ export default function Academy() {
     setLoading(false);
   }
 
+  // 🏷️ 智能标签解析函数 (核心修复)
+  const parseTags = (tags: any) => {
+    if (!tags) return [];
+    
+    // 情况1: 已经是数组
+    if (Array.isArray(tags)) return tags;
+    
+    // 情况2: 字符串处理
+    if (typeof tags === 'string') {
+      try {
+        // 尝试解析 JSON 字符串 (如 '["A", "B"]')
+        const parsed = JSON.parse(tags);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {
+        // 解析失败，说明是普通字符串
+      }
+      // 清洗数据：去除方括号、引号，按逗号分割
+      return tags.replace(/[\[\]"]/g, '').split(/[,，]/).map(t => t.trim()).filter(Boolean);
+    }
+    return [];
+  };
+
   // 前端筛选
   const filteredArticles = articles.filter(item => {
+    const itemTags = parseTags(item.tags).join(' '); // 用于搜索匹配
     const matchCat = activeCategory === '全部' || item.category === activeCategory;
-    const matchSearch = !searchQuery || item.title.toLowerCase().includes(searchQuery.toLowerCase()) || item.tags?.includes(searchQuery);
+    const matchSearch = !searchQuery || item.title.toLowerCase().includes(searchQuery.toLowerCase()) || itemTags.includes(searchQuery);
     return matchCat && matchSearch;
   });
 
@@ -87,7 +110,7 @@ export default function Academy() {
                     >
                         {cat.icon}
                         {cat.label}
-                        {/* 数量角标 (可选) */}
+                        {/* 数量角标 */}
                         {cat.id === '全部' && <span className="ml-auto text-xs opacity-50">{articles.length}</span>}
                     </button>
                 ))}
@@ -146,14 +169,15 @@ export default function Academy() {
                                 
                                 {/* 底部信息 */}
                                 <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-auto">
-                                    <div className="flex gap-1 overflow-hidden">
-                                        {item.tags && item.tags.split(',').slice(0,1).map((tag:string) => (
-                                            <span key={tag} className="text-[10px] bg-white/5 text-gray-400 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                    <div className="flex gap-1 overflow-hidden flex-wrap h-6">
+                                        {/* ✅ 使用 parseTags 函数，并显示前3个标签 */}
+                                        {parseTags(item.tags).slice(0,3).map((tag:string, i:number) => (
+                                            <span key={i} className="text-[10px] bg-white/5 text-gray-400 px-1.5 py-0.5 rounded flex items-center gap-1 whitespace-nowrap">
                                                 <Tag size={10}/> {tag}
                                             </span>
                                         ))}
                                     </div>
-                                    <div className="flex items-center gap-1 text-[10px] text-gray-500 font-mono">
+                                    <div className="flex items-center gap-1 text-[10px] text-gray-500 font-mono flex-shrink-0">
                                         <Clock size={10}/> {item.duration || '5m'}
                                     </div>
                                 </div>
