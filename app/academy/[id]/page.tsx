@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 // ⚠️ 如果你的 supabase 客户端文件路径不一样，请修改这里，比如 '../lib/supabaseClient'
-import { supabase } from '../../lib/supabaseClient'; 
+import { supabase } from '@/lib/supabaseClient'; 
 import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, Tag, ExternalLink, Lock } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
