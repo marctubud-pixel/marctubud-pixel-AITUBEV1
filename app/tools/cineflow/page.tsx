@@ -31,10 +31,6 @@ export default function CineFlowDashboard() {
   const fetchProjects = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/login')
-        return
-      }
 
       const { data, error } = await supabase
         .from('projects')
