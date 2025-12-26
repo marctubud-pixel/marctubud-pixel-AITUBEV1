@@ -1,0 +1,35 @@
+{
+  "node": {
+    "7fcf3a16334304d1e04a6c1130bcb6eee817055d48": {
+      "workers": {
+        "app/tools/cineflow/storyboard/page": {
+          "moduleId": "[project]/.next-internal/server/app/tools/cineflow/storyboard/page/actions.js { ACTIONS_MODULE0 => \"[project]/app/actions/director.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/app/actions/generate.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "analyzeScript",
+          "filename": "app/actions/director.ts"
+        }
+      },
+      "layer": {
+        "app/tools/cineflow/storyboard/page": "action-browser"
+      },
+      "exportedName": "analyzeScript",
+      "filename": "app/actions/director.ts"
+    },
+    "7864ff3c51eedcf1e037d979362ec0d6ac5e7fa9c1": {
+      "workers": {
+        "app/tools/cineflow/storyboard/page": {
+          "moduleId": "[project]/.next-internal/server/app/tools/cineflow/storyboard/page/actions.js { ACTIONS_MODULE0 => \"[project]/app/actions/director.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/app/actions/generate.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "generateShotImage",
+          "filename": "app/actions/generate.ts"
+        }
+      },
+      "layer": {
+        "app/tools/cineflow/storyboard/page": "action-browser"
+      },
+      "exportedName": "generateShotImage",
+      "filename": "app/actions/generate.ts"
+    }
+  },
+  "edge": {}
+}

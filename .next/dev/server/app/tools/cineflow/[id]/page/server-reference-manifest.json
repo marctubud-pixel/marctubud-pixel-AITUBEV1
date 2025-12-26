@@ -1,0 +1,20 @@
+{
+  "node": {
+    "7064ff3c51eedcf1e037d979362ec0d6ac5e7fa9c1": {
+      "workers": {
+        "app/tools/cineflow/[id]/page": {
+          "moduleId": "[project]/.next-internal/server/app/tools/cineflow/[id]/page/actions.js { ACTIONS_MODULE0 => \"[project]/app/actions/generate.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "generateShotImage",
+          "filename": "app/actions/generate.ts"
+        }
+      },
+      "layer": {
+        "app/tools/cineflow/[id]/page": "action-browser"
+      },
+      "exportedName": "generateShotImage",
+      "filename": "app/actions/generate.ts"
+    }
+  },
+  "edge": {}
+}
