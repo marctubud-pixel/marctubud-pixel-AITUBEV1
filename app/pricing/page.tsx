@@ -41,9 +41,10 @@ export default function PricingPage() {
         toast.error(payRes.message || '支付验证失败')
       }
 
-    } catch (error) {
-      toast.error('系统繁忙，请稍后再试')
-    } finally {
+    } catch (error: any) {
+      console.error(error); // 在浏览器控制台打印详细错误
+      toast.error(error.message || '出错了，请检查控制台'); 
+    }finally {
       setLoadingId(null)
     }
   }
