@@ -12,10 +12,9 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        // 注意下面这里：我加了 ": any" 来修复报错
-        setAll(cookiesToSet: any) {
+        setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value, options }: any) =>
+            cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             )
           } catch {
