@@ -132,7 +132,7 @@ export default function ProjectEditor() {
     }
   }
 
-  // 5. 真实 AI 生成 (调用 Google Gemini)
+  // 5. 真实 AI 生成 (调试模式：显示具体错误)
   const handleGenerate = async (shot: Shot) => {
     if (!shot.image_prompt) {
       toast.error('请先填写提示词 (Prompt)')
@@ -158,10 +158,14 @@ export default function ProjectEditor() {
             } : s));
             toast.success('画面生成完成！');
         } else {
-            toast.error('生成失败: ' + res.message);
+            // ❌ 这里是服务器明确返回的错误 (比如 API Key 无效)
+            console.error("Server Error:", res.message);
+            toast.error('服务器报错: ' + res.message);
         }
-    } catch (error) {
-        toast.error('请求发生错误');
+    } catch (error: any) {
+        // ❌ 这里是网络或系统级崩溃 (比如 500 错误)
+        console.error("Client Catch:", error);
+        toast.error('请求崩溃: ' + (error.message || JSON.stringify(error)));
     } finally {
         setGeneratingId(null);
     }
