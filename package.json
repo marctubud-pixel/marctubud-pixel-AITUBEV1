@@ -23,6 +23,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "next": "14.2.0",             <-- 注意这里加了逗号
+    "sonner": "^1.5.0",           <-- 新加的
+    "lucide-react": "^0.400.0",   <-- 新加的
+    "@supabase/ssr": "^0.4.0"     <-- 新加的
     "eslint": "^9",
     "eslint-config-next": "16.0.10",
     "tailwindcss": "^4",
