@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation' // ✅ 必须引入 useParams
+import { useRouter, useParams } from 'next/navigation' 
 import { createClient } from '@/utils/supabase/client'
+import { generateShotImage } from '@/app/actions/generate' // ✅ 引入真实 AI 生成服务
 import { ArrowLeft, Plus, Image as ImageIcon, Wand2, Trash2, Video, Loader2 } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 import Link from 'next/link'
@@ -24,9 +25,8 @@ type Project = {
 }
 
 export default function ProjectEditor() {
-  // ✅ 修复点1：使用 useParams 钩子安全获取 ID (解决"项目未加载"报错)
+  // ✅ 使用 useParams 安全获取 ID
   const params = useParams()
-  // 确保 id 是字符串
   const projectId = Array.isArray(params?.id) ? params?.id[0] : params?.id
 
   const router = useRouter()
@@ -44,19 +44,17 @@ export default function ProjectEditor() {
     if (projectId) {
       fetchProjectData()
     }
-  }, [projectId]) // 当 ID 准备好时才执行
+  }, [projectId])
 
   const fetchProjectData = async () => {
     if (!projectId) return
 
     try {
-      console.log('正在加载项目 ID:', projectId) 
-
       // 获取项目信息
       const { data: pData, error: pError } = await supabase
         .from('projects')
         .select('*')
-        .eq('id', projectId) // ✅ 使用钩子获取的 ID
+        .eq('id', projectId)
         .single()
       
       if (pError) throw pError
@@ -89,7 +87,7 @@ export default function ProjectEditor() {
 
     try {
       // =========================================================
-      // ✅ 已自动填充你的 User UUID
+      // ✅ 自动填充你的 User UUID
       // =========================================================
       const userId = 'cec386b5-e80a-4105-aa80-d8d5b8b0a9bf'; 
       // =========================================================
@@ -98,8 +96,8 @@ export default function ProjectEditor() {
       const { data, error } = await supabase
         .from('shots')
         .insert({
-          project_id: projectId, // ✅ 使用正确的 ID
-          user_id: userId,       // ✅ 使用自动填充的 ID
+          project_id: projectId,
+          user_id: userId,
           sort_order: newOrder,
           description: '',
           shot_type: '中景 (Medium Shot)'
@@ -134,29 +132,39 @@ export default function ProjectEditor() {
     }
   }
 
-  // 5. 模拟 AI 生成
+  // 5. 真实 AI 生成 (调用 Google Gemini)
   const handleGenerate = async (shot: Shot) => {
     if (!shot.image_prompt) {
       toast.error('请先填写提示词 (Prompt)')
       return
     }
     
+    // 如果没有项目ID，无法整理文件夹
+    if (!projectId) return;
+
     setGeneratingId(shot.id)
-    toast.info('正在请求 AI 生成...')
+    toast.info('正在请求 AI 绘图 (Gemini)...')
 
-    // 模拟等待
-    await new Promise(r => setTimeout(r, 2000))
+    try {
+        // 调用 Server Action (后端生成 + 上传)
+        const res = await generateShotImage(shot.id, shot.image_prompt, projectId);
 
-    const mockImage = `https://picsum.photos/seed/${shot.id}/800/450`
-    
-    await supabase.from('shots').update({ 
-      image_url: mockImage,
-      status: 'completed'
-    }).eq('id', shot.id)
-
-    setShots(prev => prev.map(s => s.id === shot.id ? { ...s, image_url: mockImage } : s))
-    setGeneratingId(null)
-    toast.success('画面生成完成！')
+        if (res.success && res.url) {
+            // 更新本地视图
+            setShots(prev => prev.map(s => s.id === shot.id ? { 
+                ...s, 
+                image_url: res.url,
+                status: 'completed' 
+            } : s));
+            toast.success('画面生成完成！');
+        } else {
+            toast.error('生成失败: ' + res.message);
+        }
+    } catch (error) {
+        toast.error('请求发生错误');
+    } finally {
+        setGeneratingId(null);
+    }
   }
 
   if (loading) return (
