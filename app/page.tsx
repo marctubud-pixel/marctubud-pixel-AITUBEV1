@@ -228,14 +228,29 @@ export default function Home() {
             </button>
           </Link>
           
-          {user ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-300 hidden sm:block font-medium">{userProfile?.username || user.email?.split('@')[0]}</span>
+{user ? (
+            <div className="flex items-center gap-4">
+              {/* 🟢 新增：积分充值按钮 (金色高亮) */}
+              <Link href="/pricing">
+                <button className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-yellow-600/80 to-amber-600/80 hover:from-yellow-500 hover:to-amber-500 text-white px-4 py-1.5 rounded-full text-xs font-bold transition-all border border-yellow-500/30 shadow-lg shadow-yellow-900/20">
+                  <Sparkles size={14} className="text-yellow-200" /> 
+                  <span>积分充值</span>
+                </button>
+              </Link>
+
+              {/* 原有的用户名显示 */}
+              <span className="text-sm text-gray-300 hidden sm:block font-medium">
+                {userProfile?.username || user.email?.split('@')[0]}
+              </span>
+
+              {/* 原有的头像与个人中心链接 */}
               <Link href="/profile">
                 {userProfile?.avatar_url ? (
                   <img src={userProfile.avatar_url} className="w-9 h-9 rounded-full object-cover border border-purple-500/50 hover:border-purple-500 transition-colors shadow-lg"/>
                 ) : (
-                  <div className="w-9 h-9 bg-purple-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-purple-700 transition-transform hover:scale-105" title="个人中心"><span className="text-xs font-bold">{user.email?.[0].toUpperCase()}</span></div>
+                  <div className="w-9 h-9 bg-purple-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-purple-700 transition-transform hover:scale-105" title="个人中心">
+                    <span className="text-xs font-bold">{user.email?.[0].toUpperCase()}</span>
+                  </div>
                 )}
               </Link>
             </div>
