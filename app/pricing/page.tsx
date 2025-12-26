@@ -23,6 +23,7 @@ export default function PricingPage() {
       const res = await createOrder(plan.id)
       if (!res.success) {
         toast.error('订单创建失败')
+        console.error(res.message)
         return
       }
 
