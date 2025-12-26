@@ -1,9 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation' // ✅ 必须引入 useParams
 import { createClient } from '@/utils/supabase/client'
-import { ArrowLeft, Plus, Image as ImageIcon, Save, Wand2, Trash2, Video, Loader2 } from 'lucide-react'
+import { ArrowLeft, Plus, Image as ImageIcon, Wand2, Trash2, Video, Loader2 } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 import Link from 'next/link'
 
@@ -23,7 +23,12 @@ type Project = {
   description: string
 }
 
-export default function ProjectEditor({ params }: { params: { id: string } }) {
+export default function ProjectEditor() {
+  // ✅ 修复点1：使用 useParams 钩子安全获取 ID (解决"项目未加载"报错)
+  const params = useParams()
+  // 确保 id 是字符串
+  const projectId = Array.isArray(params?.id) ? params?.id[0] : params?.id
+
   const router = useRouter()
   const supabase = createClient()
   
@@ -36,16 +41,22 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
 
   // 1. 初始化加载
   useEffect(() => {
-    fetchProjectData()
-  }, [])
+    if (projectId) {
+      fetchProjectData()
+    }
+  }, [projectId]) // 当 ID 准备好时才执行
 
   const fetchProjectData = async () => {
+    if (!projectId) return
+
     try {
+      console.log('正在加载项目 ID:', projectId) 
+
       // 获取项目信息
       const { data: pData, error: pError } = await supabase
         .from('projects')
         .select('*')
-        .eq('id', params.id)
+        .eq('id', projectId) // ✅ 使用钩子获取的 ID
         .single()
       
       if (pError) throw pError
@@ -55,7 +66,7 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
       const { data: sData, error: sError } = await supabase
         .from('shots')
         .select('*')
-        .eq('project_id', params.id)
+        .eq('project_id', projectId) 
         .order('sort_order', { ascending: true })
       
       if (sError) throw sError
@@ -63,40 +74,32 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
 
     } catch (error) {
       console.error(error)
-      toast.error('加载项目失败，请检查控制台')
+      toast.error('加载项目失败，ID可能无效')
     } finally {
       setLoading(false)
     }
   }
 
-  // 2. 添加新镜头 (已修复：硬编码 User ID)
+  // 2. 添加新镜头
   const handleAddShot = async () => {
-    if (!project) {
+    if (!project || !projectId) {
         toast.error('项目未加载完成，请稍后再试');
         return;
     }
 
     try {
       // =========================================================
-      // 🛑 核心修改：这里也要填入你的 User ID
+      // ✅ 已自动填充你的 User UUID
       // =========================================================
-      
-      // 👇👇👇 请务必把这里换成你真实的 User UUID (和刚才那个文件填的一样) 👇👇👇
       const userId = 'cec386b5-e80a-4105-aa80-d8d5b8b0a9bf'; 
-      
       // =========================================================
       
-      if (userId.includes('请在这里')) {
-         toast.error('请先在代码里填入 UUID！');
-         return;
-      }
-
       const newOrder = shots.length + 1
       const { data, error } = await supabase
         .from('shots')
         .insert({
-          project_id: project.id,
-          user_id: userId, // <--- 使用强制 ID
+          project_id: projectId, // ✅ 使用正确的 ID
+          user_id: userId,       // ✅ 使用自动填充的 ID
           sort_order: newOrder,
           description: '',
           shot_type: '中景 (Medium Shot)'
