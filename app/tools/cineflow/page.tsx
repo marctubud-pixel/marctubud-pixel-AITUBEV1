@@ -30,7 +30,11 @@ export default function CineFlowDashboard() {
 
   const fetchProjects = async () => {
     try {
+      // 尝试获取用户，但就算获取失败也不要跳转
       const { data: { user } } = await supabase.auth.getUser()
+      
+      // 🛑 之前的强制跳转逻辑已移除，防止死循环
+      // if (!user) router.push('/login') 
 
       const { data, error } = await supabase
         .from('projects')
@@ -41,28 +45,36 @@ export default function CineFlowDashboard() {
       setProjects(data || [])
     } catch (error) {
       console.error('加载失败:', error)
-      toast.error('无法加载项目列表')
+      // toast.error('无法加载项目列表') // 可选：屏蔽报错以免太吵
     } finally {
       setLoading(false)
     }
   }
 
-  // 2. 新建项目
+  // 2. 新建项目 (核心修改：硬编码 ID)
   const handleCreateProject = async () => {
     try {
       setIsCreating(true)
-      const { data: { user } } = await supabase.auth.getUser()
       
-      if (!user) {
-        toast.error('请先登录')
-        return
+      // =========================================================
+      // 🛑 绕过 Auth 检查，使用硬编码 ID
+      // =========================================================
+      
+      // 👇👇👇 【重要】请把下面的字符串换成你的真实 User UUID 👇👇👇
+      const userId = 'cec386b5-e80a-4105-aa80-d8d5b8b0a9bf'; 
+      
+      // =========================================================
+
+      if (userId.includes('请在这里')) {
+        toast.error('请先在代码里填入你的 User UUID！');
+        return;
       }
 
       // 创建一个默认项目
       const { data, error } = await supabase
         .from('projects')
         .insert({
-          user_id: user.id,
+          user_id: userId, // <--- 使用强制 ID
           title: '未命名分镜项目',
           description: '这是一个新的创意...',
           status: 'draft'
@@ -73,7 +85,7 @@ export default function CineFlowDashboard() {
       if (error) throw error
 
       toast.success('项目创建成功！')
-      // 跳转到编辑器页面 (下一步我们会做这个页面)
+      // 跳转到编辑器页面
       router.push(`/tools/cineflow/${data.id}`)
 
     } catch (error: any) {
@@ -86,7 +98,7 @@ export default function CineFlowDashboard() {
 
   // 3. 删除项目
   const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.preventDefault() // 防止触发卡片点击跳转
+    e.preventDefault() 
     if (!confirm('确定要删除这个项目吗？删除后无法恢复。')) return
 
     try {
@@ -114,14 +126,21 @@ export default function CineFlowDashboard() {
             <p className="text-gray-400">管理你的 AI 分镜项目</p>
           </div>
           
-          <button
-            onClick={handleCreateProject}
-            disabled={isCreating}
-            className="bg-white text-black hover:bg-gray-200 px-6 py-2.5 rounded-full font-bold flex items-center gap-2 transition-all disabled:opacity-50"
-          >
-            {isCreating ? <Loader2 className="animate-spin w-4 h-4"/> : <Plus className="w-4 h-4"/>}
-            新建项目
-          </button>
+          <div className="flex gap-4 items-center">
+            {/* 新增：手动登录入口 (防止无路可退) */}
+            <Link href="/login" className="text-gray-500 hover:text-white text-sm transition-colors">
+               登录 / 切换账号
+            </Link>
+
+            <button
+              onClick={handleCreateProject}
+              disabled={isCreating}
+              className="bg-white text-black hover:bg-gray-200 px-6 py-2.5 rounded-full font-bold flex items-center gap-2 transition-all disabled:opacity-50"
+            >
+              {isCreating ? <Loader2 className="animate-spin w-4 h-4"/> : <Plus className="w-4 h-4"/>}
+              新建项目
+            </button>
+          </div>
         </div>
 
         {/* 列表区域 */}
