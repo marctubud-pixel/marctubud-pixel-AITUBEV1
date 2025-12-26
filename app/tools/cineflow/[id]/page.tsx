@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation' // 注意：虽然引入了 router，但我们尽量不用它做强制跳转
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { ArrowLeft, Plus, Image as ImageIcon, Save, Wand2, Trash2, Video, Loader2 } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
@@ -31,7 +31,7 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
   const [shots, setShots] = useState<Shot[]>([])
   const [loading, setLoading] = useState(true)
   
-  // 临时状态：正在编辑的镜头ID
+  // 临时状态
   const [generatingId, setGeneratingId] = useState<string | null>(null)
 
   // 1. 初始化加载
@@ -63,33 +63,40 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
 
     } catch (error) {
       console.error(error)
-      toast.error('加载失败，项目可能不存在')
-      // 🛑 我把这里注释掉了，防止死循环跳转
-      // router.push('/tools/cineflow') 
+      toast.error('加载项目失败，请检查控制台')
     } finally {
       setLoading(false)
     }
   }
 
-  // 2. 添加新镜头
+  // 2. 添加新镜头 (已修复：硬编码 User ID)
   const handleAddShot = async () => {
-    if (!project) return
+    if (!project) {
+        toast.error('项目未加载完成，请稍后再试');
+        return;
+    }
 
     try {
-      // 获取当前用户ID (如果获取失败，用之前那个硬编码的 ID 兜底，防止报错)
-      let userId = (await supabase.auth.getUser()).data.user?.id
+      // =========================================================
+      // 🛑 核心修改：这里也要填入你的 User ID
+      // =========================================================
       
-      // ⚠️ 如果没获取到 ID，为了演示，我们可以先不管，让 Supabase 报错或者用一个占位符
-      // 但因为我们之前关了 RLS，理论上写操作可能会通过，或者需要你再次硬编码 ID
-      // 这里我们先尝试正常流程
+      // 👇👇👇 请务必把这里换成你真实的 User UUID (和刚才那个文件填的一样) 👇👇👇
+      const userId = 'cec386b5-e80a-4105-aa80-d8d5b8b0a9bf'; 
       
+      // =========================================================
+      
+      if (userId.includes('请在这里')) {
+         toast.error('请先在代码里填入 UUID！');
+         return;
+      }
+
       const newOrder = shots.length + 1
       const { data, error } = await supabase
         .from('shots')
         .insert({
           project_id: project.id,
-          // 如果 userId 为空，这一步可能会报错，请留意 Toast 提示
-          user_id: userId, 
+          user_id: userId, // <--- 使用强制 ID
           sort_order: newOrder,
           description: '',
           shot_type: '中景 (Medium Shot)'
@@ -106,12 +113,9 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
     }
   }
 
-  // 3. 更新镜头内容 (自动保存)
+  // 3. 更新镜头内容
   const handleUpdateShot = async (id: string, field: string, value: string) => {
-    // 先更新本地状态让界面流畅
     setShots(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s))
-
-    // 发送请求
     await supabase.from('shots').update({ [field]: value }).eq('id', id)
   }
 
@@ -127,7 +131,7 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
     }
   }
 
-  // 5. 模拟 AI 生成 (下一步我们接真 AI)
+  // 5. 模拟 AI 生成
   const handleGenerate = async (shot: Shot) => {
     if (!shot.image_prompt) {
       toast.error('请先填写提示词 (Prompt)')
@@ -137,10 +141,9 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
     setGeneratingId(shot.id)
     toast.info('正在请求 AI 生成...')
 
-    // --- 模拟延迟 ---
+    // 模拟等待
     await new Promise(r => setTimeout(r, 2000))
 
-    // --- 模拟生成成功 (写入假图) ---
     const mockImage = `https://picsum.photos/seed/${shot.id}/800/450`
     
     await supabase.from('shots').update({ 
@@ -170,12 +173,11 @@ export default function ProjectEditor({ params }: { params: { id: string } }) {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex flex-col">
-            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">PROJECT NAME</span>
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">PROJECT</span>
             <input 
               value={project?.title || ''} 
               onChange={(e) => {
                 if(project) setProject({...project, title: e.target.value})
-                // 实际应该调用 update
               }}
               className="bg-transparent font-bold text-lg focus:outline-none text-white w-64 placeholder-gray-600"
               placeholder="未命名项目..."
