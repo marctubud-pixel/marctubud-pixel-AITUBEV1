@@ -1,55 +1,51 @@
-🚀 AI.Tube 产品演进路线图 (2026 Roadmap) v1.3
-📅 最后更新：2025-12-26 🎯 当前状态：Phase 2 收尾 (支付接入) -> 准备启动 Phase 3 (AI 工具)
+# AI.Tube Project Roadmap
 
-✅ Phase 1: 核心架构与基建 (已完结)
-状态：100% 完成
+> **Project Vision**: 构建下一代 AI 原生视频平台。
+> **Current Focus**: 核心生产力工具 (CineFlow) 的 MVP 开发。
 
-[x] 全栈基建：Next.js 15 + Supabase + Tailwind v4 + Markdown 渲染
+---
 
-[x] 后台管理：内容发布 (CMS)、视频抓取、分镜管理
+## 🏗️ Module 1: CineFlow (AI Content Engine)
+*定位：AI.Tube 的内容生产“车间”，负责将剧本转化为可视化分镜/视频。*
 
-[x] 前台体验：首页、视频详情、学院文章详情 (Markdown + B站适配)
+### ✅ Phase 1.1: 基础设施与核心链路 (Completed)
+- [x] **本地开发环境**: Next.js + Supabase + Google SDK 配置完成。
+- [x] **网络穿透**: 解决了 Node.js 后端连接 Google/Pollinations 的代理墙问题 (Undici/Proxy)。
+- [x] **AI 导演 (The Brain)**: 接入 Gemini 2.0 Flash，实现剧本 -> 结构化分镜数据的推理。
+- [x] **AI 画师 (The Painter)**: 接入 Pollinations API，实现双模式生图：
+    - **Draft Mode**: 使用 Turbo 模型实现秒级线稿生成（用于快速验证）。
+    - **Render Mode**: 使用 Flux 模型实现电影级画质渲染。
 
-✅ Phase 2: 商业化闭环 (90% 完成)
-状态：核心逻辑已跑通，仅差现金支付接口
+### 🚧 Phase 1.2: 资产一致性与编辑器 (In Progress - Next Step)
+- [ ] **角色库 (Character Library)**:
+    - 建立角色档案（Prompt + Seed），确保生成的画面中主角长相一致。
+- [ ] **场景库 (Scene Library)**:
+    - 统一场景风格描述，防止同一场戏背景跳变。
+- [ ] **可视化编辑器 (Canvas)**:
+    - 实现分镜图的拖拽排序、单图重绘 (Inpainting)、文本微调。
 
-1. 积分与激励体系 (已上线)
-[x] 数据库建设：用户积分表、变动日志表 (point_logs)
+---
 
-[x] 获取积分：每日签到、注册奖励等逻辑
+## 📺 Module 2: AI.Tube Platform (The Stage)
+*定位：视频内容的分发与播放平台（类 Bilibili/YouTube 架构）。*
 
-[x] 消耗积分：资源下载扣分逻辑
+### 📋 Phase 2.1: 基础站点搭建 (Planned)
+- [ ] **视频播放器**: 支持高码率流媒体播放。
+- [ ] **国内低成本加速**: 解决大陆地区访问 B 站源或自建源的流畅度问题 (基于之前的讨论)。
+- [ ] **用户系统**: 打通 CineFlow 与 AI.Tube 的账户体系。
 
-[x] 前端展示：个人中心积分卡片、签到 UI
+### 🔌 Phase 2.2: 产销一体化 (Planned)
+- [ ] **一键发布**: 将 CineFlow 生成好的分镜视频/成片，直接发布到 AI.Tube 个人频道。
+- [ ] **创作者中心**: 管理 AI 生成的素材库和草稿箱。
 
-2. 会员与权益系统 (已上线)
-[x] VIP 兑换：[NEW] 支持使用积分兑换 VIP 会员天数
+---
 
-[x] 权限控制：VIP 专属内容/文章的访问门禁 (Gatekeeper)
+## 🛠️ Infrastructure (The Foundation)
+- [x] **Backend**: Supabase (PostgreSQL + Storage + Auth).
+- [x] **AI Gateway**: Google Gemini API (Logic) + Pollinations/Replicate (Media).
+- [ ] **Deployment**: Vercel (Frontend) + Node.js Proxy Service (Backend jobs).
 
-3. 现金支付 (待开发)
-目标：解决“用户如何充值积分”或“直接购买 VIP”的问题。
+---
 
-[ ] 支付网关接入：Stripe (海外) / 支付宝 or 微信 (国内第三方接口)
-
-[ ] 收银台页面：商品选择 (月卡/积分包) -> 支付回调处理 (Webhook)
-
-🛠️ Phase 3: AI 工具箱深度开发 (核心差异化)
-目标：从“内容站”转型为“SaaS 工具站”，这是提升用户粘性和客单价的关键。
-
-[ ] CineFlow 分镜生成器 (MVP)
-
-[ ] 接入 LLM (DeepSeek/GPT) 优化提示词
-
-[ ] 接入绘画模型 (MJ/SD/Flux) 生成分镜图
-
-[ ] 导出功能 (PDF/长图)
-
-[ ] Prompt 优化器
-
-[ ] 中文一键转英文长 Prompt
-
-📢 Phase 4: 运营与性能优化
-[ ] SEO 增强 (SSR 改造、动态 Metadata)
-
-[ ] 性能监控 (Vercel Analytics)
+## 📝 Change Log
+- **2025-12-27**: 完成 CineFlow 的 MVP 核心功能（智能分镜+双模式生图），解决了关键的 API 代理网络问题。
