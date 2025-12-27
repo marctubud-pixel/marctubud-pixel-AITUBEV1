@@ -9,15 +9,15 @@ export default function Academy() {
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 🎯 分类体系 (已添加“行业资讯”)
+  // 🎯 分类体系 (保持与详情页一致)
   const categories = [
       { id: '全部', label: '全部内容', icon: <Layers size={18}/> },
       { id: '新手入门', label: '新手入门', icon: <GraduationCap size={18}/> },
       { id: '工具学习', label: '工具学习', icon: <Zap size={18}/> },
       { id: '高阶玩法', label: '高阶玩法', icon: <PlayCircle size={18}/> },
       { id: '干货分享', label: '干货分享', icon: <BookOpen size={18}/> },
-      { id: '行业资讯', label: '行业资讯', icon: <Newspaper size={18}/> }, // 🆕 新增
-      { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> }, 
+      { id: '行业资讯', label: '行业资讯', icon: <Newspaper size={18}/> },
+      { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> },
   ];
   const [activeCategory, setActiveCategory] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,7 +36,7 @@ export default function Academy() {
     setLoading(false);
   }
 
-  // 🏷️ 智能标签解析函数 (保留修复：彻底清洗 [""] \ 等符号)
+  // 🏷️ 智能标签解析函数
   const parseTags = (tags: any) => {
     if (!tags) return [];
     let parsed: any[] = [];
@@ -98,16 +98,19 @@ export default function Academy() {
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto p-6 flex flex-col md:flex-row gap-8">
+      <main className="max-w-7xl mx-auto p-6 md:p-8 flex flex-col md:flex-row gap-8">
         
-        {/* 👈 左侧导航栏 (Sidebar) */}
+        {/* 👈 左侧导航栏 (Sidebar) - 样式已同步为详情页风格 */}
         <aside className="w-full md:w-64 flex-shrink-0">
             <div className="sticky top-24 space-y-1">
-                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 px-4">知识分类</h3>
+                {/* 标题样式升级：大号、加粗、无 Tracking */}
+                <h3 className="text-xl font-bold mb-6 px-4 text-white">AI 学院</h3>
+                
                 {categories.map(cat => (
                     <button 
                         key={cat.id}
                         onClick={() => setActiveCategory(cat.id)}
+                        // 按钮样式升级：增加 Padding (px-4 py-3)，统一圆角 (rounded-xl)，选中态改为白底黑字+阴影
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                             activeCategory === cat.id 
                             ? 'bg-white text-black shadow-lg shadow-white/10' 
@@ -116,6 +119,7 @@ export default function Academy() {
                     >
                         {cat.icon}
                         {cat.label}
+                        {/* 计数器 */}
                         {cat.id === '全部' && <span className="ml-auto text-xs opacity-50">{articles.length}</span>}
                     </button>
                 ))}
@@ -148,8 +152,7 @@ export default function Academy() {
                                     </div>
                                 )}
                                 
-                                {/* ✅ 优化：访谈/资讯/难度角标逻辑 */}
-                                {/* 规则：如果是“行业资讯”或“商业访谈”，直接显示分类名（不显示难度）；其他分类才显示难度 */}
+                                {/* ✅ 优化：访谈/资讯/难度角标逻辑 (与详情页逻辑保持一致) */}
                                 {(['商业访谈', '行业资讯'].includes(item.category) || item.difficulty) && (
                                     <div className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded backdrop-blur-md shadow-lg ${
                                         item.category === '商业访谈' ? 'bg-blue-600/90 text-white' : 
