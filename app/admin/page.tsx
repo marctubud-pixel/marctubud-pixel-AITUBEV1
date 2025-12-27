@@ -204,20 +204,31 @@ export default function AdminDashboard() {
     } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
   };
 
-  // 🖼️ 图片上传
+  // 🖼️ 图片上传 (💡 已修复：自动区分 Articles 与 Banners 桶)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
     const fileName = `img-${Date.now()}-${file.name}`; 
+    
+    // 💡 关键修复：根据当前 Tab 决定上传到哪里
+    const bucketName = activeTab === 'articles' ? 'articles' : 'banners';
+
     try {
-        const { error } = await supabase.storage.from('banners').upload(fileName, file);
+        const { error } = await supabase.storage.from(bucketName).upload(fileName, file);
         if (error) throw error;
-        const { data } = supabase.storage.from('banners').getPublicUrl(fileName);
+        
+        const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
+        
         if (activeTab === 'videos') setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
         else setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
-        alert('✅ 图片上传成功！');
-    } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
+        
+        alert(`✅ 图片已成功上传到 ${bucketName} 存储桶！`);
+    } catch (error: any) { 
+        alert(`上传失败 (请检查 Supabase 的 ${bucketName} 桶是否开启 Public): ` + error.message); 
+    } finally { 
+        setUploadingFile(false); 
+    }
   };
 
   // 💾 提交保存
