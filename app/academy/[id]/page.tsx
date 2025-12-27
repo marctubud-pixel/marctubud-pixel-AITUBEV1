@@ -31,7 +31,7 @@ interface Video {
   thumbnail_url: string;
 }
 
-// 推荐文章接口 (新增 author)
+// 推荐文章接口
 interface Recommendation {
   id: string;
   title: string;
@@ -39,7 +39,7 @@ interface Recommendation {
   image_url?: string;
   tags: string | string[] | null;
   duration?: string;
-  author?: string; // 🆕 新增作者字段
+  author?: string;
 }
 
 export default function ArticleDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -88,11 +88,10 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
-  // 获取推荐数据 (🆕 已添加 author 字段)
+  // 获取推荐数据
   async function fetchRecommends() {
     const { data } = await supabase
       .from('articles')
-      // ⚠️ 这里增加了 author 字段
       .select('id, title, created_at, image_url, tags, duration, author')
       .neq('id', id)
       .limit(5)
@@ -111,7 +110,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     return undefined;
   };
 
-  // 🏷️ 智能标签解析函数 (已修复：彻底清洗 [""] \ 等符号)
+  // 🏷️ 智能标签解析函数
   const parseTags = (tags: any) => {
     if (!tags) return [];
     let parsed: any[] = [];
@@ -209,7 +208,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                             </span>
                         )}
 
-                        {/* ✅ 1. 顶部标签：应用 parseTags 彻底清洗符号 */}
+                        {/* 顶部标签 */}
                         {parseTags(article.tags).map((tag: string, i: number) => (
                             <span key={i} className="bg-white/5 text-gray-400 px-2 py-0.5 rounded text-[10px] font-medium border border-white/5 flex items-center gap-1">
                                 # {tag}
@@ -341,17 +340,14 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                                 <h4 className="text-sm font-medium text-gray-300 group-hover:text-purple-400 transition-colors line-clamp-2 leading-relaxed mb-2">
                                     {item.title}
                                 </h4>
-                                {/* ✅ 2. 底部信息：改为显示 作者名 + 时间 */}
-                                <div className="flex items-center gap-2 mt-1">
-                                    {/* 作者名 (如果为空则显示 AI.Tube) */}
-                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-white/5 px-2 py-0.5 rounded border border-white/5">
-                                        <div className="w-3 h-3 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold text-[8px]">
-                                            {item.author?.[0] || 'A'}
-                                        </div>
-                                        <span>{item.author || 'AI.Tube'}</span>
-                                    </div>
+                                {/* ✅ 底部信息：改为极简作者名 + 时间 */}
+                                <div className="flex items-center justify-between mt-1">
+                                    {/* 作者名 - 极简模式 */}
+                                    <span className="text-[10px] text-gray-500 font-medium">
+                                        {item.author || 'AI.Tube'}
+                                    </span>
                                     
-                                    <span className="text-[10px] text-gray-600 flex items-center gap-1 ml-auto font-mono flex-shrink-0">
+                                    <span className="text-[10px] text-gray-600 flex items-center gap-1 font-mono flex-shrink-0">
                                         <Clock size={10}/> {item.duration || '5m'}
                                     </span>
                                 </div>
