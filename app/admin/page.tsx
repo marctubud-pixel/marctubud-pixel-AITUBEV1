@@ -7,7 +7,8 @@ import {
     LayoutDashboard, Video, FileText, Image as ImageIcon, Briefcase, Ticket, 
     Plus, Trash2, Edit, X, LogOut, Upload, Loader2, Link as LinkIcon, 
     Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, 
-    Flame, Trophy, Star, ExternalLink, Copy, CheckCircle, Search, Link as LinkIcon2 
+    Flame, Trophy, Star, ExternalLink, Copy, CheckCircle, Search, Link as LinkIcon2,
+    Sparkles, Zap, ClipboardPaste
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -59,6 +60,9 @@ export default function AdminDashboard() {
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
   
+  // ✨ 新增：AI 解析专用状态
+  const [aiPasteContent, setAiPasteContent] = useState('');
+
   // 🔍 视频搜索专用状态
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
   const [videoSearchResults, setVideoSearchResults] = useState<any[]>([]);
@@ -91,6 +95,42 @@ export default function AdminDashboard() {
     // --- 卡密字段 ---
     batch_count: 10, duration_days: 30, prefix: 'VIP'
   });
+
+  // 🔎 智能解析函数 (方案：本地解析 AI 生成的 JSON 或结构化文本)
+  const handleSmartParse = () => {
+    if (!aiPasteContent.trim()) return alert('请先粘贴 AI 生成的内容');
+    
+    try {
+      // 1. 尝试直接解析 JSON (最推荐)
+      let parsedData: any = null;
+      const jsonMatch = aiPasteContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsedData = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('未找到有效的 JSON 格式');
+      }
+
+      // 2. 回填数据
+      setFormData((prev: any) => ({
+        ...prev,
+        title: parsedData.title || prev.title,
+        description: parsedData.description || prev.description,
+        content: parsedData.content || prev.content,
+        category: parsedData.category || prev.category,
+        difficulty: parsedData.difficulty || prev.difficulty,
+        duration: parsedData.duration || prev.duration,
+        tags: parsedData.tags || prev.tags,
+        image_url: parsedData.image_url || prev.image_url,
+        link_url: parsedData.link_url || prev.link_url,
+      }));
+
+      setAiPasteContent(''); // 解析成功后清空
+      alert('✨ AI 数据已成功解析并回填表单！');
+    } catch (err) {
+      console.error(err);
+      alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。');
+    }
+  };
 
   // 🔎 搜索视频库
   const searchVideos = async () => {
@@ -182,9 +222,8 @@ export default function AdminDashboard() {
     } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
   };
 
-  // 💾 提交保存 (修复了标签提交问题)
+  // 💾 提交保存
   const handleSubmit = async () => {
-    // 🎫 批量生成卡密逻辑
     if (activeTab === 'codes' && !editMode) {
         const count = parseInt(formData.batch_count) || 1;
         const days = parseInt(formData.duration_days) || 30;
@@ -203,7 +242,6 @@ export default function AdminDashboard() {
 
     if (!formData.title && activeTab !== 'codes') return alert('标题不能为空');
 
-    // 组装 Payload
     let payload: any = {};
     let tableName = activeTab === 'codes' ? 'redemption_codes' : activeTab;
     
@@ -219,11 +257,8 @@ export default function AdminDashboard() {
             tutorial_url: formData.tutorial_url
         };
     } else if (activeTab === 'articles') {
-        // ✅ 核心修复：处理标签 (Tags)
-        // 将逗号分隔的字符串转换为数组，以满足数据库 text[] 类型的要求
         let formattedTags: string[] = [];
         if (formData.tags) {
-            // 支持中文逗号和英文逗号
             formattedTags = formData.tags.toString().split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => t.length > 0);
         }
 
@@ -232,7 +267,7 @@ export default function AdminDashboard() {
             category: formData.category, difficulty: formData.difficulty, 
             duration: formData.duration, image_url: formData.image_url,
             content: formData.content, is_vip: formData.is_vip, link_url: formData.link_url,
-            tags: formattedTags, // 👈 这里传数组了，不再是字符串
+            tags: formattedTags, 
             video_id: formData.video_id ? Number(formData.video_id) : null
         };
     } else if (activeTab === 'jobs') {
@@ -273,7 +308,6 @@ export default function AdminDashboard() {
   };
 
   const openEdit = (item: any) => {
-    // 适配标签回显：如果是数组，转回逗号分隔字符串
     let processedItem = { ...item };
     if (activeTab === 'articles' && Array.isArray(item.tags)) {
         processedItem.tags = item.tags.join(', ');
@@ -355,7 +389,6 @@ export default function AdminDashboard() {
             </div>
         </div>
 
-        {/* 📋 数据列表 */}
         {loading ? <div className="text-center py-20 text-gray-500">加载中...</div> : (
             <div className="bg-[#151515] rounded-2xl border border-white/10 overflow-hidden">
                 <table className="w-full text-left text-sm text-gray-400">
@@ -397,7 +430,6 @@ export default function AdminDashboard() {
                                                 <>
                                                     {item.category && <span className="bg-white/10 px-2 py-0.5 rounded">{item.category}</span>}
                                                     {activeTab === 'videos' && <span>{item.views} views</span>}
-                                                    {/* ✅ 文章：显示难度和关联视频状态 */}
                                                     {activeTab === 'articles' && (
                                                         <>
                                                             <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">{item.difficulty}</span>
@@ -444,7 +476,6 @@ export default function AdminDashboard() {
                   </div>
               ) : (
                   <div className="space-y-4">
-                    {/* 📺 视频表单：B站抓取 */}
                     {activeTab === 'videos' && (
                         <div className="bg-gray-900 p-4 rounded mb-6 flex gap-2">
                         <input className="flex-1 bg-black border border-gray-700 rounded px-3 py-2 text-sm" placeholder="粘贴 B 站链接 (BV号)..." value={bilibiliLink} onChange={e => setBilibiliLink(e.target.value)} />
@@ -452,12 +483,38 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* 📚 文章表单：视频搜索与关联 (核心修改) */}
+                    {/* ✨ [新增] AI 学院：智能解析粘贴板 (方案 A 增强版) */}
+                    {activeTab === 'articles' && (
+                        <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl mb-6 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-bold text-blue-300 flex items-center gap-2">
+                                    <Sparkles size={16} /> AI 智能助手 (本地解析)
+                                </h3>
+                                <div className="text-[10px] text-gray-500 bg-black/50 px-2 py-0.5 rounded">免 API 网络稳定</div>
+                            </div>
+                            <textarea 
+                                rows={3}
+                                className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-xs text-blue-100 placeholder-gray-600 focus:border-blue-500 transition-all font-mono"
+                                placeholder="在这里粘贴 AI 生成的 JSON 内容..."
+                                value={aiPasteContent}
+                                onChange={(e) => setAiPasteContent(e.target.value)}
+                            />
+                            <button 
+                                onClick={handleSmartParse}
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20"
+                            >
+                                <ClipboardPaste size={14} /> 一键解析并自动填充
+                            </button>
+                            <p className="text-[10px] text-gray-500 text-center italic">
+                                💡 请让 ChatGPT 按照 {"{title, description, content, tags...}"} 格式输出。
+                            </p>
+                        </div>
+                    )}
+
                     {activeTab === 'articles' && (
                         <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4">
                             <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
                             
-                            {/* 1. 已关联状态 */}
                             {formData.video_id ? (
                                 <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
                                     <div className="flex items-center gap-3">
@@ -472,7 +529,6 @@ export default function AdminDashboard() {
                                     <button onClick={removeLinkedVideo} className="text-red-500 hover:text-red-400 p-2 text-xs font-bold">取消关联</button>
                                 </div>
                             ) : (
-                                /* 2. 搜索框 */
                                 <div className="relative">
                                     <div className="flex gap-2">
                                         <input 
@@ -486,7 +542,6 @@ export default function AdminDashboard() {
                                             {isSearchingVideo ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
                                         </button>
                                     </div>
-                                    {/* 搜索结果下拉 */}
                                     {videoSearchResults.length > 0 && (
                                         <div className="absolute top-full left-0 w-full bg-[#181818] border border-gray-700 rounded-lg mt-2 shadow-2xl z-50 max-h-48 overflow-y-auto">
                                             {videoSearchResults.map(v => (
@@ -513,10 +568,8 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* 通用：标题 (如果关联了视频，会自动填，但允许修改) */}
                     <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
 
-                    {/* 📺 视频表单剩余字段 */}
                     {activeTab === 'videos' && (
                         <>
                             <div className="grid grid-cols-2 gap-4">
@@ -538,7 +591,6 @@ export default function AdminDashboard() {
                         </>
                     )}
 
-                    {/* 📚 文章表单剩余字段 */}
                     {activeTab === 'articles' && (
                         <>
                             <div className="grid grid-cols-2 gap-4">
@@ -562,7 +614,6 @@ export default function AdminDashboard() {
                         </>
                     )}
 
-                    {/* Banner & 需求 (保持原样) */}
                     {activeTab === 'banners' && (
                         <>
                             <div><label className="text-xs text-gray-500 block mb-1">图片 URL</label><div className="flex gap-2"><input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/><button onClick={() => imageInputRef.current?.click()} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button><input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} /></div></div>
