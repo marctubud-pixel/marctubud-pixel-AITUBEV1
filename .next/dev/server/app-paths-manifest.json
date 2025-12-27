@@ -1,3 +1,7 @@
 {
-  "/tools/cineflow/storyboard/page": "app/tools/cineflow/storyboard/page.js"
+  "/academy/[id]/page": "app/academy/[id]/page.js",
+  "/academy/page": "app/academy/page.js",
+  "/admin/login/page": "app/admin/login/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/page": "app/page.js"
 }
