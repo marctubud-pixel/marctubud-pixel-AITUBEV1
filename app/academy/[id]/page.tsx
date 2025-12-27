@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient'; 
-import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, Tag, ExternalLink, BookOpen } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, BookOpen, ExternalLink, TrendingUp, PlayCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -36,9 +36,13 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
   const [article, setArticle] = useState<Article | null>(null);
   const [linkedVideo, setLinkedVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 侧边栏推荐数据 (模拟或后续从数据库取)
+  const [recommends, setRecommends] = useState<any[]>([]);
 
   useEffect(() => {
     fetchArticle();
+    fetchRecommends();
   }, [id]);
 
   async function fetchArticle() {
@@ -69,6 +73,18 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
+  // 获取右侧推荐位数据 (目前取最新的5篇)
+  async function fetchRecommends() {
+    const { data } = await supabase
+      .from('articles')
+      .select('id, title, created_at')
+      .neq('id', id) // 排除当前文章
+      .limit(5)
+      .order('created_at', { ascending: false });
+    
+    if (data) setRecommends(data);
+  }
+
   // Bilibili 解析器
   const getBilibiliEmbed = (url: string) => {
     if (!url) return undefined;
@@ -93,8 +109,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     return [];
   };
 
-  // ℹ️ 辅助函数：判断是否需要显示难度
-  // 商业访谈和行业资讯不显示难度
   const shouldShowDifficulty = (cat: string) => {
       return !['商业访谈', '行业资讯'].includes(cat);
   };
@@ -114,147 +128,172 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         <div className="h-full bg-purple-600 w-1/3"></div>
       </div>
 
-      <nav className="flex items-center justify-between px-6 py-6 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-40">
-        <Link href="/academy" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
-          <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform"/>
-          <span className="font-bold">返回学院</span>
-        </Link>
-        <div className="flex gap-4">
-            <button className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"><Share2 size={20}/></button>
-            <button className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"><Star size={20}/></button>
+      <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-40">
+        <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
+            <Link href="/academy" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group">
+            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform"/>
+            <span className="font-bold text-sm">返回学院</span>
+            </Link>
+            <div className="flex gap-4">
+                <button className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"><Share2 size={18}/></button>
+                <button className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"><Star size={18}/></button>
+            </div>
         </div>
       </nav>
 
-      <main className="max-w-4xl mx-auto p-6 md:p-10">
-        <header className="mb-10 border-b border-white/5 pb-10">
-            {/* 1. 标题区 */}
-            <h1 className="text-3xl md:text-4xl font-bold mb-6 leading-snug text-white tracking-tight">
-                {article.title}
-            </h1>
+      {/* 核心布局调整：改为 Grid 双栏布局 */}
+      <main className="max-w-7xl mx-auto p-6 md:p-10 grid grid-cols-1 lg:grid-cols-4 gap-12">
+        
+        {/* 左侧主要内容区 (占 3/4) */}
+        <div className="lg:col-span-3 min-w-0">
+            <header className="mb-8 border-b border-white/5 pb-8">
+                <h1 className="text-2xl md:text-3xl font-bold mb-6 leading-snug text-white tracking-tight">
+                    {article.title}
+                </h1>
 
-            {/* 2. 元信息区 (Tag在下，去色) */}
-            <div className="flex flex-wrap items-center gap-y-4 gap-x-6 text-sm text-gray-500 font-mono">
-                {/* 来源作者 (颜色统一为灰色) */}
-                <div className="flex items-center gap-1 text-gray-400 font-medium">
-                   <span>@</span> {article.author || 'AI.Tube'}
-                </div>
-                
-                {/* 时间与时长 */}
-                <div className="flex items-center gap-4 border-l border-white/10 pl-4">
-                    <span className="flex items-center gap-1.5"><Calendar size={14}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
-                    <span className="flex items-center gap-1.5"><Clock size={14}/> {article.duration || '10 min'} 阅读</span>
-                </div>
-
-                {/* 分类标签 (低调灰) */}
-                <div className="flex flex-wrap gap-2 md:ml-auto">
-                    <span className="bg-white/5 text-gray-300 px-3 py-1 rounded text-xs font-medium border border-white/10 flex items-center gap-1">
-                        <BookOpen size={12}/> {article.category}
-                    </span>
+                <div className="flex flex-wrap items-center gap-y-3 gap-x-6 text-xs text-gray-500 font-mono">
+                    <div className="flex items-center gap-1 text-gray-400 font-medium">
+                    <span>@</span> {article.author || 'AI.Tube'}
+                    </div>
                     
-                    {/* 难度标签：仅在非资讯/访谈类显示 */}
-                    {article.difficulty && shouldShowDifficulty(article.category) && (
-                        <span className={`px-3 py-1 rounded text-xs font-medium border ${
-                            article.difficulty === '入门' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
-                            article.difficulty === '进阶' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
-                            'bg-red-500/10 text-red-400 border-red-500/20'
-                        }`}>
-                            {article.difficulty}
-                        </span>
-                    )}
-
-                    {/* Tags (低调灰) */}
-                    {parseTags(article.tags).map((tag: string, i: number) => (
-                        <span key={i} className="bg-white/5 text-gray-400 px-3 py-1 rounded text-xs font-medium border border-white/5 flex items-center gap-1">
-                            # {tag.replace(/['"]+/g, '')}
-                        </span>
-                    ))}
-                </div>
-            </div>
-        </header>
-
-        {/* 视频或封面图区域 */}
-        <div className="w-full rounded-2xl overflow-hidden mb-12 border border-white/10 bg-gray-900 shadow-2xl">
-            {linkedVideo ? (
-                <div className="aspect-video w-full relative group">
-                    {linkedVideo.video_url?.includes('bilibili') ? (
-                        <iframe 
-                            src={getBilibiliEmbed(linkedVideo.video_url || '')} 
-                            className="w-full h-full" 
-                            frameBorder="0" 
-                            allowFullScreen
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        ></iframe>
-                    ) : (
-                        <video 
-                            src={linkedVideo.video_url} 
-                            controls 
-                            className="w-full h-full" 
-                            poster={linkedVideo.thumbnail_url}
-                        ></video>
-                    )}
-                </div>
-            ) : (
-                <div className="aspect-[21/9] w-full relative">
-                    <img src={article.image_url || "/api/placeholder/800/400"} className="w-full h-full object-cover" alt={article.title} />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] to-transparent opacity-60"></div>
-                </div>
-            )}
-        </div>
-
-        {/* Markdown 正文区 (字体优化版) 
-            修改说明：
-            1. 移除了 prose-lg，回归标准字体大小 (text-base, 16px)，避免“字太大”。
-            2. prose-p:text-gray-300 颜色更柔和。
-            3. prose-p:leading-7 增加行间距，提升阅读呼吸感。
-            4. prose-headings 增加了 margin，拉开段落间距。
-        */}
-        <article className="prose prose-invert max-w-none 
-            prose-headings:text-white prose-headings:font-bold prose-headings:mt-8 prose-headings:mb-4
-            prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl
-            prose-p:text-gray-300 prose-p:leading-8 prose-p:mb-6 prose-p:text-[17px]
-            prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline
-            prose-strong:text-white prose-strong:font-bold
-            prose-ul:marker:text-gray-500 prose-li:text-gray-300 prose-li:leading-7
-            prose-pre:bg-[#151515] prose-pre:border prose-pre:border-white/10 prose-pre:rounded-xl
-            prose-code:text-purple-300 prose-code:bg-purple-900/20 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
-            prose-img:rounded-xl prose-img:border prose-img:border-white/10"
-        >
-            {article.content ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {article.content}
-                </ReactMarkdown>
-            ) : (
-                <div className="space-y-6 text-gray-300">
-                    <p>内容加载中...</p>
-                </div>
-            )}
-        </article>
-
-        {article.link_url && (
-            <div className="mt-16 p-6 bg-[#151515] border border-white/10 rounded-xl flex flex-col md:flex-row items-center justify-between group hover:border-purple-500/50 transition-all gap-4">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-400">
-                        <ExternalLink size={24}/>
+                    <div className="flex items-center gap-4 border-l border-white/10 pl-4">
+                        <span className="flex items-center gap-1.5"><Calendar size={12}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
+                        <span className="flex items-center gap-1.5"><Clock size={12}/> {article.duration || '10 min'} 阅读</span>
                     </div>
-                    <div>
-                        <div className="font-bold text-white group-hover:text-blue-400 transition-colors">外部资源链接</div>
-                        <div className="text-sm text-gray-500">点击访问原始文档或下载资源</div>
+
+                    <div className="flex flex-wrap gap-2 md:ml-auto">
+                        <span className="bg-white/5 text-gray-300 px-2 py-0.5 rounded text-[10px] font-medium border border-white/10 flex items-center gap-1">
+                            <BookOpen size={10}/> {article.category}
+                        </span>
+                        
+                        {article.difficulty && shouldShowDifficulty(article.category) && (
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${
+                                article.difficulty === '入门' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                                article.difficulty === '进阶' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
+                                'bg-red-500/10 text-red-400 border-red-500/20'
+                            }`}>
+                                {article.difficulty}
+                            </span>
+                        )}
+
+                        {parseTags(article.tags).map((tag: string, i: number) => (
+                            <span key={i} className="bg-white/5 text-gray-400 px-2 py-0.5 rounded text-[10px] font-medium border border-white/5 flex items-center gap-1">
+                                # {tag.replace(/['"]+/g, '')}
+                            </span>
+                        ))}
                     </div>
                 </div>
-                <a href={article.link_url} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto text-center bg-white text-black px-6 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors">
-                    立即访问 <ExternalLink size={16}/>
-                </a>
-            </div>
-        )}
+            </header>
 
-        <div className="mt-20 pt-10 border-t border-white/5 flex justify-center">
-            <button className="flex flex-col items-center gap-2 group">
-                <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 group-hover:bg-purple-600 group-hover:text-white group-hover:scale-110 transition-all duration-300">
-                    <ThumbsUp size={28} />
-                </div>
-                <span className="text-sm text-gray-500 group-hover:text-white transition-colors">很有帮助</span>
-            </button>
+            {/* 封面/视频 */}
+            <div className="w-full rounded-xl overflow-hidden mb-8 border border-white/10 bg-gray-900 shadow-xl">
+                {linkedVideo ? (
+                    <div className="aspect-video w-full relative group">
+                        {linkedVideo.video_url?.includes('bilibili') ? (
+                            <iframe 
+                                src={getBilibiliEmbed(linkedVideo.video_url || '')} 
+                                className="w-full h-full" 
+                                frameBorder="0" 
+                                allowFullScreen
+                            ></iframe>
+                        ) : (
+                            <video 
+                                src={linkedVideo.video_url} 
+                                controls 
+                                className="w-full h-full" 
+                                poster={linkedVideo.thumbnail_url}
+                            ></video>
+                        )}
+                    </div>
+                ) : (
+                    <div className="aspect-[21/9] w-full relative">
+                        {/* ⚠️ 核心修复：添加 referrerPolicy="no-referrer" 以解决微信/B站图片 403 问题 */}
+                        <img 
+                            src={article.image_url || "/api/placeholder/800/400"} 
+                            className="w-full h-full object-cover" 
+                            alt={article.title}
+                            referrerPolicy="no-referrer" 
+                        /> 
+                        <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] to-transparent opacity-60"></div>
+                    </div>
+                )}
+            </div>
+
+            {/* 正文 (字体调小为 text-[15px]) */}
+            <article className="prose prose-invert max-w-none 
+                prose-headings:text-white prose-headings:font-bold prose-headings:mt-8 prose-headings:mb-4
+                prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg
+                prose-p:text-[#CCCCCC] prose-p:leading-7 prose-p:mb-5 prose-p:text-[15px]
+                prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline
+                prose-strong:text-white prose-strong:font-bold
+                prose-ul:marker:text-gray-500 prose-li:text-[#CCCCCC] prose-li:text-[15px] prose-li:leading-6
+                prose-pre:bg-[#151515] prose-pre:border prose-pre:border-white/10 prose-pre:rounded-xl
+                prose-code:text-purple-300 prose-code:bg-purple-900/20 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
+                prose-img:rounded-xl prose-img:border prose-img:border-white/10"
+            >
+                {article.content ? (
+                    <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                            // ⚠️ 核心修复：让 Markdown 里的图片也支持防盗链加载
+                            img: ({node, ...props}) => <img {...props} referrerPolicy="no-referrer" className="rounded-xl border border-white/5" />
+                        }}
+                    >
+                        {article.content}
+                    </ReactMarkdown>
+                ) : (
+                    <div className="space-y-6 text-gray-300">
+                        <p>内容加载中...</p>
+                    </div>
+                )}
+            </article>
+
+            <div className="mt-16 pt-10 border-t border-white/5 flex justify-center">
+                <button className="flex flex-col items-center gap-2 group">
+                    <div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 group-hover:bg-purple-600 group-hover:text-white group-hover:scale-110 transition-all duration-300">
+                        <ThumbsUp size={24} />
+                    </div>
+                    <span className="text-xs text-gray-500 group-hover:text-white transition-colors">很有帮助</span>
+                </button>
+            </div>
         </div>
+
+        {/* 👉 右侧侧边栏 (Sidebar) - 推荐位 (占 1/4) */}
+        <aside className="lg:col-span-1 space-y-8 hidden lg:block">
+            {/* 1. 推荐板块 */}
+            <div className="bg-[#151515] rounded-xl p-5 border border-white/5 sticky top-24">
+                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                    <TrendingUp size={16} className="text-purple-500"/> 相关推荐
+                </h3>
+                <div className="space-y-4">
+                    {recommends.length > 0 ? recommends.map((item) => (
+                        <Link href={`/academy/${item.id}`} key={item.id} className="group block">
+                            <h4 className="text-sm text-gray-300 group-hover:text-purple-400 transition-colors line-clamp-2 leading-relaxed mb-1">
+                                {item.title}
+                            </h4>
+                            <div className="flex items-center gap-2 text-[10px] text-gray-600">
+                                <Clock size={10}/> {new Date(item.created_at).toLocaleDateString()}
+                            </div>
+                        </Link>
+                    )) : (
+                        <div className="text-xs text-gray-600 text-center py-4">暂无推荐</div>
+                    )}
+                </div>
+            </div>
+
+            {/* 2. 占位广告/活动位 */}
+            <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 rounded-xl p-5 border border-white/5">
+                <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                    <PlayCircle size={16} className="text-blue-400"/> 创作实战
+                </h3>
+                <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                    看完教程想练手？试试我们的 AI 分镜工具，一键生成电影级画面。
+                </p>
+                <Link href="/tools" className="block w-full bg-white text-black text-xs font-bold py-2 rounded text-center hover:bg-gray-200 transition-colors">
+                    立即尝试
+                </Link>
+            </div>
+        </aside>
 
       </main>
     </div>
