@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { supabase } from '../../lib/supabaseClient'; 
-import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, BookOpen, ExternalLink, TrendingUp, PlayCircle } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient';
+import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, BookOpen, ExternalLink, TrendingUp, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-// 定义接口
+// 定义文章接口
 interface Article {
   id: string;
   title: string;
@@ -16,7 +16,7 @@ interface Article {
   difficulty?: '入门' | '进阶' | '专家';
   is_vip: boolean;
   tags: string | string[];
-  author: string; 
+  author: string;
   created_at: string;
   duration?: string;
   video_id?: string;
@@ -24,21 +24,35 @@ interface Article {
   link_url?: string;
 }
 
+// 定义视频接口
 interface Video {
   id: string;
   video_url: string;
   thumbnail_url: string;
 }
 
+// 🆕 定义推荐文章接口
+interface Recommendation {
+  id: string;
+  title: string;
+  created_at: string;
+  image_url?: string;
+  tags: string | string[] | null;
+  duration?: string;
+}
+
 export default function ArticleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  
+
   const [article, setArticle] = useState<Article | null>(null);
   const [linkedVideo, setLinkedVideo] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  // 侧边栏推荐数据 (模拟或后续从数据库取)
-  const [recommends, setRecommends] = useState<any[]>([]);
+
+  // 侧边栏推荐数据
+  const [recommends, setRecommends] = useState<Recommendation[]>([]);
+  // AI 总结状态
+  const [aiSummary, setAiSummary] = useState('');
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   useEffect(() => {
     fetchArticle();
@@ -52,7 +66,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       .select('*')
       .eq('id', id)
       .single();
-    
+
     if (error) {
         console.error("Error fetching article:", error);
         setLoading(false);
@@ -73,15 +87,15 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
-  // 获取右侧推荐位数据 (目前取最新的5篇)
+  // 获取右侧推荐位数据 (更新：多取封面、标签、时长)
   async function fetchRecommends() {
     const { data } = await supabase
       .from('articles')
-      .select('id, title, created_at')
-      .neq('id', id) // 排除当前文章
+      .select('id, title, created_at, image_url, tags, duration')
+      .neq('id', id)
       .limit(5)
       .order('created_at', { ascending: false });
-    
+
     if (data) setRecommends(data);
   }
 
@@ -113,13 +127,25 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       return !['商业访谈', '行业资讯'].includes(cat);
   };
 
+  // 🆕 AI 总结功能 (模拟)
+  const handleSummarize = async () => {
+    if (!article?.content) return;
+    setIsSummarizing(true);
+    // 模拟 API 请求延迟
+    setTimeout(() => {
+      setAiSummary("这里是AI帮您总结的文章核心内容：\n\n这篇文章深入探讨了AI漫剧行业的最新趋势，分析了女频化内容的主导地位、'抽卡师'模式的兴起以及全面出海的战略机遇。文章还详细介绍了各大平台如快手、爱奇艺、B站和抖音在推动MCN模式发展方面的政策和激励措施，旨在帮助创作者抓住AI影像时代的红利。");
+      setIsSummarizing(false);
+    }, 1500);
+  };
+
+
   if (loading) return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center gap-4 text-gray-500">
         <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
         <p>正在加载内容...</p>
     </div>
   );
-  
+
   if (!article) return <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center text-gray-500">文章不存在</div>;
 
   return (
@@ -141,9 +167,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </nav>
 
-      {/* 核心布局调整：改为 Grid 双栏布局 */}
       <main className="max-w-7xl mx-auto p-6 md:p-10 grid grid-cols-1 lg:grid-cols-4 gap-12">
-        
+
         {/* 左侧主要内容区 (占 3/4) */}
         <div className="lg:col-span-3 min-w-0">
             <header className="mb-8 border-b border-white/5 pb-8">
@@ -155,7 +180,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                     <div className="flex items-center gap-1 text-gray-400 font-medium">
                     <span>@</span> {article.author || 'AI.Tube'}
                     </div>
-                    
+
                     <div className="flex items-center gap-4 border-l border-white/10 pl-4">
                         <span className="flex items-center gap-1.5"><Calendar size={12}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
                         <span className="flex items-center gap-1.5"><Clock size={12}/> {article.duration || '10 min'} 阅读</span>
@@ -165,11 +190,11 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                         <span className="bg-white/5 text-gray-300 px-2 py-0.5 rounded text-[10px] font-medium border border-white/10 flex items-center gap-1">
                             <BookOpen size={10}/> {article.category}
                         </span>
-                        
+
                         {article.difficulty && shouldShowDifficulty(article.category) && (
                             <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${
-                                article.difficulty === '入门' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
-                                article.difficulty === '进阶' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
+                                article.difficulty === '入门' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                                article.difficulty === '进阶' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' :
                                 'bg-red-500/10 text-red-400 border-red-500/20'
                             }`}>
                                 {article.difficulty}
@@ -185,42 +210,39 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                 </div>
             </header>
 
-            {/* 封面/视频 */}
             <div className="w-full rounded-xl overflow-hidden mb-8 border border-white/10 bg-gray-900 shadow-xl">
                 {linkedVideo ? (
                     <div className="aspect-video w-full relative group">
                         {linkedVideo.video_url?.includes('bilibili') ? (
-                            <iframe 
-                                src={getBilibiliEmbed(linkedVideo.video_url || '')} 
-                                className="w-full h-full" 
-                                frameBorder="0" 
+                            <iframe
+                                src={getBilibiliEmbed(linkedVideo.video_url || '')}
+                                className="w-full h-full"
+                                frameBorder="0"
                                 allowFullScreen
                             ></iframe>
                         ) : (
-                            <video 
-                                src={linkedVideo.video_url} 
-                                controls 
-                                className="w-full h-full" 
+                            <video
+                                src={linkedVideo.video_url}
+                                controls
+                                className="w-full h-full"
                                 poster={linkedVideo.thumbnail_url}
                             ></video>
                         )}
                     </div>
                 ) : (
                     <div className="aspect-[21/9] w-full relative">
-                        {/* ⚠️ 核心修复：添加 referrerPolicy="no-referrer" 以解决微信/B站图片 403 问题 */}
-                        <img 
-                            src={article.image_url || "/api/placeholder/800/400"} 
-                            className="w-full h-full object-cover" 
+                        <img
+                            src={article.image_url || "/api/placeholder/800/400"}
+                            className="w-full h-full object-cover"
                             alt={article.title}
-                            referrerPolicy="no-referrer" 
-                        /> 
+                            referrerPolicy="no-referrer"
+                        />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] to-transparent opacity-60"></div>
                     </div>
                 )}
             </div>
 
-            {/* 正文 (字体调小为 text-[15px]) */}
-            <article className="prose prose-invert max-w-none 
+            <article className="prose prose-invert max-w-none
                 prose-headings:text-white prose-headings:font-bold prose-headings:mt-8 prose-headings:mb-4
                 prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg
                 prose-p:text-[#CCCCCC] prose-p:leading-7 prose-p:mb-5 prose-p:text-[15px]
@@ -232,10 +254,9 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                 prose-img:rounded-xl prose-img:border prose-img:border-white/10"
             >
                 {article.content ? (
-                    <ReactMarkdown 
+                    <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
-                            // ⚠️ 核心修复：让 Markdown 里的图片也支持防盗链加载
                             img: ({node, ...props}) => <img {...props} referrerPolicy="no-referrer" className="rounded-xl border border-white/5" />
                         }}
                     >
@@ -258,41 +279,93 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             </div>
         </div>
 
-        {/* 👉 右侧侧边栏 (Sidebar) - 推荐位 (占 1/4) */}
+        {/* 👉 右侧侧边栏 (Sidebar) (占 1/4) */}
         <aside className="lg:col-span-1 space-y-8 hidden lg:block">
-            {/* 1. 推荐板块 */}
+
+            {/* 1. 🆕 AI 创作小助手 (替换了原来的创作实战) */}
             <div className="bg-[#151515] rounded-xl p-5 border border-white/5 sticky top-24">
                 <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                    <TrendingUp size={16} className="text-purple-500"/> 相关推荐
+                    <Sparkles size={16} className="text-gray-400"/> AI 创作小助手
                 </h3>
                 <div className="space-y-4">
-                    {recommends.length > 0 ? recommends.map((item) => (
-                        <Link href={`/academy/${item.id}`} key={item.id} className="group block">
-                            <h4 className="text-sm text-gray-300 group-hover:text-purple-400 transition-colors line-clamp-2 leading-relaxed mb-1">
-                                {item.title}
-                            </h4>
-                            <div className="flex items-center gap-2 text-[10px] text-gray-600">
-                                <Clock size={10}/> {new Date(item.created_at).toLocaleDateString()}
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                        看不完长文？让 AI 帮你快速提炼核心观点。
+                    </p>
+                    {!aiSummary ? (
+                        <button
+                            onClick={handleSummarize}
+                            disabled={isSummarizing}
+                            className="w-full bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 border border-white/10"
+                        >
+                            {isSummarizing ? (
+                                <>
+                                    <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                    正在总结...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={14}/> 帮我总结文章
+                                </>
+                            )}
+                        </button>
+                    ) : (
+                        <div className="bg-white/5 p-3 rounded-lg border border-white/5 text-xs text-gray-300 leading-relaxed animate-in fade-in">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="font-bold text-gray-400">文章摘要</span>
+                                <button onClick={() => setAiSummary('')} className="text-gray-500 hover:text-white">重新总结</button>
                             </div>
-                        </Link>
-                    )) : (
+                            <ReactMarkdown className="prose prose-invert prose-xs max-w-none prose-p:leading-relaxed prose-p:my-1">
+                                {aiSummary}
+                            </ReactMarkdown>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* 2. 相关推荐 (图文卡片版) */}
+            <div className="bg-[#151515] rounded-xl p-5 border border-white/5">
+                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                    <TrendingUp size={16} className="text-gray-400"/> 相关推荐
+                </h3>
+                <div className="space-y-5">
+                    {recommends.length > 0 ? recommends.map((item) => {
+                        const tags = parseTags(item.tags).slice(0, 2); // 只取前两个标签
+                        return (
+                            <Link href={`/academy/${item.id}`} key={item.id} className="group flex gap-3">
+                                {/* 封面图 */}
+                                <div className="w-24 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800 border border-white/5 relative">
+                                    {item.image_url ? (
+                                        <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer"/>
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-black">
+                                            <BookOpen size={20} className="text-gray-700"/>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* 信息区 */}
+                                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                                    <h4 className="text-xs font-bold text-gray-300 group-hover:text-white transition-colors line-clamp-2 leading-snug">
+                                        {item.title}
+                                    </h4>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        {tags.map((tag, i) => (
+                                            <span key={i} className="text-[9px] bg-white/5 text-gray-500 px-1.5 py-0.5 rounded border border-white/5">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                        <span className="text-[9px] text-gray-600 flex items-center gap-1 ml-auto font-mono">
+                                            <Clock size={9}/> {item.duration || '5m'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </Link>
+                        );
+                    }) : (
                         <div className="text-xs text-gray-600 text-center py-4">暂无推荐</div>
                     )}
                 </div>
             </div>
 
-            {/* 2. 占位广告/活动位 */}
-            <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 rounded-xl p-5 border border-white/5">
-                <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-                    <PlayCircle size={16} className="text-blue-400"/> 创作实战
-                </h3>
-                <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-                    看完教程想练手？试试我们的 AI 分镜工具，一键生成电影级画面。
-                </p>
-                <Link href="/tools" className="block w-full bg-white text-black text-xs font-bold py-2 rounded text-center hover:bg-gray-200 transition-colors">
-                    立即尝试
-                </Link>
-            </div>
         </aside>
 
       </main>
