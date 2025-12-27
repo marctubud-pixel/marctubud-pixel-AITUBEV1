@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
-import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, BookOpen, ExternalLink, TrendingUp, Sparkles } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, BookOpen, ExternalLink, TrendingUp, Sparkles, Tag } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -31,7 +31,7 @@ interface Video {
   thumbnail_url: string;
 }
 
-// 推荐文章接口
+// 推荐文章接口 (新增 author)
 interface Recommendation {
   id: string;
   title: string;
@@ -39,6 +39,7 @@ interface Recommendation {
   image_url?: string;
   tags: string | string[] | null;
   duration?: string;
+  author?: string; // 🆕 新增作者字段
 }
 
 export default function ArticleDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -87,10 +88,12 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
+  // 获取推荐数据 (🆕 已添加 author 字段)
   async function fetchRecommends() {
     const { data } = await supabase
       .from('articles')
-      .select('id, title, created_at, image_url, tags, duration')
+      // ⚠️ 这里增加了 author 字段
+      .select('id, title, created_at, image_url, tags, duration, author')
       .neq('id', id)
       .limit(5)
       .order('created_at', { ascending: false });
@@ -108,19 +111,29 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     return undefined;
   };
 
-  const parseTags = (tags: string | string[] | null) => {
+  // 🏷️ 智能标签解析函数 (已修复：彻底清洗 [""] \ 等符号)
+  const parseTags = (tags: any) => {
     if (!tags) return [];
-    if (Array.isArray(tags)) return tags;
-    if (typeof tags === 'string') {
+    let parsed: any[] = [];
+
+    if (Array.isArray(tags)) {
+      parsed = tags;
+    } else if (typeof tags === 'string') {
       try {
-        const parsed = JSON.parse(tags);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-      return tags.replace(/[\[\]"]/g, '').split(/[,，]/).map(t => t.trim()).filter(Boolean);
+        const json = JSON.parse(tags);
+        if (Array.isArray(json)) parsed = json;
+        else parsed = tags.split(/[,，]/);
+      } catch (e) {
+        parsed = tags.split(/[,，]/);
+      }
     }
-    return [];
+
+    return parsed
+      .map(t => typeof t === 'string' ? t.replace(/[\[\]"'\\]/g, '').trim() : '')
+      .filter(Boolean);
   };
 
+  // 资讯和访谈不显示难度
   const shouldShowDifficulty = (cat: string) => {
       return !['商业访谈', '行业资讯'].includes(cat);
   };
@@ -196,9 +209,10 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                             </span>
                         )}
 
+                        {/* ✅ 1. 顶部标签：应用 parseTags 彻底清洗符号 */}
                         {parseTags(article.tags).map((tag: string, i: number) => (
                             <span key={i} className="bg-white/5 text-gray-400 px-2 py-0.5 rounded text-[10px] font-medium border border-white/5 flex items-center gap-1">
-                                # {tag.replace(/['"]+/g, '')}
+                                # {tag}
                             </span>
                         ))}
                     </div>
@@ -277,14 +291,13 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         {/* 👉 右侧侧边栏 (Sidebar) */}
         <aside className="lg:col-span-1 space-y-8 hidden lg:block">
 
-            {/* 1. 🆕 AI 创作小助手 (极简版) */}
+            {/* 1. AI 创作小助手 (极简版) */}
             <div className="bg-[#151515] rounded-xl p-5 border border-white/5 sticky top-24">
                 <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                     <Sparkles size={16} className="text-gray-400"/> AI 创作小助手
                 </h3>
                 <div className="space-y-4">
                     {!aiSummary ? (
-                        // ✨ 只有这一个按钮，没有多余文字
                         <button
                             onClick={handleSummarize}
                             disabled={isSummarizing}
@@ -315,27 +328,29 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                 </div>
             </div>
 
-            {/* 2. 相关推荐 (纯文字列表版：无封面) */}
+            {/* 2. 相关推荐 (无封面版) */}
             <div className="bg-[#151515] rounded-xl p-5 border border-white/5">
                 <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                     <TrendingUp size={16} className="text-gray-400"/> 相关推荐
                 </h3>
                 <div className="space-y-6">
                     {recommends.length > 0 ? recommends.map((item) => {
-                        const tags = parseTags(item.tags).slice(0, 2);
                         return (
                             <Link href={`/academy/${item.id}`} key={item.id} className="group block">
                                 {/* 纯文字标题 */}
                                 <h4 className="text-sm font-medium text-gray-300 group-hover:text-purple-400 transition-colors line-clamp-2 leading-relaxed mb-2">
                                     {item.title}
                                 </h4>
-                                {/* 标签 + 时间 */}
-                                <div className="flex items-center gap-2">
-                                    {tags.map((tag, i) => (
-                                        <span key={i} className="text-[10px] bg-white/5 text-gray-500 px-1.5 py-0.5 rounded border border-white/5 whitespace-nowrap">
-                                            {tag}
-                                        </span>
-                                    ))}
+                                {/* ✅ 2. 底部信息：改为显示 作者名 + 时间 */}
+                                <div className="flex items-center gap-2 mt-1">
+                                    {/* 作者名 (如果为空则显示 AI.Tube) */}
+                                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                                        <div className="w-3 h-3 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-bold text-[8px]">
+                                            {item.author?.[0] || 'A'}
+                                        </div>
+                                        <span>{item.author || 'AI.Tube'}</span>
+                                    </div>
+                                    
                                     <span className="text-[10px] text-gray-600 flex items-center gap-1 ml-auto font-mono flex-shrink-0">
                                         <Clock size={10}/> {item.duration || '5m'}
                                     </span>
