@@ -3,20 +3,21 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient'; 
-import { Search, BookOpen, Clock, ChevronRight, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic } from 'lucide-react';
+import { Search, BookOpen, Clock, ChevronRight, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic, Newspaper } from 'lucide-react';
 
 export default function Academy() {
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 🎯 分类体系
+  // 🎯 分类体系 (已添加“行业资讯”)
   const categories = [
       { id: '全部', label: '全部内容', icon: <Layers size={18}/> },
       { id: '新手入门', label: '新手入门', icon: <GraduationCap size={18}/> },
       { id: '工具学习', label: '工具学习', icon: <Zap size={18}/> },
       { id: '高阶玩法', label: '高阶玩法', icon: <PlayCircle size={18}/> },
       { id: '干货分享', label: '干货分享', icon: <BookOpen size={18}/> },
-      { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> }, // 更护为麦克风图标更贴切
+      { id: '行业资讯', label: '行业资讯', icon: <Newspaper size={18}/> }, // 🆕 新增
+      { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> }, 
   ];
   const [activeCategory, setActiveCategory] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,7 +36,7 @@ export default function Academy() {
     setLoading(false);
   }
 
-  // 🏷️ 智能标签解析函数 (已修复：彻底清洗 [""] \ 等符号)
+  // 🏷️ 智能标签解析函数 (保留修复：彻底清洗 [""] \ 等符号)
   const parseTags = (tags: any) => {
     if (!tags) return [];
     let parsed: any[] = [];
@@ -45,21 +46,18 @@ export default function Academy() {
       parsed = tags;
     } else if (typeof tags === 'string') {
       try {
-        // 尝试解析 JSON 字符串
         const json = JSON.parse(tags);
         if (Array.isArray(json)) parsed = json;
         else parsed = tags.split(/[,，]/);
       } catch (e) {
-        // 解析失败则按逗号分割
         parsed = tags.split(/[,，]/);
       }
     }
 
-    // 2. 深度清洗：移除方括号、引号、转义符
+    // 2. 深度清洗
     return parsed
       .map(t => {
         if (typeof t !== 'string') return '';
-        // 核心正则：去除 [ ] " ' \ 符号
         return t.replace(/[\[\]"'\\]/g, '').trim();
       })
       .filter(t => t && t.length > 0);
@@ -142,7 +140,7 @@ export default function Academy() {
                             {/* 封面区 */}
                             <div className="aspect-video relative overflow-hidden bg-gray-800">
                                 {item.image_url ? (
-                                    // ⚠️ 修复：前台列表页图片添加防盗链 (这是唯一修改点)
+                                    // ⚠️ 防盗链策略
                                     <img src={item.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-black">
@@ -150,16 +148,17 @@ export default function Academy() {
                                     </div>
                                 )}
                                 
-                                {/* ❌ 已移除：视频播放圆点 */}
-
-                                {/* ✅ 优化：访谈/难度角标 */}
-                                {(item.category === '商业访谈' || item.difficulty) && (
+                                {/* ✅ 优化：访谈/资讯/难度角标逻辑 */}
+                                {/* 规则：如果是“行业资讯”或“商业访谈”，直接显示分类名（不显示难度）；其他分类才显示难度 */}
+                                {(['商业访谈', '行业资讯'].includes(item.category) || item.difficulty) && (
                                     <div className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded backdrop-blur-md shadow-lg ${
-                                        item.category === '商业访谈' ? 'bg-blue-600/90 text-white' : // 访谈显示蓝色
+                                        item.category === '商业访谈' ? 'bg-blue-600/90 text-white' : 
+                                        item.category === '行业资讯' ? 'bg-purple-600/90 text-white' : 
+                                        // 下面是普通难度颜色
                                         item.difficulty === '入门' ? 'bg-green-500/90 text-black' : 
                                         item.difficulty === '进阶' ? 'bg-yellow-500/90 text-black' : 'bg-red-600/90 text-white'
                                     }`}>
-                                        {item.category === '商业访谈' ? '访谈' : item.difficulty}
+                                        {item.category === '商业访谈' ? '访谈' : item.category === '行业资讯' ? '资讯' : item.difficulty}
                                     </div>
                                 )}
                             </div>
