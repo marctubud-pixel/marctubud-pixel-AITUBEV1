@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient'; 
-import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, Tag, ExternalLink, Lock, BookOpen } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, Tag, ExternalLink, BookOpen } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -16,7 +16,7 @@ interface Article {
   difficulty?: '入门' | '进阶' | '专家';
   is_vip: boolean;
   tags: string | string[];
-  author: string; // 注意：数据库字段通常是 author
+  author: string; 
   created_at: string;
   duration?: string;
   video_id?: string;
@@ -93,10 +93,16 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     return [];
   };
 
+  // ℹ️ 辅助函数：判断是否需要显示难度
+  // 商业访谈和行业资讯不显示难度
+  const shouldShowDifficulty = (cat: string) => {
+      return !['商业访谈', '行业资讯'].includes(cat);
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center gap-4 text-gray-500">
         <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-        <p>正在加载课程内容...</p>
+        <p>正在加载内容...</p>
     </div>
   );
   
@@ -122,15 +128,15 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       <main className="max-w-4xl mx-auto p-6 md:p-10">
         <header className="mb-10 border-b border-white/5 pb-10">
             {/* 1. 标题区 */}
-            <h1 className="text-3xl md:text-5xl font-bold mb-6 leading-tight text-white tracking-tight">
+            <h1 className="text-3xl md:text-4xl font-bold mb-6 leading-snug text-white tracking-tight">
                 {article.title}
             </h1>
 
-            {/* 2. 统一低调的元信息区 (修改点：标签下移、移除头像) */}
+            {/* 2. 元信息区 (Tag在下，去色) */}
             <div className="flex flex-wrap items-center gap-y-4 gap-x-6 text-sm text-gray-500 font-mono">
-                {/* 来源作者 (纯文字) */}
-                <div className="flex items-center gap-2 text-gray-400 font-bold">
-                   <span className="text-purple-400">@</span> {article.author || 'AI.Tube'}
+                {/* 来源作者 (颜色统一为灰色) */}
+                <div className="flex items-center gap-1 text-gray-400 font-medium">
+                   <span>@</span> {article.author || 'AI.Tube'}
                 </div>
                 
                 {/* 时间与时长 */}
@@ -141,13 +147,13 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
                 {/* 分类标签 (低调灰) */}
                 <div className="flex flex-wrap gap-2 md:ml-auto">
-                    <span className="bg-white/5 text-gray-300 px-3 py-1 rounded text-xs font-bold border border-white/10 flex items-center gap-1">
+                    <span className="bg-white/5 text-gray-300 px-3 py-1 rounded text-xs font-medium border border-white/10 flex items-center gap-1">
                         <BookOpen size={12}/> {article.category}
                     </span>
                     
-                    {/* 难度标签 (保持原有逻辑，但样式更内敛) */}
-                    {article.difficulty && (
-                        <span className={`px-3 py-1 rounded text-xs font-bold border ${
+                    {/* 难度标签：仅在非资讯/访谈类显示 */}
+                    {article.difficulty && shouldShowDifficulty(article.category) && (
+                        <span className={`px-3 py-1 rounded text-xs font-medium border ${
                             article.difficulty === '入门' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
                             article.difficulty === '进阶' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
                             'bg-red-500/10 text-red-400 border-red-500/20'
@@ -158,8 +164,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
                     {/* Tags (低调灰) */}
                     {parseTags(article.tags).map((tag: string, i: number) => (
-                        <span key={i} className="bg-white/5 text-gray-400 px-3 py-1 rounded text-xs font-bold border border-white/5 flex items-center gap-1">
-                            # {tag}
+                        <span key={i} className="bg-white/5 text-gray-400 px-3 py-1 rounded text-xs font-medium border border-white/5 flex items-center gap-1">
+                            # {tag.replace(/['"]+/g, '')}
                         </span>
                     ))}
                 </div>
@@ -167,7 +173,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         </header>
 
         {/* 视频或封面图区域 */}
-        <div className="w-full rounded-2xl overflow-hidden mb-10 border border-white/10 bg-gray-900 shadow-2xl">
+        <div className="w-full rounded-2xl overflow-hidden mb-12 border border-white/10 bg-gray-900 shadow-2xl">
             {linkedVideo ? (
                 <div className="aspect-video w-full relative group">
                     {linkedVideo.video_url?.includes('bilibili') ? (
@@ -195,15 +201,23 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             )}
         </div>
 
-        {/* Markdown 正文区 */}
-        <article className="prose prose-invert prose-lg max-w-none 
-            prose-headings:text-white prose-headings:font-bold 
-            prose-p:text-gray-300 prose-p:leading-relaxed
+        {/* Markdown 正文区 (字体优化版) 
+            修改说明：
+            1. 移除了 prose-lg，回归标准字体大小 (text-base, 16px)，避免“字太大”。
+            2. prose-p:text-gray-300 颜色更柔和。
+            3. prose-p:leading-7 增加行间距，提升阅读呼吸感。
+            4. prose-headings 增加了 margin，拉开段落间距。
+        */}
+        <article className="prose prose-invert max-w-none 
+            prose-headings:text-white prose-headings:font-bold prose-headings:mt-8 prose-headings:mb-4
+            prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl
+            prose-p:text-gray-300 prose-p:leading-8 prose-p:mb-6 prose-p:text-[17px]
             prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline
             prose-strong:text-white prose-strong:font-bold
-            prose-ul:marker:text-gray-500
+            prose-ul:marker:text-gray-500 prose-li:text-gray-300 prose-li:leading-7
             prose-pre:bg-[#151515] prose-pre:border prose-pre:border-white/10 prose-pre:rounded-xl
-            prose-code:text-purple-300 prose-code:bg-purple-900/20 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+            prose-code:text-purple-300 prose-code:bg-purple-900/20 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
+            prose-img:rounded-xl prose-img:border prose-img:border-white/10"
         >
             {article.content ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -217,7 +231,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
         </article>
 
         {article.link_url && (
-            <div className="mt-12 p-6 bg-[#151515] border border-white/10 rounded-xl flex flex-col md:flex-row items-center justify-between group hover:border-purple-500/50 transition-all gap-4">
+            <div className="mt-16 p-6 bg-[#151515] border border-white/10 rounded-xl flex flex-col md:flex-row items-center justify-between group hover:border-purple-500/50 transition-all gap-4">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-400">
                         <ExternalLink size={24}/>
