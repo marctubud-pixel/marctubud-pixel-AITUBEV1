@@ -60,7 +60,7 @@ export default function AdminDashboard() {
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
   
-  // ✨ 新增：AI 解析专用状态
+  // ✨ AI 解析专用状态
   const [aiPasteContent, setAiPasteContent] = useState('');
 
   // 🔍 视频搜索专用状态
@@ -96,12 +96,11 @@ export default function AdminDashboard() {
     batch_count: 10, duration_days: 30, prefix: 'VIP'
   });
 
-  // 🔎 智能解析函数 (方案：本地解析 AI 生成的 JSON 或结构化文本)
+  // 🔎 智能解析函数
   const handleSmartParse = () => {
     if (!aiPasteContent.trim()) return alert('请先粘贴 AI 生成的内容');
     
     try {
-      // 1. 尝试直接解析 JSON (最推荐)
       let parsedData: any = null;
       const jsonMatch = aiPasteContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -110,7 +109,6 @@ export default function AdminDashboard() {
         throw new Error('未找到有效的 JSON 格式');
       }
 
-      // 2. 回填数据
       setFormData((prev: any) => ({
         ...prev,
         title: parsedData.title || prev.title,
@@ -124,7 +122,7 @@ export default function AdminDashboard() {
         link_url: parsedData.link_url || prev.link_url,
       }));
 
-      setAiPasteContent(''); // 解析成功后清空
+      setAiPasteContent('');
       alert('✨ AI 数据已成功解析并回填表单！');
     } catch (err) {
       console.error(err);
@@ -483,7 +481,7 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* ✨ [新增] AI 学院：智能解析粘贴板 (方案 A 增强版) */}
+                    {/* ✨ [AI 智能助手] */}
                     {activeTab === 'articles' && (
                         <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl mb-6 space-y-3">
                             <div className="flex items-center justify-between">
@@ -594,7 +592,7 @@ export default function AdminDashboard() {
                     {activeTab === 'articles' && (
                         <>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs text-gray-500 block mb-1">大类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>新手入门</option><option>工具学习</option><option>高阶玩法</option><option>干货分享</option><option>商业访谈</option></select></div>
+                                <div><label className="text-xs text-gray-500 block mb-1">大类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>新手入门</option><option>工具学习</option><option>高阶玩法</option><option>干货分享</option><option>行业资讯</option><option>商业访谈</option></select></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">难度</label><select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>入门</option><option>中等</option><option>进阶</option></select></div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">

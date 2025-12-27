@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-// ⚠️ 如果你的 supabase 客户端文件路径不一样，请修改这里，比如 '../lib/supabaseClient'
 import { supabase } from '../../lib/supabaseClient'; 
-import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, Tag, ExternalLink, Lock } from 'lucide-react';
+import { ArrowLeft, Clock, Calendar, Share2, Star, ThumbsUp, Tag, ExternalLink, Lock, BookOpen } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -17,7 +16,7 @@ interface Article {
   difficulty?: '入门' | '进阶' | '专家';
   is_vip: boolean;
   tags: string | string[];
-  author_name: string;
+  author: string; // 注意：数据库字段通常是 author
   created_at: string;
   duration?: string;
   video_id?: string;
@@ -122,50 +121,52 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
       <main className="max-w-4xl mx-auto p-6 md:p-10">
         <header className="mb-10 border-b border-white/5 pb-10">
-            <div className="flex flex-wrap gap-3 mb-6">
-                <span className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg shadow-purple-900/40">
-                    {article.category}
-                </span>
-                {article.difficulty && (
-                    <span className={`bg-white/10 px-3 py-1 rounded-full text-xs font-bold border border-white/10 ${
-                        article.difficulty === '入门' ? 'text-green-400 border-green-500/30' : 
-                        article.difficulty === '进阶' ? 'text-yellow-400 border-yellow-500/30' : 'text-gray-300'
-                    }`}>
-                        {article.difficulty}
-                    </span>
-                )}
-                {article.is_vip && (
-                    <span className="bg-yellow-500 text-black px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                        <Lock size={12}/> VIP 专享
-                    </span>
-                )}
-                {parseTags(article.tags).map((tag: string, i: number) => (
-                    <span key={i} className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                        <Tag size={12}/> {tag}
-                    </span>
-                ))}
-            </div>
-            
-            <h1 className="text-3xl md:text-5xl font-bold mb-6 leading-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">
+            {/* 1. 标题区 */}
+            <h1 className="text-3xl md:text-5xl font-bold mb-6 leading-tight text-white tracking-tight">
                 {article.title}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500 font-mono">
-                <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-[10px] text-white font-bold">
-                        {article.author_name?.[0] || 'A'}
-                    </div>
-                    <span className="text-gray-300">{article.author_name || 'AI.Tube'}</span>
+            {/* 2. 统一低调的元信息区 (修改点：标签下移、移除头像) */}
+            <div className="flex flex-wrap items-center gap-y-4 gap-x-6 text-sm text-gray-500 font-mono">
+                {/* 来源作者 (纯文字) */}
+                <div className="flex items-center gap-2 text-gray-400 font-bold">
+                   <span className="text-purple-400">@</span> {article.author || 'AI.Tube'}
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <Calendar size={14}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}
+                
+                {/* 时间与时长 */}
+                <div className="flex items-center gap-4 border-l border-white/10 pl-4">
+                    <span className="flex items-center gap-1.5"><Calendar size={14}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
+                    <span className="flex items-center gap-1.5"><Clock size={14}/> {article.duration || '10 min'} 阅读</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <Clock size={14}/> {article.duration || '10 min'} 阅读
+
+                {/* 分类标签 (低调灰) */}
+                <div className="flex flex-wrap gap-2 md:ml-auto">
+                    <span className="bg-white/5 text-gray-300 px-3 py-1 rounded text-xs font-bold border border-white/10 flex items-center gap-1">
+                        <BookOpen size={12}/> {article.category}
+                    </span>
+                    
+                    {/* 难度标签 (保持原有逻辑，但样式更内敛) */}
+                    {article.difficulty && (
+                        <span className={`px-3 py-1 rounded text-xs font-bold border ${
+                            article.difficulty === '入门' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                            article.difficulty === '进阶' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 
+                            'bg-red-500/10 text-red-400 border-red-500/20'
+                        }`}>
+                            {article.difficulty}
+                        </span>
+                    )}
+
+                    {/* Tags (低调灰) */}
+                    {parseTags(article.tags).map((tag: string, i: number) => (
+                        <span key={i} className="bg-white/5 text-gray-400 px-3 py-1 rounded text-xs font-bold border border-white/5 flex items-center gap-1">
+                            # {tag}
+                        </span>
+                    ))}
                 </div>
             </div>
         </header>
 
+        {/* 视频或封面图区域 */}
         <div className="w-full rounded-2xl overflow-hidden mb-10 border border-white/10 bg-gray-900 shadow-2xl">
             {linkedVideo ? (
                 <div className="aspect-video w-full relative group">
@@ -194,7 +195,16 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             )}
         </div>
 
-        <article className="prose prose-invert prose-lg max-w-none prose-headings:text-white prose-a:text-purple-400 prose-code:text-purple-300 prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10">
+        {/* Markdown 正文区 */}
+        <article className="prose prose-invert prose-lg max-w-none 
+            prose-headings:text-white prose-headings:font-bold 
+            prose-p:text-gray-300 prose-p:leading-relaxed
+            prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline
+            prose-strong:text-white prose-strong:font-bold
+            prose-ul:marker:text-gray-500
+            prose-pre:bg-[#151515] prose-pre:border prose-pre:border-white/10 prose-pre:rounded-xl
+            prose-code:text-purple-300 prose-code:bg-purple-900/20 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+        >
             {article.content ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {article.content}

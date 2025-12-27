@@ -3,20 +3,21 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient'; 
-import { Search, BookOpen, Clock, ChevronRight, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic } from 'lucide-react';
+import { Search, BookOpen, Clock, ChevronRight, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic, Newspaper } from 'lucide-react';
 
 export default function Academy() {
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 🎯 分类体系
+  // 🎯 分类体系 (已更新：加入“行业资讯”)
   const categories = [
       { id: '全部', label: '全部内容', icon: <Layers size={18}/> },
       { id: '新手入门', label: '新手入门', icon: <GraduationCap size={18}/> },
       { id: '工具学习', label: '工具学习', icon: <Zap size={18}/> },
       { id: '高阶玩法', label: '高阶玩法', icon: <PlayCircle size={18}/> },
       { id: '干货分享', label: '干货分享', icon: <BookOpen size={18}/> },
-      { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> }, // 更护为麦克风图标更贴切
+      { id: '行业资讯', label: '行业资讯', icon: <Newspaper size={18}/> }, // 🆕 新增分类
+      { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> },
   ];
   const [activeCategory, setActiveCategory] = useState('全部');
   const [searchQuery, setSearchQuery] = useState('');
@@ -60,14 +61,16 @@ export default function Academy() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
       
-      {/* 简单的顶部 Header */}
+      {/* Header */}
       <div className="border-b border-white/5 bg-[#0A0A0A]/90 sticky top-0 z-40 backdrop-blur-xl px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                    <GraduationCap fill="white" size={20}/>
-                </div>
-                <h1 className="text-xl font-bold tracking-tight">AI 创作学院</h1>
+                <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
+                        <GraduationCap fill="white" size={20}/>
+                    </div>
+                    <h1 className="text-xl font-bold tracking-tight">AI 创作学院</h1>
+                </Link>
             </div>
             
             {/* 搜索框 */}
@@ -133,16 +136,15 @@ export default function Academy() {
                                     </div>
                                 )}
                                 
-                                {/* ❌ 已移除：视频播放圆点 */}
-
-                                {/* ✅ 优化：访谈/难度角标 */}
-                                {(item.category === '商业访谈' || item.difficulty) && (
+                                {/* 访谈/资讯/难度角标 */}
+                                {(item.category === '商业访谈' || item.category === '行业资讯' || item.difficulty) && (
                                     <div className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded backdrop-blur-md shadow-lg ${
-                                        item.category === '商业访谈' ? 'bg-blue-600/90 text-white' : // 访谈显示蓝色
+                                        item.category === '商业访谈' ? 'bg-blue-600/90 text-white' : 
+                                        item.category === '行业资讯' ? 'bg-indigo-600/90 text-white' : // 🆕 资讯显示靛青色
                                         item.difficulty === '入门' ? 'bg-green-500/90 text-black' : 
                                         item.difficulty === '进阶' ? 'bg-yellow-500/90 text-black' : 'bg-red-600/90 text-white'
                                     }`}>
-                                        {item.category === '商业访谈' ? '访谈' : item.difficulty}
+                                        {item.category === '商业访谈' ? '访谈' : item.category === '行业资讯' ? '资讯' : item.difficulty}
                                     </div>
                                 )}
                             </div>
