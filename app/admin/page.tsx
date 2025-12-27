@@ -8,7 +8,7 @@ import {
     Plus, Trash2, Edit, X, LogOut, Upload, Loader2, Link as LinkIcon, 
     Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, 
     Flame, Trophy, Star, ExternalLink, Copy, CheckCircle, Search, Link as LinkIcon2,
-    Sparkles, Zap, ClipboardPaste
+    Sparkles, Zap, ClipboardPaste, Images 
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -60,6 +60,7 @@ export default function AdminDashboard() {
   
   const fileInputRef = useRef<HTMLInputElement>(null); 
   const imageInputRef = useRef<HTMLInputElement>(null); 
+  const batchInputRef = useRef<HTMLInputElement>(null); // 🆕 批量上传Ref
   const [uploadingFile, setUploadingFile] = useState(false);
 
   const [formData, setFormData] = useState<any>({
@@ -96,7 +97,7 @@ export default function AdminDashboard() {
         link_url: parsedData.link_url || prev.link_url,
       }));
       setAiPasteContent('');
-      alert('✨ AI 数据已成功解析并回填表单！');
+      alert('✨ AI 数据已成功解析并回填表单！\n💡 提示：如果正文中有 [img] 占位符，现在可以使用下方的“批量配图”功能。');
     } catch (err) { alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。'); }
   };
 
@@ -191,9 +192,61 @@ export default function AdminDashboard() {
     }
   };
 
+  // 📸 🆕 批量图片上传并替换占位符
+  const handleBatchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setUploadingFile(true);
+    const files = Array.from(e.target.files);
+    const uploadedUrls: string[] = [];
+    let uploadErrors = 0;
+
+    // 1. 依次上传
+    for (const file of files) {
+        let fileExt = 'jpg';
+        const lowerName = file.name.toLowerCase();
+        if (lowerName.endsWith('.png')) fileExt = 'png';
+        else if (lowerName.endsWith('.gif')) fileExt = 'gif';
+        else if (lowerName.endsWith('.webp')) fileExt = 'webp';
+        
+        // 命名格式：文章配图-时间戳-随机码
+        const fileName = `article-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+
+        try {
+            const { error } = await supabase.storage.from('articles').upload(fileName, file);
+            if (error) throw error;
+            const { data } = supabase.storage.from('articles').getPublicUrl(fileName);
+            uploadedUrls.push(data.publicUrl);
+        } catch (err) {
+            console.error(err);
+            uploadErrors++;
+        }
+    }
+
+    // 2. 智能替换逻辑
+    let newContent = formData.content || '';
+    
+    // 遍历上传成功的 URL
+    for (const url of uploadedUrls) {
+        // 正则：匹配 [img], [image], [图片] 等，不区分大小写
+        const placeholderRegex = /\[(img|image|pic|photo|图片|图)(\d+)?\]/i;
+        
+        if (placeholderRegex.test(newContent)) {
+            // 如果找到占位符，替换第一个
+            newContent = newContent.replace(placeholderRegex, `![](${url})`);
+        } else {
+            // 如果没占位符了，追加到文末
+            newContent += `\n\n![](${url})`;
+        }
+    }
+
+    setFormData((prev: any) => ({ ...prev, content: newContent }));
+    setUploadingFile(false);
+    
+    alert(`📸 批量处理完成！\n成功: ${uploadedUrls.length} 张\n失败: ${uploadErrors} 张\n请检查正文确认图片位置。`);
+  };
+
   const handleSubmit = async () => {
     if (activeTab === 'codes' && !editMode) {
-        // ... (卡密逻辑不变)
         const count = parseInt(formData.batch_count) || 1;
         const days = parseInt(formData.duration_days) || 30;
         const prefix = formData.prefix || 'VIP';
@@ -440,26 +493,66 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
+                    {/* ✨ [AI 智能助手] + 🆕 批量配图 */}
                     {activeTab === 'articles' && (
-                        <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl mb-6 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-bold text-blue-300 flex items-center gap-2">
-                                    <Sparkles size={16} /> AI 智能助手 (本地解析)
-                                </h3>
-                                <div className="text-[10px] text-gray-500 bg-black/50 px-2 py-0.5 rounded">免 API 网络稳定</div>
+                        <div className="space-y-4">
+                            {/* AI 解析模块 */}
+                            <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-blue-300 flex items-center gap-2">
+                                        <Sparkles size={16} /> AI 智能助手 (本地解析)
+                                    </h3>
+                                    <div className="text-[10px] text-gray-500 bg-black/50 px-2 py-0.5 rounded">免 API 网络稳定</div>
+                                </div>
+                                <textarea 
+                                    rows={3}
+                                    className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-xs text-blue-100 placeholder-gray-600 focus:border-blue-500 transition-all font-mono"
+                                    placeholder="在这里粘贴 AI 生成的 JSON 内容..."
+                                    value={aiPasteContent}
+                                    onChange={(e) => setAiPasteContent(e.target.value)}
+                                />
+                                <button 
+                                    onClick={handleSmartParse}
+                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20"
+                                >
+                                    <ClipboardPaste size={14} /> 一键解析并自动填充
+                                </button>
+                                <p className="text-[10px] text-gray-500 text-center italic">
+                                    💡 提示：在 AI 生成的内容中预埋 {"[img]"} 占位符，然后使用下方按钮批量上传图片。
+                                </p>
                             </div>
-                            <textarea rows={3} className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-xs text-blue-100 placeholder-gray-600 focus:border-blue-500 transition-all font-mono" placeholder="在这里粘贴 AI 生成的 JSON 内容..." value={aiPasteContent} onChange={(e) => setAiPasteContent(e.target.value)}/>
-                            <button onClick={handleSmartParse} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20">
-                                <ClipboardPaste size={14} /> 一键解析并自动填充
-                            </button>
-                            <p className="text-[10px] text-gray-500 text-center italic">
-                                💡 请让 ChatGPT 按照 {"{title, description, content, tags...}"} 格式输出。
-                            </p>
+
+                            {/* 🆕 批量配图模块 */}
+                            <div className="bg-gray-900 border border-gray-700 p-4 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
+                                        <Images size={16} className="text-green-400"/> 批量配图
+                                    </h3>
+                                    <p className="text-[10px] text-gray-500 mt-1">自动替换正文中的 [img], [图片] 占位符</p>
+                                </div>
+                                <button 
+                                    onClick={() => batchInputRef.current?.click()}
+                                    disabled={uploadingFile}
+                                    className="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors"
+                                >
+                                    {uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}
+                                    上传图片并自动插入
+                                </button>
+                                {/* 隐藏的多选文件框 */}
+                                <input 
+                                    type="file" 
+                                    ref={batchInputRef} 
+                                    multiple 
+                                    accept="image/*" 
+                                    hidden 
+                                    onChange={handleBatchUpload} 
+                                />
+                            </div>
                         </div>
                     )}
 
                     {activeTab === 'articles' && (
-                        <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4">
+                        <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4 mt-4">
                             <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
                             
                             {formData.video_id ? (
@@ -479,7 +572,13 @@ export default function AdminDashboard() {
                             ) : (
                                 <div className="relative">
                                     <div className="flex gap-2">
-                                        <input value={videoSearchQuery} onChange={e => setVideoSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchVideos()} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none" placeholder="输入关键词搜索视频库 (如: Midjourney)..."/>
+                                        <input 
+                                            value={videoSearchQuery}
+                                            onChange={e => setVideoSearchQuery(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && searchVideos()}
+                                            className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none"
+                                            placeholder="输入关键词搜索视频库 (如: Midjourney)..."
+                                        />
                                         <button onClick={searchVideos} className="bg-gray-800 hover:bg-gray-700 px-4 rounded text-gray-300">
                                             {isSearchingVideo ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
                                         </button>
