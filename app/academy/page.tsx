@@ -35,18 +35,34 @@ export default function Academy() {
     setLoading(false);
   }
 
-  // 🏷️ 智能标签解析函数
+  // 🏷️ 智能标签解析函数 (已修复：彻底清洗 [""] \ 等符号)
   const parseTags = (tags: any) => {
     if (!tags) return [];
-    if (Array.isArray(tags)) return tags;
-    if (typeof tags === 'string') {
+    let parsed: any[] = [];
+
+    // 1. 尝试标准化输入为数组
+    if (Array.isArray(tags)) {
+      parsed = tags;
+    } else if (typeof tags === 'string') {
       try {
-        const parsed = JSON.parse(tags);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-      return tags.replace(/[\[\]"]/g, '').split(/[,，]/).map(t => t.trim()).filter(Boolean);
+        // 尝试解析 JSON 字符串
+        const json = JSON.parse(tags);
+        if (Array.isArray(json)) parsed = json;
+        else parsed = tags.split(/[,，]/);
+      } catch (e) {
+        // 解析失败则按逗号分割
+        parsed = tags.split(/[,，]/);
+      }
     }
-    return [];
+
+    // 2. 深度清洗：移除方括号、引号、转义符
+    return parsed
+      .map(t => {
+        if (typeof t !== 'string') return '';
+        // 核心正则：去除 [ ] " ' \ 符号
+        return t.replace(/[\[\]"'\\]/g, '').trim();
+      })
+      .filter(t => t && t.length > 0);
   };
 
   // 前端筛选
