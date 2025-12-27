@@ -8,7 +8,7 @@ import {
     Plus, Trash2, Edit, X, LogOut, Upload, Loader2, Link as LinkIcon, 
     Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, 
     Flame, Trophy, Star, ExternalLink, Copy, CheckCircle, Search, Link as LinkIcon2,
-    Sparkles, Zap, ClipboardPaste, Images 
+    Sparkles, Zap, ClipboardPaste, Images, Globe, ArrowRight
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -53,6 +53,10 @@ export default function AdminDashboard() {
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
+  // 🆕 文章抓取链接状态
+  const [articleFetchLink, setArticleFetchLink] = useState('');
+  const [isFetchingArticle, setIsFetchingArticle] = useState(false);
+
   const [aiPasteContent, setAiPasteContent] = useState('');
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
   const [videoSearchResults, setVideoSearchResults] = useState<any[]>([]);
@@ -60,7 +64,7 @@ export default function AdminDashboard() {
   
   const fileInputRef = useRef<HTMLInputElement>(null); 
   const imageInputRef = useRef<HTMLInputElement>(null); 
-  const batchInputRef = useRef<HTMLInputElement>(null); // 🆕 批量上传Ref
+  const batchInputRef = useRef<HTMLInputElement>(null); 
   const [uploadingFile, setUploadingFile] = useState(false);
 
   const [formData, setFormData] = useState<any>({
@@ -97,7 +101,7 @@ export default function AdminDashboard() {
         link_url: parsedData.link_url || prev.link_url,
       }));
       setAiPasteContent('');
-      alert('✨ AI 数据已成功解析并回填表单！\n💡 提示：如果正文中有 [img] 占位符，现在可以使用下方的“批量配图”功能。');
+      alert('✨ AI 数据已成功解析并回填表单！');
     } catch (err) { alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。'); }
   };
 
@@ -129,6 +133,7 @@ export default function AdminDashboard() {
       setFormData((prev: any) => ({ ...prev, video_id: '' }));
   };
 
+  // 📺 B站一键抓取
   const handleFetchInfo = async () => {
     if (!bilibiliLink) return alert('请填入链接');
     const match = bilibiliLink.match(/(BV\w+)/);
@@ -146,6 +151,34 @@ export default function AdminDashboard() {
       }));
       alert('✅ 抓取成功！数据已回填');
     } catch (err: any) { alert(err.message); }
+  };
+
+  // 🌐 🆕 全网文章一键抓取 (自动转存图片)
+  const handleFetchArticle = async () => {
+    if (!articleFetchLink) return alert('请填入文章链接');
+    setIsFetchingArticle(true);
+    try {
+      // 调用我们刚写的 API
+      const res = await fetch(`/api/fetch-article?url=${encodeURIComponent(articleFetchLink)}`);
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || '抓取失败');
+
+      setFormData((prev: any) => ({
+        ...prev,
+        title: data.title,
+        content: data.content, // 这是已经替换好图片链接的 Markdown
+        image_url: data.cover_image || prev.image_url, // 自动填封面
+        link_url: articleFetchLink // 自动填原文链接
+      }));
+      
+      alert('✅ 文章抓取成功！\n图片已自动转存至 Supabase，防盗链已破解。');
+      setArticleFetchLink('');
+    } catch (err: any) {
+      alert('抓取失败: ' + err.message);
+    } finally {
+      setIsFetchingArticle(false);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,17 +200,13 @@ export default function AdminDashboard() {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
-    
-    // 💡 智能命名 + 桶分流
     let fileExt = 'jpg';
     const lowerName = file.name.toLowerCase();
     if (lowerName.endsWith('.png')) fileExt = 'png';
     else if (lowerName.endsWith('.gif')) fileExt = 'gif';
     else if (lowerName.endsWith('.webp')) fileExt = 'webp';
-    
     const fileName = `cover-${Date.now()}.${fileExt}`; 
     const bucketName = activeTab === 'articles' ? 'articles' : 'banners';
-
     try {
         const { error } = await supabase.storage.from(bucketName).upload(fileName, file);
         if (error) throw error;
@@ -185,64 +214,38 @@ export default function AdminDashboard() {
         if (activeTab === 'videos') setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
         else setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
         alert(`✅ 图片已成功上传到 ${bucketName} 存储桶！`);
-    } catch (error: any) { 
-        alert(`上传失败: ` + error.message); 
-    } finally { 
-        setUploadingFile(false); 
-    }
+    } catch (error: any) { alert(`上传失败: ` + error.message); } finally { setUploadingFile(false); }
   };
 
-  // 📸 🆕 批量图片上传并替换占位符
   const handleBatchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const files = Array.from(e.target.files);
     const uploadedUrls: string[] = [];
     let uploadErrors = 0;
-
-    // 1. 依次上传
     for (const file of files) {
         let fileExt = 'jpg';
         const lowerName = file.name.toLowerCase();
         if (lowerName.endsWith('.png')) fileExt = 'png';
         else if (lowerName.endsWith('.gif')) fileExt = 'gif';
         else if (lowerName.endsWith('.webp')) fileExt = 'webp';
-        
-        // 命名格式：文章配图-时间戳-随机码
         const fileName = `article-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-
         try {
             const { error } = await supabase.storage.from('articles').upload(fileName, file);
             if (error) throw error;
             const { data } = supabase.storage.from('articles').getPublicUrl(fileName);
             uploadedUrls.push(data.publicUrl);
-        } catch (err) {
-            console.error(err);
-            uploadErrors++;
-        }
+        } catch (err) { console.error(err); uploadErrors++; }
     }
-
-    // 2. 智能替换逻辑
     let newContent = formData.content || '';
-    
-    // 遍历上传成功的 URL
     for (const url of uploadedUrls) {
-        // 正则：匹配 [img], [image], [图片] 等，不区分大小写
         const placeholderRegex = /\[(img|image|pic|photo|图片|图)(\d+)?\]/i;
-        
-        if (placeholderRegex.test(newContent)) {
-            // 如果找到占位符，替换第一个
-            newContent = newContent.replace(placeholderRegex, `![](${url})`);
-        } else {
-            // 如果没占位符了，追加到文末
-            newContent += `\n\n![](${url})`;
-        }
+        if (placeholderRegex.test(newContent)) newContent = newContent.replace(placeholderRegex, `![](${url})`);
+        else newContent += `\n\n![](${url})`;
     }
-
     setFormData((prev: any) => ({ ...prev, content: newContent }));
     setUploadingFile(false);
-    
-    alert(`📸 批量处理完成！\n成功: ${uploadedUrls.length} 张\n失败: ${uploadErrors} 张\n请检查正文确认图片位置。`);
+    alert(`📸 批量处理完成！\n成功: ${uploadedUrls.length} 张\n失败: ${uploadErrors} 张`);
   };
 
   const handleSubmit = async () => {
@@ -261,12 +264,9 @@ export default function AdminDashboard() {
         else { alert('生成失败: ' + error.message); }
         return;
     }
-
     if (!formData.title && activeTab !== 'codes') return alert('标题不能为空');
-
     let payload: any = {};
     let tableName = activeTab === 'codes' ? 'redemption_codes' : activeTab;
-    
     if (activeTab === 'videos') {
         payload = {
             title: formData.title, author: formData.author, category: formData.category,
@@ -301,7 +301,6 @@ export default function AdminDashboard() {
             tag: formData.tag, is_active: formData.is_active, sort_order: Number(formData.sort_order)
         };
     }
-
     let error;
     if (editMode && currentId) {
       const res = await supabase.from(tableName).update(payload).eq('id', currentId);
@@ -310,7 +309,6 @@ export default function AdminDashboard() {
       const res = await supabase.from(tableName).insert([{ ...payload, created_at: new Date().toISOString() }]);
       error = res.error;
     }
-
     if (!error) { alert('✅ 保存成功！'); setIsModalOpen(false); fetchData(activeTab); } 
     else { alert('❌ 保存失败: ' + error.message); }
   };
@@ -419,7 +417,6 @@ export default function AdminDashboard() {
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-3">
-                                            {/* ⚠️ 修复：列表图片添加防盗链 */}
                                             {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" /></div>}
                                             <div>
                                                 <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">{item.title || '无标题'}</div>
@@ -493,9 +490,28 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* ✨ [AI 智能助手] + 🆕 批量配图 */}
+                    {/* ✨ [AI 智能助手] + 🆕 全网抓取 + 批量配图 */}
                     {activeTab === 'articles' && (
                         <div className="space-y-4">
+                            {/* 🆕 1. 全网文章一键抓取 */}
+                            <div className="bg-gradient-to-r from-green-900/20 to-teal-900/20 border border-green-500/30 p-4 rounded-xl flex gap-2 items-center">
+                                <Globe size={18} className="text-green-400 flex-shrink-0"/>
+                                <input 
+                                    className="flex-1 bg-black/50 border border-green-500/30 rounded px-3 py-2 text-sm text-green-100 placeholder-green-500/50" 
+                                    placeholder="粘贴任意公众号/博客文章链接，一键转存..." 
+                                    value={articleFetchLink}
+                                    onChange={e => setArticleFetchLink(e.target.value)}
+                                />
+                                <button 
+                                    onClick={handleFetchArticle} 
+                                    disabled={isFetchingArticle}
+                                    className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-green-900/20 whitespace-nowrap"
+                                >
+                                    {isFetchingArticle ? <Loader2 size={14} className="animate-spin"/> : <ArrowRight size={14}/>}
+                                    智能转存
+                                </button>
+                            </div>
+
                             {/* AI 解析模块 */}
                             <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl space-y-3">
                                 <div className="flex items-center justify-between">
@@ -517,42 +533,33 @@ export default function AdminDashboard() {
                                 >
                                     <ClipboardPaste size={14} /> 一键解析并自动填充
                                 </button>
-                                <p className="text-[10px] text-gray-500 text-center italic">
-                                    💡 提示：在 AI 生成的内容中预埋 {"[img]"} 占位符，然后使用下方按钮批量上传图片。
-                                </p>
                             </div>
 
                             {/* 🆕 批量配图模块 */}
                             <div className="bg-gray-900 border border-gray-700 p-4 rounded-xl flex items-center justify-between">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
-                                        <Images size={16} className="text-green-400"/> 批量配图
+                                        <Images size={16} className="text-blue-400"/> 批量配图 (手动)
                                     </h3>
-                                    <p className="text-[10px] text-gray-500 mt-1">自动替换正文中的 [img], [图片] 占位符</p>
+                                    <p className="text-[10px] text-gray-500 mt-1">上传本地图片并自动替换 [img] 占位符</p>
                                 </div>
                                 <button 
                                     onClick={() => batchInputRef.current?.click()}
                                     disabled={uploadingFile}
-                                    className="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors"
+                                    className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors"
                                 >
                                     {uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}
-                                    上传图片并自动插入
+                                    批量上传
                                 </button>
-                                {/* 隐藏的多选文件框 */}
-                                <input 
-                                    type="file" 
-                                    ref={batchInputRef} 
-                                    multiple 
-                                    accept="image/*" 
-                                    hidden 
-                                    onChange={handleBatchUpload} 
-                                />
+                                <input type="file" ref={batchInputRef} multiple accept="image/*" hidden onChange={handleBatchUpload} />
                             </div>
                         </div>
                     )}
 
+                    {/* ... (后续代码保持不变) ... */}
                     {activeTab === 'articles' && (
                         <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4 mt-4">
+                            {/* ... */}
                             <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
                             
                             {formData.video_id ? (
@@ -572,13 +579,7 @@ export default function AdminDashboard() {
                             ) : (
                                 <div className="relative">
                                     <div className="flex gap-2">
-                                        <input 
-                                            value={videoSearchQuery}
-                                            onChange={e => setVideoSearchQuery(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && searchVideos()}
-                                            className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none"
-                                            placeholder="输入关键词搜索视频库 (如: Midjourney)..."
-                                        />
+                                        <input value={videoSearchQuery} onChange={e => setVideoSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchVideos()} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none" placeholder="输入关键词搜索视频库 (如: Midjourney)..."/>
                                         <button onClick={searchVideos} className="bg-gray-800 hover:bg-gray-700 px-4 rounded text-gray-300">
                                             {isSearchingVideo ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
                                         </button>
