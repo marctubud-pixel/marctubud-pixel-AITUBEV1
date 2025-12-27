@@ -1,15 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react'; // 引入 Suspense
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation'; // 引入钩子
 import { supabase } from '../lib/supabaseClient'; 
-// ✅ 新增 ArrowLeft 图标，移除了 GraduationCap（因为顶部不再需要，虽然侧边栏还在用，保留导入即可）
-import { Search, BookOpen, Clock, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic, Newspaper, ArrowLeft } from 'lucide-react';
+import { Search, BookOpen, Clock, ChevronRight, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic, Newspaper, ArrowLeft } from 'lucide-react';
 
-export default function Academy() {
+// 拆分出一个内部组件来使用 useSearchParams
+function AcademyContent() {
+  const searchParams = useSearchParams();
+  // 优先使用 URL 参数中的 category，如果没有则默认为 '全部'
+  const initialCategory = searchParams.get('category') || '全部';
+
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [activeCategory, setActiveCategory] = useState(initialCategory);
+  const [searchQuery, setSearchQuery] = useState('');
+
   // 🎯 分类体系
   const categories = [
       { id: '全部', label: '全部内容', icon: <Layers size={18}/> },
@@ -20,8 +27,12 @@ export default function Academy() {
       { id: '行业资讯', label: '行业资讯', icon: <Newspaper size={18}/> },
       { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> },
   ];
-  const [activeCategory, setActiveCategory] = useState('全部');
-  const [searchQuery, setSearchQuery] = useState('');
+
+  // 监听 URL 参数变化 (处理浏览器后退/前进)
+  useEffect(() => {
+    const cat = searchParams.get('category');
+    if (cat) setActiveCategory(cat);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchArticles();
@@ -41,7 +52,6 @@ export default function Academy() {
   const parseTags = (tags: any) => {
     if (!tags) return [];
     let parsed: any[] = [];
-
     if (Array.isArray(tags)) {
       parsed = tags;
     } else if (typeof tags === 'string') {
@@ -53,7 +63,6 @@ export default function Academy() {
         parsed = tags.split(/[,，]/);
       }
     }
-
     return parsed
       .map(t => {
         if (typeof t !== 'string') return '';
@@ -76,7 +85,6 @@ export default function Academy() {
       {/* 顶部 Header */}
       <div className="border-b border-white/5 bg-[#0A0A0A]/90 sticky top-0 z-40 backdrop-blur-xl px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-            {/* ✅ 修改点：替换为“回到首页”链接，样式与详情页一致 */}
             <Link href="/" className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-white transition-colors">
                 <ArrowLeft size={20}/> 回到首页
             </Link>
@@ -105,7 +113,11 @@ export default function Academy() {
                 {categories.map(cat => (
                     <button 
                         key={cat.id}
-                        onClick={() => setActiveCategory(cat.id)}
+                        onClick={() => {
+                            setActiveCategory(cat.id);
+                            // 可选：更新 URL 但不刷新页面，保持状态一致
+                            window.history.pushState(null, '', `?category=${cat.id}`);
+                        }}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                             activeCategory === cat.id 
                             ? 'bg-white text-black shadow-lg shadow-white/10' 
@@ -145,7 +157,7 @@ export default function Academy() {
                                     </div>
                                 )}
                                 
-                                {/* 角标逻辑 */}
+                                {/* 角标 */}
                                 {(['商业访谈', '行业资讯'].includes(item.category) || item.difficulty) && (
                                     <div className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded backdrop-blur-md shadow-lg ${
                                         item.category === '商业访谈' ? 'bg-blue-600/90 text-white' : 
@@ -190,5 +202,14 @@ export default function Academy() {
 
       </main>
     </div>
+  );
+}
+
+// ✅ 必须包裹 Suspense，因为使用了 useSearchParams
+export default function Academy() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center text-gray-500">加载中...</div>}>
+      <AcademyContent />
+    </Suspense>
   );
 }

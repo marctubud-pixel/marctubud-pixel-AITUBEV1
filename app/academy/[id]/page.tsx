@@ -35,15 +35,15 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
   // 🌓 阅读模式状态 (默认暗色)
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  // 📚 分类导航数据 (用于左侧栏)
+  // 📚 分类导航数据
   const categories = [
-      { id: '全部', label: '全部内容', icon: <Layers size={16}/> },
-      { id: '新手入门', label: '新手入门', icon: <GraduationCap size={16}/> },
-      { id: '工具学习', label: '工具学习', icon: <Zap size={16}/> },
-      { id: '高阶玩法', label: '高阶玩法', icon: <PlayCircle size={16}/> },
-      { id: '干货分享', label: '干货分享', icon: <BookOpen size={16}/> },
-      { id: '行业资讯', label: '行业资讯', icon: <Newspaper size={16}/> },
-      { id: '商业访谈', label: '商业访谈', icon: <Mic size={16}/> },
+      { id: '全部', label: '全部内容', icon: <Layers size={18}/> },
+      { id: '新手入门', label: '新手入门', icon: <GraduationCap size={18}/> },
+      { id: '工具学习', label: '工具学习', icon: <Zap size={18}/> },
+      { id: '高阶玩法', label: '高阶玩法', icon: <PlayCircle size={18}/> },
+      { id: '干货分享', label: '干货分享', icon: <BookOpen size={18}/> },
+      { id: '行业资讯', label: '行业资讯', icon: <Newspaper size={18}/> },
+      { id: '商业访谈', label: '商业访谈', icon: <Mic size={18}/> },
   ];
 
   useEffect(() => { fetchArticle(); fetchRecommends(); }, [id]);
@@ -96,6 +96,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
   const cardClass = isDarkMode ? 'bg-[#151515] border-white/5' : 'bg-white border-gray-200 shadow-sm';
   const proseClass = isDarkMode ? 'prose-invert' : 'prose-gray';
   const subTextClass = isDarkMode ? 'text-gray-400' : 'text-gray-500';
+  const borderClass = isDarkMode ? 'border-white/10' : 'border-gray-200';
 
   return (
     <div className={`min-h-screen font-sans selection:bg-purple-500/30 transition-colors duration-300 ${bgClass} ${textClass}`}>
@@ -103,10 +104,10 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       {/* 顶部导航 */}
       <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b px-6 py-4 flex justify-between items-center ${isDarkMode ? 'bg-[#0A0A0A]/90 border-white/5' : 'bg-white/90 border-gray-200'}`}>
         <div className="max-w-7xl w-full mx-auto flex justify-between items-center">
-            {/* ✅ 修改点 1: 返回链接改为回到首页 (/) */}
             <Link href="/" className={`flex items-center gap-2 text-sm font-bold transition-colors ${subTextClass} hover:${textClass}`}>
-                <ArrowLeft size={18}/> 回到首页
+                <ArrowLeft size={20}/> 回到首页
             </Link>
+            
             <div className="flex gap-3">
                 <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-white/10 text-yellow-400' : 'hover:bg-gray-100 text-purple-600'}`}>
                     {isDarkMode ? <Sun size={18}/> : <Moon size={18}/>}
@@ -119,17 +120,19 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
       <main className="max-w-7xl mx-auto p-6 md:p-8 grid grid-cols-12 gap-8">
 
-        {/* 👈 左侧栏：分类导航 (col-span-2) */}
+        {/* 👈 左侧栏：分类导航 */}
         <aside className="hidden lg:block col-span-2 sticky top-24 h-fit">
-            {/* ✅ 修改点 2: 标题改为大号粗体 "AI 学院" */}
-            <h3 className={`text-xl font-bold mb-6 px-2 ${textClass}`}>AI 学院</h3>
+            <h3 className={`text-xl font-bold mb-6 px-4 ${textClass}`}>AI 学院</h3>
             <div className="space-y-1">
                 {categories.map(cat => (
-                    <Link href={`/academy?category=${cat.id}`} key={cat.id} 
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                    // ✅ 修改：Link 包含 ?category 参数，实现跳转后自动筛选
+                    <Link 
+                        href={`/academy?category=${cat.id}`} 
+                        key={cat.id} 
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                             article.category === cat.id 
-                            ? (isDarkMode ? 'bg-white text-black font-bold' : 'bg-black text-white font-bold') 
-                            : (isDarkMode ? 'text-gray-400 hover:bg-white/5 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-black')
+                            ? (isDarkMode ? 'bg-white text-black shadow-lg shadow-white/10' : 'bg-black text-white shadow-lg') 
+                            : (isDarkMode ? 'text-gray-400 hover:text-white hover:bg-white/5' : 'text-gray-500 hover:text-black hover:bg-gray-100')
                         }`}
                     >
                         {cat.icon} {cat.label}
@@ -138,18 +141,17 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             </div>
         </aside>
 
-        {/* 📄 中间栏：文章正文 (col-span-7) */}
+        {/* 📄 中间栏：文章正文 */}
         <div className="col-span-12 lg:col-span-7 min-w-0">
-            <header className="mb-8 pb-8 border-b border-gray-200/10">
+            <header className={`mb-8 pb-8 border-b ${borderClass}`}>
                 <h1 className="text-3xl font-bold mb-6 leading-tight tracking-tight">{article.title}</h1>
                 <div className={`flex flex-wrap items-center gap-6 text-xs font-mono ${subTextClass}`}>
-                    {/* ✅ 修改点 3: 作者名去紫色，改用灰色 */}
-                    <span className={`flex items-center gap-1 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>@ {article.author || 'AI.Tube'}</span>
+                    <span className="flex items-center gap-1 font-medium">@ {article.author || 'AI.Tube'}</span>
                     <span className="flex items-center gap-1.5"><Calendar size={12}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
                     <span className="flex items-center gap-1.5"><Clock size={12}/> {article.duration || '10 min'} 阅读</span>
                     <div className="flex gap-2 ml-auto">
                         {parseTags(article.tags).map((tag: string, i: number) => (
-                            <span key={i} className={`px-2 py-0.5 rounded border ${isDarkMode ? 'bg-white/5 border-white/10 text-gray-300' : 'bg-gray-100 border-gray-200 text-gray-600'}`}># {tag}</span>
+                            <span key={i} className={`px-2 py-0.5 rounded border ${isDarkMode ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-100 border-gray-200 text-gray-600'}`}># {tag}</span>
                         ))}
                     </div>
                 </div>
@@ -182,7 +184,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                 </ReactMarkdown>
             </article>
 
-            <div className={`mt-16 pt-10 border-t flex justify-center ${isDarkMode ? 'border-white/10' : 'border-gray-200'}`}>
+            <div className={`mt-16 pt-10 border-t flex justify-center ${borderClass}`}>
                 <button className="flex flex-col items-center gap-2 group">
                     <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${isDarkMode ? 'bg-white/5 border-white/10 hover:bg-purple-600 hover:text-white' : 'bg-gray-100 border-gray-200 hover:bg-purple-600 hover:text-white text-gray-500'}`}>
                         <ThumbsUp size={24} />
@@ -192,13 +194,11 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             </div>
         </div>
 
-        {/* 👉 右侧栏：工具与推荐 (col-span-3) */}
+        {/* 👉 右侧栏：工具与推荐 */}
         <aside className="hidden lg:block col-span-3 space-y-6">
             
-            {/* AI 助手 */}
             <div className={`rounded-xl p-5 border ${cardClass} sticky top-24`}>
                 <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${textClass}`}>
-                    {/* ✅ 修改点 4: 去除 Sparkles 强紫色，改用当前文本色 */}
                     <Sparkles size={16} className={textClass}/> AI 创作小助手
                 </h3>
                 {!aiSummary ? (
@@ -213,10 +213,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                 )}
             </div>
 
-            {/* 相关推荐 */}
             <div className={`rounded-xl p-5 border ${cardClass}`}>
                 <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${textClass}`}>
-                    {/* ✅ 修改点 5: 去除 TrendingUp 强紫色，改用当前文本色 */}
                     <TrendingUp size={16} className={textClass}/> 相关推荐
                 </h3>
                 <div className="space-y-5">
@@ -226,8 +224,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                                 {item.title}
                             </h4>
                             <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-gray-500">{item.author || 'AI.Tube'}</span>
-                                <span className="text-[10px] text-gray-400 flex items-center gap-1 font-mono"><Clock size={10}/> {item.duration || '5m'}</span>
+                                <span className={`text-[10px] ${subTextClass}`}>{item.author || 'AI.Tube'}</span>
+                                <span className={`text-[10px] flex items-center gap-1 font-mono ${subTextClass}`}><Clock size={10}/> {item.duration || '5m'}</span>
                             </div>
                         </Link>
                     ))}
