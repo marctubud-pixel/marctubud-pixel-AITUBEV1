@@ -85,8 +85,9 @@ function AcademyContent() {
       {/* 顶部 Header */}
       <div className="border-b border-white/5 bg-[#0A0A0A]/90 sticky top-0 z-40 backdrop-blur-xl px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
+            {/* ✅ 修改点：将 size={20} 改为 size={18} 以完全匹配详情页的视觉大小 */}
             <Link href="/" className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-white transition-colors">
-                <ArrowLeft size={20}/> 回到首页
+                <ArrowLeft size={18}/> 回到首页
             </Link>
             
             {/* 搜索框 */}
