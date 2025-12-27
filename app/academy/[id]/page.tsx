@@ -103,8 +103,9 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       {/* 顶部导航 */}
       <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b px-6 py-4 flex justify-between items-center ${isDarkMode ? 'bg-[#0A0A0A]/90 border-white/5' : 'bg-white/90 border-gray-200'}`}>
         <div className="max-w-7xl w-full mx-auto flex justify-between items-center">
-            <Link href="/academy" className={`flex items-center gap-2 text-sm font-bold transition-colors ${subTextClass} hover:${textClass}`}>
-                <ArrowLeft size={18}/> 返回学院
+            {/* ✅ 修改点 1: 返回链接改为回到首页 (/) */}
+            <Link href="/" className={`flex items-center gap-2 text-sm font-bold transition-colors ${subTextClass} hover:${textClass}`}>
+                <ArrowLeft size={18}/> 回到首页
             </Link>
             <div className="flex gap-3">
                 <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-white/10 text-yellow-400' : 'hover:bg-gray-100 text-purple-600'}`}>
@@ -120,7 +121,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
         {/* 👈 左侧栏：分类导航 (col-span-2) */}
         <aside className="hidden lg:block col-span-2 sticky top-24 h-fit">
-            <h3 className={`text-xs font-bold uppercase tracking-wider mb-4 px-2 ${subTextClass}`}>知识目录</h3>
+            {/* ✅ 修改点 2: 标题改为大号粗体 "AI 学院" */}
+            <h3 className={`text-xl font-bold mb-6 px-2 ${textClass}`}>AI 学院</h3>
             <div className="space-y-1">
                 {categories.map(cat => (
                     <Link href={`/academy?category=${cat.id}`} key={cat.id} 
@@ -141,7 +143,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             <header className="mb-8 pb-8 border-b border-gray-200/10">
                 <h1 className="text-3xl font-bold mb-6 leading-tight tracking-tight">{article.title}</h1>
                 <div className={`flex flex-wrap items-center gap-6 text-xs font-mono ${subTextClass}`}>
-                    <span className="flex items-center gap-1 font-medium text-purple-500">@ {article.author || 'AI.Tube'}</span>
+                    {/* ✅ 修改点 3: 作者名去紫色，改用灰色 */}
+                    <span className={`flex items-center gap-1 font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>@ {article.author || 'AI.Tube'}</span>
                     <span className="flex items-center gap-1.5"><Calendar size={12}/> {new Date(article.created_at).toLocaleDateString('zh-CN')}</span>
                     <span className="flex items-center gap-1.5"><Clock size={12}/> {article.duration || '10 min'} 阅读</span>
                     <div className="flex gap-2 ml-auto">
@@ -195,7 +198,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             {/* AI 助手 */}
             <div className={`rounded-xl p-5 border ${cardClass} sticky top-24`}>
                 <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${textClass}`}>
-                    <Sparkles size={16} className="text-purple-500"/> AI 创作小助手
+                    {/* ✅ 修改点 4: 去除 Sparkles 强紫色，改用当前文本色 */}
+                    <Sparkles size={16} className={textClass}/> AI 创作小助手
                 </h3>
                 {!aiSummary ? (
                     <button onClick={handleSummarize} disabled={isSummarizing} className={`w-full py-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 border transition-all ${isDarkMode ? 'bg-white/5 hover:bg-white/10 border-white/10 text-white' : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700'}`}>
@@ -212,7 +216,8 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             {/* 相关推荐 */}
             <div className={`rounded-xl p-5 border ${cardClass}`}>
                 <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${textClass}`}>
-                    <TrendingUp size={16} className="text-purple-500"/> 相关推荐
+                    {/* ✅ 修改点 5: 去除 TrendingUp 强紫色，改用当前文本色 */}
+                    <TrendingUp size={16} className={textClass}/> 相关推荐
                 </h3>
                 <div className="space-y-5">
                     {recommends.map((item) => (
