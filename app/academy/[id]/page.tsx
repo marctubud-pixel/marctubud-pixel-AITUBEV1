@@ -31,7 +31,7 @@ interface Video {
   thumbnail_url: string;
 }
 
-// 🆕 定义推荐文章接口
+// 推荐文章接口
 interface Recommendation {
   id: string;
   title: string;
@@ -87,7 +87,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     setLoading(false);
   }
 
-  // 获取右侧推荐位数据 (更新：多取封面、标签、时长)
   async function fetchRecommends() {
     const { data } = await supabase
       .from('articles')
@@ -109,7 +108,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
     return undefined;
   };
 
-  // 标签解析
   const parseTags = (tags: string | string[] | null) => {
     if (!tags) return [];
     if (Array.isArray(tags)) return tags;
@@ -127,17 +125,14 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       return !['商业访谈', '行业资讯'].includes(cat);
   };
 
-  // 🆕 AI 总结功能 (模拟)
   const handleSummarize = async () => {
     if (!article?.content) return;
     setIsSummarizing(true);
-    // 模拟 API 请求延迟
     setTimeout(() => {
       setAiSummary("这里是AI帮您总结的文章核心内容：\n\n这篇文章深入探讨了AI漫剧行业的最新趋势，分析了女频化内容的主导地位、'抽卡师'模式的兴起以及全面出海的战略机遇。文章还详细介绍了各大平台如快手、爱奇艺、B站和抖音在推动MCN模式发展方面的政策和激励措施，旨在帮助创作者抓住AI影像时代的红利。");
       setIsSummarizing(false);
     }, 1500);
   };
-
 
   if (loading) return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center gap-4 text-gray-500">
@@ -169,7 +164,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
       <main className="max-w-7xl mx-auto p-6 md:p-10 grid grid-cols-1 lg:grid-cols-4 gap-12">
 
-        {/* 左侧主要内容区 (占 3/4) */}
+        {/* 左侧主要内容区 */}
         <div className="lg:col-span-3 min-w-0">
             <header className="mb-8 border-b border-white/5 pb-8">
                 <h1 className="text-2xl md:text-3xl font-bold mb-6 leading-snug text-white tracking-tight">
@@ -279,23 +274,21 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
             </div>
         </div>
 
-        {/* 👉 右侧侧边栏 (Sidebar) (占 1/4) */}
+        {/* 👉 右侧侧边栏 (Sidebar) */}
         <aside className="lg:col-span-1 space-y-8 hidden lg:block">
 
-            {/* 1. 🆕 AI 创作小助手 (替换了原来的创作实战) */}
+            {/* 1. 🆕 AI 创作小助手 (极简版) */}
             <div className="bg-[#151515] rounded-xl p-5 border border-white/5 sticky top-24">
                 <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                     <Sparkles size={16} className="text-gray-400"/> AI 创作小助手
                 </h3>
                 <div className="space-y-4">
-                    <p className="text-xs text-gray-400 leading-relaxed">
-                        看不完长文？让 AI 帮你快速提炼核心观点。
-                    </p>
                     {!aiSummary ? (
+                        // ✨ 只有这一个按钮，没有多余文字
                         <button
                             onClick={handleSummarize}
                             disabled={isSummarizing}
-                            className="w-full bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 border border-white/10"
+                            className="w-full bg-white/5 hover:bg-white/10 text-white text-xs font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 border border-white/10 hover:border-purple-500/30"
                         >
                             {isSummarizing ? (
                                 <>
@@ -304,7 +297,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                                 </>
                             ) : (
                                 <>
-                                    <Sparkles size={14}/> 帮我总结文章
+                                    <Sparkles size={14} className="text-purple-400"/> 帮我总结
                                 </>
                             )}
                         </button>
@@ -312,7 +305,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                         <div className="bg-white/5 p-3 rounded-lg border border-white/5 text-xs text-gray-300 leading-relaxed animate-in fade-in">
                             <div className="flex justify-between items-center mb-2">
                                 <span className="font-bold text-gray-400">文章摘要</span>
-                                <button onClick={() => setAiSummary('')} className="text-gray-500 hover:text-white">重新总结</button>
+                                <button onClick={() => setAiSummary('')} className="text-gray-500 hover:text-white">重置</button>
                             </div>
                             <ReactMarkdown className="prose prose-invert prose-xs max-w-none prose-p:leading-relaxed prose-p:my-1">
                                 {aiSummary}
@@ -322,41 +315,30 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
                 </div>
             </div>
 
-            {/* 2. 相关推荐 (图文卡片版) */}
+            {/* 2. 相关推荐 (纯文字列表版：无封面) */}
             <div className="bg-[#151515] rounded-xl p-5 border border-white/5">
                 <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                     <TrendingUp size={16} className="text-gray-400"/> 相关推荐
                 </h3>
-                <div className="space-y-5">
+                <div className="space-y-6">
                     {recommends.length > 0 ? recommends.map((item) => {
-                        const tags = parseTags(item.tags).slice(0, 2); // 只取前两个标签
+                        const tags = parseTags(item.tags).slice(0, 2);
                         return (
-                            <Link href={`/academy/${item.id}`} key={item.id} className="group flex gap-3">
-                                {/* 封面图 */}
-                                <div className="w-24 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800 border border-white/5 relative">
-                                    {item.image_url ? (
-                                        <img src={item.image_url} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer"/>
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-black">
-                                            <BookOpen size={20} className="text-gray-700"/>
-                                        </div>
-                                    )}
-                                </div>
-                                {/* 信息区 */}
-                                <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                                    <h4 className="text-xs font-bold text-gray-300 group-hover:text-white transition-colors line-clamp-2 leading-snug">
-                                        {item.title}
-                                    </h4>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        {tags.map((tag, i) => (
-                                            <span key={i} className="text-[9px] bg-white/5 text-gray-500 px-1.5 py-0.5 rounded border border-white/5">
-                                                {tag}
-                                            </span>
-                                        ))}
-                                        <span className="text-[9px] text-gray-600 flex items-center gap-1 ml-auto font-mono">
-                                            <Clock size={9}/> {item.duration || '5m'}
+                            <Link href={`/academy/${item.id}`} key={item.id} className="group block">
+                                {/* 纯文字标题 */}
+                                <h4 className="text-sm font-medium text-gray-300 group-hover:text-purple-400 transition-colors line-clamp-2 leading-relaxed mb-2">
+                                    {item.title}
+                                </h4>
+                                {/* 标签 + 时间 */}
+                                <div className="flex items-center gap-2">
+                                    {tags.map((tag, i) => (
+                                        <span key={i} className="text-[10px] bg-white/5 text-gray-500 px-1.5 py-0.5 rounded border border-white/5 whitespace-nowrap">
+                                            {tag}
                                         </span>
-                                    </div>
+                                    ))}
+                                    <span className="text-[10px] text-gray-600 flex items-center gap-1 ml-auto font-mono flex-shrink-0">
+                                        <Clock size={10}/> {item.duration || '5m'}
+                                    </span>
                                 </div>
                             </Link>
                         );
