@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google"; // 👈 关键：这里必须是 next/font/google
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+// 💡 优化：移除了对 next/font/google 的依赖，直接使用系统默认字体
+// 这样 Vercel 构建时就不会因为网络问题下载字体失败
 
 export const metadata: Metadata = {
   title: "AI Video Platform",
@@ -17,7 +17,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      {/* 💡 直接在 body 使用标准的系统无衬线字体栈 */}
+      <body className="antialiased font-sans">
+        {children}
+      </body>
     </html>
   );
 }
