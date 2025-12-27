@@ -193,7 +193,7 @@ export default function AdminDashboard() {
     } catch (err: any) { alert(err.message); }
   };
 
-  // 🌐 🆕 全网文章一键抓取 (多线路故障转移版)
+  // 🌐 🆕 全网文章一键抓取 (多线路故障转移 + 优化排版版)
   const handleFetchArticle = async () => {
     if (!articleFetchLink) return alert('请填入文章链接');
     setIsFetchingArticle(true);
@@ -264,24 +264,47 @@ export default function AdminDashboard() {
       }
       const uniqueUrls = [...new Set(imagesToUpload)];
       
-      // 6. 转换为 Markdown (简化版)
+      // 6. 转换为 Markdown (优化排版版)
       let markdown = rawContent;
-      // 替换图片为占位符
+
+      // ✅ 优化排版逻辑：先处理加粗，再清理标签
+      
+      // 1. 保留加粗: 将 strong, b, style="font-weight: bold" 替换为 **
+      markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
+      markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**');
+      // 针对微信公众号的加粗样式优化 (匹配 font-weight: bold 或 font-weight: 700)
+      markdown = markdown.replace(/<span[^>]*style="[^"]*font-weight:\s*(bold|700)[^"]*"[^>]*>(.*?)<\/span>/gi, '**$2**');
+
+      // 2. 替换图片为占位符
       markdown = markdown.replace(/<img[^>]+data-src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
       markdown = markdown.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
-      // 清洗标签
+
+      // 3. 优化标题 (可选，尝试将 h1-h3 转换为 Markdown 标题)
+      markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n\n');
+      markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n\n');
+      markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n### $1\n\n');
+      
+      // 4. 清洗标签 & 优化行间距
       markdown = markdown
           .replace(/<br\s*\/?>/gi, '\n')
+          // 微信的段落通常是用 section 或 p 包裹的，确保段落结束有双换行
           .replace(/<\/p>/gi, '\n\n')
-          .replace(/<section[^>]*>/gi, '\n')
-          .replace(/<\/section>/gi, '\n')
-          .replace(/<div[^>]*>/gi, '\n')
+          .replace(/<\/section>/gi, '\n\n')
+          // 去除 section 和 div 的起始标签
+          .replace(/<section[^>]*>/gi, '')
+          .replace(/<div[^>]*>/gi, '')
+          // div 结束标签换行
           .replace(/<\/div>/gi, '\n')
-          .replace(/<[^>]+>/g, '') // 暴力去标签
+          // 暴力去除剩余所有HTML标签
+          .replace(/<[^>]+>/g, '') 
+          // 处理常见转义符
           .replace(/&nbsp;/g, ' ')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
           .replace(/&amp;/g, '&')
+          // 核心：合并过多的空行 (保证最多只有两个连续换行符)
+          .replace(/\n\s*\n\s*\n/g, '\n\n')
+          // 去除首尾空格
           .trim();
 
       // 7. 图片转存
@@ -318,7 +341,7 @@ export default function AdminDashboard() {
             link_url: articleFetchLink
           }));
           
-          alert(`✅ 抓取成功！\n标题: ${title}\n图片: 已转存 ${uniqueUrls.length} 张`);
+          alert(`✅ 抓取成功！排版已优化。\n标题: ${title}\n图片: 已转存 ${uniqueUrls.length} 张`);
       } else {
           setFormData((prev: any) => ({
             ...prev,
@@ -326,7 +349,7 @@ export default function AdminDashboard() {
             content: markdown,
             link_url: articleFetchLink
           }));
-          alert(`✅ 抓取成功 (纯文字)！\n标题: ${title}`);
+          alert(`✅ 抓取成功 (纯文字，排版已优化)！\n标题: ${title}`);
       }
 
       setArticleFetchLink('');
