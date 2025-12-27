@@ -105,7 +105,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
       <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b px-6 py-4 flex justify-between items-center ${isDarkMode ? 'bg-[#0A0A0A]/90 border-white/5' : 'bg-white/90 border-gray-200'}`}>
         <div className="max-w-7xl w-full mx-auto flex justify-between items-center">
             <Link href="/" className={`flex items-center gap-2 text-sm font-bold transition-colors ${subTextClass} hover:${textClass}`}>
-                <ArrowLeft size={18}/> 回到首页
+                <ArrowLeft size={20}/> 返回首页
             </Link>
             
             <div className="flex gap-3">

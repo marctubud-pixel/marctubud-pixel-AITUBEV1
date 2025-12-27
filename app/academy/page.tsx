@@ -68,7 +68,7 @@ function AcademyContent() {
       <div className="border-b border-white/5 bg-[#0A0A0A]/90 sticky top-0 z-40 backdrop-blur-xl px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-white transition-colors">
-                <ArrowLeft size={18}/> 回到首页
+                <ArrowLeft size={20}/> 返回首页
             </Link>
             <div className="relative w-64 hidden md:block">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16}/>
