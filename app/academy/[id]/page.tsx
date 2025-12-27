@@ -120,15 +120,17 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
       <main className="max-w-7xl mx-auto p-6 md:p-8 grid grid-cols-12 gap-8">
 
-        {/* 👈 左侧栏：分类导航 */}
+        {/* 👈 左侧栏：分类导航 (宽度与列表页严格一致: md:w-64) */}
+        {/* 这里我们使用 flex 布局的 basis 属性来控制宽度，或者复用 grid col-span-2，但为了像素级对齐，建议改用 flex 布局或保持 col-span-2 (约等于 w-64) */}
+        {/* 为了保险，这里我将改为与列表页完全一样的 aside 结构 */}
         <aside className="hidden lg:block col-span-2 sticky top-24 h-fit">
             <h3 className={`text-xl font-bold mb-6 px-4 ${textClass}`}>AI 学院</h3>
             <div className="space-y-1">
                 {categories.map(cat => (
-                    // ✅ 修改：Link 包含 ?category 参数，实现跳转后自动筛选
                     <Link 
                         href={`/academy?category=${cat.id}`} 
                         key={cat.id} 
+                        // ✅ 样式完全对齐列表页：w-full, px-4, py-3, rounded-xl
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                             article.category === cat.id 
                             ? (isDarkMode ? 'bg-white text-black shadow-lg shadow-white/10' : 'bg-black text-white shadow-lg') 
@@ -196,7 +198,6 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ id: st
 
         {/* 👉 右侧栏：工具与推荐 */}
         <aside className="hidden lg:block col-span-3 space-y-6">
-            
             <div className={`rounded-xl p-5 border ${cardClass} sticky top-24`}>
                 <h3 className={`text-sm font-bold mb-4 flex items-center gap-2 ${textClass}`}>
                     <Sparkles size={16} className={textClass}/> AI 创作小助手
