@@ -8,7 +8,7 @@ import {
     Plus, Trash2, Edit, X, LogOut, Upload, Loader2, Link as LinkIcon, 
     Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, 
     Flame, Trophy, Star, ExternalLink, Copy, CheckCircle, Search, Link as LinkIcon2,
-    Sparkles, Zap, ClipboardPaste, Images, Globe, ArrowRight
+    Sparkles, Zap, ClipboardPaste, Images, Globe, ArrowRight, RefreshCcw
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -17,6 +17,9 @@ export default function AdminDashboard() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   
+  // ----------------------------------------------------------------
+  // 🔐 1. 鉴权与初始化
+  // ----------------------------------------------------------------
   useEffect(() => {
     const isAuth = localStorage.getItem('admin_auth');
     if (isAuth !== 'true') {
@@ -49,6 +52,9 @@ export default function AdminDashboard() {
     setLoading(false);
   }
 
+  // ----------------------------------------------------------------
+  // 🎥 2. 核心逻辑状态管理
+  // ----------------------------------------------------------------
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
@@ -59,36 +65,55 @@ export default function AdminDashboard() {
   const [isFetchingArticle, setIsFetchingArticle] = useState(false);
   const [fetchProgress, setFetchProgress] = useState('');
 
+  // ✨ AI 解析专用状态
   const [aiPasteContent, setAiPasteContent] = useState('');
+
+  // 🔍 视频搜索专用状态
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
   const [videoSearchResults, setVideoSearchResults] = useState<any[]>([]);
   const [isSearchingVideo, setIsSearchingVideo] = useState(false);
   
+  // 文件上传 Refs
   const fileInputRef = useRef<HTMLInputElement>(null); 
   const imageInputRef = useRef<HTMLInputElement>(null); 
   const batchInputRef = useRef<HTMLInputElement>(null); 
   const [uploadingFile, setUploadingFile] = useState(false);
 
+  // 📝 统一大表单
   const [formData, setFormData] = useState<any>({
+    // --- 通用/视频字段 ---
     title: '', author: '', category: '创意短片', 
     prompt: '', tag: '', thumbnail_url: '', video_url: '', 
     views: 0, duration: '', storyboard_url: '', price: 10, 
     is_vip: false, tutorial_url: '',
     is_hot: false, is_selected: false, is_award: false,
+    
+    // --- 文章字段 ---
     description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
-    tags: '', video_id: '', 
+    tags: '', video_id: '', // 关联视频ID
+    
+    // --- 需求字段 ---
     budget: '', company: '', deadline: '', status: 'open', applicants: 0,
+    
+    // --- Banner字段 ---
     is_active: true, sort_order: 0,
+
+    // --- 卡密字段 ---
     batch_count: 10, duration_days: 30, prefix: 'VIP'
   });
 
+  // 🔎 智能解析函数
   const handleSmartParse = () => {
     if (!aiPasteContent.trim()) return alert('请先粘贴 AI 生成的内容');
+    
     try {
       let parsedData: any = null;
       const jsonMatch = aiPasteContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsedData = JSON.parse(jsonMatch[0]);
-      else throw new Error('未找到有效的 JSON 格式');
+      if (jsonMatch) {
+        parsedData = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('未找到有效的 JSON 格式');
+      }
 
       setFormData((prev: any) => ({
         ...prev,
@@ -102,11 +127,16 @@ export default function AdminDashboard() {
         image_url: parsedData.image_url || prev.image_url,
         link_url: parsedData.link_url || prev.link_url,
       }));
+
       setAiPasteContent('');
       alert('✨ AI 数据已成功解析并回填表单！');
-    } catch (err) { alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。'); }
+    } catch (err) {
+      console.error(err);
+      alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。');
+    }
   };
 
+  // 🔎 搜索视频库
   const searchVideos = async () => {
       if (!videoSearchQuery.trim()) return;
       setIsSearchingVideo(true);
@@ -119,13 +149,14 @@ export default function AdminDashboard() {
       setIsSearchingVideo(false);
   };
 
+  // ✅ 选中视频并自动回填
   const selectVideo = (video: any) => {
       setFormData((prev: any) => ({
           ...prev,
-          video_id: video.id,          
-          title: video.title,          
-          duration: video.duration,    
-          image_url: video.thumbnail_url 
+          video_id: video.id,          // 关联 ID
+          title: video.title,          // 自动同步标题
+          duration: video.duration,    // 自动同步时长
+          image_url: video.thumbnail_url // 自动同步封面
       }));
       setVideoSearchResults([]); 
       setVideoSearchQuery('');   
@@ -135,40 +166,73 @@ export default function AdminDashboard() {
       setFormData((prev: any) => ({ ...prev, video_id: '' }));
   };
 
+  // 📺 B站一键抓取
   const handleFetchInfo = async () => {
     if (!bilibiliLink) return alert('请填入链接');
     const match = bilibiliLink.match(/(BV\w+)/);
     const bvid = match ? match[1] : null;
     if (!bvid) return alert('无效 BV 号');
+
     try {
       const res = await fetch(`/api/fetch-bilibili?bvid=${bvid}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+
       setFormData((prev: any) => ({
         ...prev,
-        title: data.title, author: data.author, thumbnail_url: data.thumbnail_url,
-        video_url: data.video_url, views: data.views || 0, tag: data.tag || prev.tag,
-        duration: data.duration || '', prompt: prev.prompt || '', 
+        title: data.title, 
+        author: data.author, 
+        thumbnail_url: data.thumbnail_url,
+        video_url: data.video_url, 
+        views: data.views || 0,
+        tag: data.tag || prev.tag,
+        duration: data.duration || '', 
+        prompt: prev.prompt || '', 
       }));
       alert('✅ 抓取成功！数据已回填');
     } catch (err: any) { alert(err.message); }
   };
 
-  // 🌐 🆕 全网文章抓取 (浏览器直连解析版)
+  // 🌐 🆕 全网文章一键抓取 (多线路故障转移版)
   const handleFetchArticle = async () => {
     if (!articleFetchLink) return alert('请填入文章链接');
     setIsFetchingArticle(true);
-    setFetchProgress('正在通过代理下载网页...');
+    setFetchProgress('正在初始化抓取引擎...');
     
     try {
-      // 1. 使用 allorigins 代理获取 HTML (避免 CORS，且通常未被微信完全屏蔽)
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(articleFetchLink)}&disableCache=true`;
-      const res = await fetch(proxyUrl);
-      
-      if (!res.ok) throw new Error(`网页下载失败 (${res.status})，可能是链接无效或被反爬拦截`);
-      
-      const htmlText = await res.text();
-      setFetchProgress('正在本地解析内容...');
+      let htmlText = '';
+      const targetUrl = articleFetchLink;
+
+      // 🔄 线路 1: CorsProxy (通常最快)
+      setFetchProgress('尝试线路 1 (高速)...');
+      try {
+          const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
+          if (res.ok) htmlText = await res.text();
+      } catch (e) { console.log('线路1失败'); }
+
+      // 🔄 线路 2: AllOrigins (备用)
+      if (!htmlText || htmlText.length < 500) {
+          setFetchProgress('尝试线路 2 (稳定)...');
+          try {
+              const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&disableCache=true`);
+              if (res.ok) htmlText = await res.text();
+          } catch (e) { console.log('线路2失败'); }
+      }
+
+      // 🔄 线路 3: CodeTabs (兜底)
+      if (!htmlText || htmlText.length < 500) {
+          setFetchProgress('尝试线路 3 (兜底)...');
+          try {
+              const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`);
+              if (res.ok) htmlText = await res.text();
+          } catch (e) { console.log('线路3失败'); }
+      }
+
+      if (!htmlText || htmlText.length < 500) {
+          throw new Error('所有抓取线路均无法连接目标网页，请检查链接是否有效或目标网站有强力反爬。');
+      }
+
+      setFetchProgress('网页下载成功，解析内容中...');
 
       // 2. 浏览器本地解析 DOM
       const parser = new DOMParser();
@@ -178,42 +242,42 @@ export default function AdminDashboard() {
       let title = '';
       const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
       const wechatTitle = doc.querySelector('.rich_media_title')?.textContent;
-      title = (ogTitle || wechatTitle || doc.title || '未命名文章').trim();
+      const h1Title = doc.querySelector('h1')?.textContent;
+      title = (ogTitle || wechatTitle || h1Title || doc.title || '未命名文章').trim();
 
-      // 4. 提取正文 (针对微信公众号优化)
+      // 4. 提取正文 (优先找微信的 js_content，否则找 article，否则找 body)
       let contentDiv = doc.querySelector('#js_content') || doc.querySelector('article') || doc.body;
       let rawContent = contentDiv.innerHTML;
 
       // 5. 提取图片列表
       const imagesToUpload: string[] = [];
-      // 微信图片通常在 data-src 中
       const imgRegex = /data-src="([^"]+)"|src="([^"]+)"/g;
       let match;
       while ((match = imgRegex.exec(rawContent)) !== null) {
           const url = match[1] || match[2];
           if (url && url.startsWith('http')) {
-              imagesToUpload.push(url);
+              // 简单过滤掉太小的图标或追踪像素
+              if (!url.includes('.svg') && !url.includes('icon')) {
+                  imagesToUpload.push(url);
+              }
           }
       }
-      
-      // 去重
       const uniqueUrls = [...new Set(imagesToUpload)];
       
-      // 6. 初步生成 Markdown (简单的 HTML -> Markdown)
-      // 先把图片标签替换成 Markdown 占位符
+      // 6. 转换为 Markdown (简化版)
       let markdown = rawContent;
-      
-      // 替换图片标签 (处理 data-src 和 src)
+      // 替换图片为占位符
       markdown = markdown.replace(/<img[^>]+data-src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
       markdown = markdown.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
-      
       // 清洗标签
       markdown = markdown
           .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<\/p>/gi, '\n\n')
-          .replace(/<section[^>]*>/gi, '\n') // 微信排版常用 section
+          .replace(/<section[^>]*>/gi, '\n')
           .replace(/<\/section>/gi, '\n')
-          .replace(/<[^>]+>/g, '') // 去除剩余 HTML 标签
+          .replace(/<div[^>]*>/gi, '\n')
+          .replace(/<\/div>/gi, '\n')
+          .replace(/<[^>]+>/g, '') // 暴力去标签
           .replace(/&nbsp;/g, ' ')
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
@@ -222,7 +286,7 @@ export default function AdminDashboard() {
 
       // 7. 图片转存
       if (uniqueUrls.length > 0) {
-          setFetchProgress(`解析完成，正在转存 ${uniqueUrls.length} 张图片...`);
+          setFetchProgress(`发现 ${uniqueUrls.length} 张图片，转存中...`);
           
           let newCover = '';
           for (let i = 0; i < uniqueUrls.length; i++) {
@@ -236,13 +300,11 @@ export default function AdminDashboard() {
                   const uploadData = await uploadRes.json();
                   
                   if (uploadData.url) {
-                      // 替换正文中的链接
                       markdown = markdown.split(originalUrl).join(uploadData.url);
-                      // 取第一张图做封面
                       if (!newCover) newCover = uploadData.url;
                   }
-                  // 更新进度条
-                  setFetchProgress(`已转存 ${i + 1}/${uniqueUrls.length} 张...`);
+                  // 进度反馈
+                  setFetchProgress(`图片处理: ${i + 1}/${uniqueUrls.length}`);
               } catch (e) {
                   console.error('图片转存失败:', originalUrl);
               }
@@ -256,7 +318,7 @@ export default function AdminDashboard() {
             link_url: articleFetchLink
           }));
           
-          alert(`✅ 抓取成功！\n\n标题: ${title}\n图片: 成功处理 ${uniqueUrls.length} 张\n\n请检查正文排版。`);
+          alert(`✅ 抓取成功！\n标题: ${title}\n图片: 已转存 ${uniqueUrls.length} 张`);
       } else {
           setFormData((prev: any) => ({
             ...prev,
@@ -270,19 +332,21 @@ export default function AdminDashboard() {
       setArticleFetchLink('');
     } catch (err: any) {
       console.error(err);
-      alert('抓取失败: ' + err.message + '\n\n💡 建议：微信反爬严格，如果此功能失效，请直接复制文章内容，粘贴到正文框，然后使用下方的“批量配图”功能。');
+      alert('抓取失败: ' + err.message + '\n\n💡 建议：如果自动抓取失败，请手动复制文章内容粘贴，并使用下方的“批量配图”功能上传图片。');
     } finally {
       setIsFetchingArticle(false);
       setFetchProgress('');
     }
   };
 
+  // 📤 文件上传
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    
     try {
         const { error: uploadError } = await supabase.storage.from('storyboards').upload(fileName, file, { upsert: true });
         if (uploadError) throw uploadError;
@@ -292,58 +356,85 @@ export default function AdminDashboard() {
     } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
   };
 
+  // 🖼️ 图片上传 (自动命名)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
-    let fileExt = 'jpg';
+    
+    let fileExt = 'jpg'; 
     const lowerName = file.name.toLowerCase();
     if (lowerName.endsWith('.png')) fileExt = 'png';
     else if (lowerName.endsWith('.gif')) fileExt = 'gif';
     else if (lowerName.endsWith('.webp')) fileExt = 'webp';
+    else if (lowerName.endsWith('.jpeg')) fileExt = 'jpg';
+    
     const fileName = `cover-${Date.now()}.${fileExt}`; 
     const bucketName = activeTab === 'articles' ? 'articles' : 'banners';
+
     try {
         const { error } = await supabase.storage.from(bucketName).upload(fileName, file);
         if (error) throw error;
+        
         const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
+        
         if (activeTab === 'videos') setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
         else setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
+        
         alert(`✅ 图片已成功上传到 ${bucketName} 存储桶！`);
-    } catch (error: any) { alert(`上传失败: ` + error.message); } finally { setUploadingFile(false); }
+    } catch (error: any) { 
+        alert(`上传失败: ` + error.message); 
+    } finally { 
+        setUploadingFile(false); 
+    }
   };
 
+  // 📸 批量图片上传并替换占位符
   const handleBatchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const files = Array.from(e.target.files);
     const uploadedUrls: string[] = [];
     let uploadErrors = 0;
+
     for (const file of files) {
         let fileExt = 'jpg';
         const lowerName = file.name.toLowerCase();
         if (lowerName.endsWith('.png')) fileExt = 'png';
         else if (lowerName.endsWith('.gif')) fileExt = 'gif';
         else if (lowerName.endsWith('.webp')) fileExt = 'webp';
+        
         const fileName = `article-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+
         try {
             const { error } = await supabase.storage.from('articles').upload(fileName, file);
             if (error) throw error;
             const { data } = supabase.storage.from('articles').getPublicUrl(fileName);
             uploadedUrls.push(data.publicUrl);
-        } catch (err) { console.error(err); uploadErrors++; }
+        } catch (err) {
+            console.error(err);
+            uploadErrors++;
+        }
     }
+
     let newContent = formData.content || '';
+    
     for (const url of uploadedUrls) {
         const placeholderRegex = /\[(img|image|pic|photo|图片|图)(\d+)?\]/i;
-        if (placeholderRegex.test(newContent)) newContent = newContent.replace(placeholderRegex, `![](${url})`);
-        else newContent += `\n\n![](${url})`;
+        if (placeholderRegex.test(newContent)) {
+            newContent = newContent.replace(placeholderRegex, `![](${url})`);
+        } else {
+            newContent += `\n\n![](${url})`;
+        }
     }
+
     setFormData((prev: any) => ({ ...prev, content: newContent }));
     setUploadingFile(false);
+    
     alert(`📸 批量处理完成！\n成功: ${uploadedUrls.length} 张\n失败: ${uploadErrors} 张`);
   };
 
+  // 💾 提交保存
   const handleSubmit = async () => {
     if (activeTab === 'codes' && !editMode) {
         const count = parseInt(formData.batch_count) || 1;
@@ -360,9 +451,12 @@ export default function AdminDashboard() {
         else { alert('生成失败: ' + error.message); }
         return;
     }
+
     if (!formData.title && activeTab !== 'codes') return alert('标题不能为空');
+
     let payload: any = {};
     let tableName = activeTab === 'codes' ? 'redemption_codes' : activeTab;
+    
     if (activeTab === 'videos') {
         payload = {
             title: formData.title, author: formData.author, category: formData.category,
@@ -379,12 +473,14 @@ export default function AdminDashboard() {
         if (formData.tags) {
             formattedTags = formData.tags.toString().split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => t.length > 0);
         }
+
         payload = {
             title: formData.title, description: formData.description, 
             category: formData.category, difficulty: formData.difficulty, 
             duration: formData.duration, image_url: formData.image_url,
             content: formData.content, is_vip: formData.is_vip, link_url: formData.link_url,
-            tags: formattedTags, video_id: formData.video_id ? Number(formData.video_id) : null
+            tags: formattedTags, 
+            video_id: formData.video_id ? Number(formData.video_id) : null
         };
     } else if (activeTab === 'jobs') {
         payload = {
@@ -397,6 +493,7 @@ export default function AdminDashboard() {
             tag: formData.tag, is_active: formData.is_active, sort_order: Number(formData.sort_order)
         };
     }
+
     let error;
     if (editMode && currentId) {
       const res = await supabase.from(tableName).update(payload).eq('id', currentId);
@@ -405,6 +502,7 @@ export default function AdminDashboard() {
       const res = await supabase.from(tableName).insert([{ ...payload, created_at: new Date().toISOString() }]);
       error = res.error;
     }
+
     if (!error) { alert('✅ 保存成功！'); setIsModalOpen(false); fetchData(activeTab); } 
     else { alert('❌ 保存失败: ' + error.message); }
   };
@@ -423,12 +521,17 @@ export default function AdminDashboard() {
 
   const openEdit = (item: any) => {
     let processedItem = { ...item };
-    if (activeTab === 'articles' && Array.isArray(item.tags)) processedItem.tags = item.tags.join(', ');
+    if (activeTab === 'articles' && Array.isArray(item.tags)) {
+        processedItem.tags = item.tags.join(', ');
+    }
+
     setFormData(processedItem); 
     if (activeTab === 'videos' && item.video_url && item.video_url.includes('bvid=')) {
         const match = item.video_url.match(/bvid=(BV\w+)/);
         if (match) setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
-    } else setBilibiliLink('');
+    } else {
+        setBilibiliLink('');
+    }
     setVideoSearchQuery('');
     setVideoSearchResults([]);
     setCurrentId(item.id);
@@ -464,6 +567,8 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-black text-white flex font-sans">
+      
+      {/* 侧边栏 */}
       <aside className="w-64 bg-[#111] border-r border-white/5 flex flex-col h-screen sticky top-0">
         <div className="p-6 border-b border-white/5">
             <h1 className="text-xl font-bold flex items-center gap-2">
@@ -483,6 +588,7 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
+      {/* 主内容区 */}
       <main className="flex-1 p-8 overflow-y-auto h-screen">
         <div className="flex justify-between items-center mb-8">
             <h2 className="text-3xl font-bold capitalize">
@@ -513,8 +619,9 @@ export default function AdminDashboard() {
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-3">
-                                            {/* ⚠️ 修复：列表图片添加防盗链 */}
-                                            {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" /></div>}
+                                            {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0">
+                                                <img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                            </div>}
                                             <div>
                                                 <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">{item.title || '无标题'}</div>
                                                 {activeTab === 'videos' && <div className="text-xs text-gray-600">@{item.author}</div>}
@@ -560,6 +667,9 @@ export default function AdminDashboard() {
             </div>
         )}
 
+        {/* -----------------------------------------------------------
+          📢 统一弹窗 (Modal)
+        ----------------------------------------------------------- */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-[#151515] border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 relative">
@@ -590,12 +700,12 @@ export default function AdminDashboard() {
                     {/* ✨ [AI 智能助手] + 🆕 全网抓取 + 批量配图 */}
                     {activeTab === 'articles' && (
                         <div className="space-y-4">
-                            {/* 🆕 1. 全网文章一键抓取 (浏览器直连版) */}
+                            {/* 🆕 1. 全网文章一键抓取 (多线路自动切换版) */}
                             <div className="bg-gradient-to-r from-green-900/20 to-teal-900/20 border border-green-500/30 p-4 rounded-xl flex gap-2 items-center">
                                 <Globe size={18} className="text-green-400 flex-shrink-0"/>
                                 <input 
                                     className="flex-1 bg-black/50 border border-green-500/30 rounded px-3 py-2 text-sm text-green-100 placeholder-green-500/50" 
-                                    placeholder="粘贴任意公众号/博客文章链接，一键转存..." 
+                                    placeholder="粘贴公众号/博客链接 (自动线路切换)..." 
                                     value={articleFetchLink}
                                     onChange={e => setArticleFetchLink(e.target.value)}
                                 />
@@ -604,7 +714,7 @@ export default function AdminDashboard() {
                                     disabled={isFetchingArticle}
                                     className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-green-900/20 whitespace-nowrap"
                                 >
-                                    {isFetchingArticle ? <Loader2 size={14} className="animate-spin"/> : <ArrowRight size={14}/>}
+                                    {isFetchingArticle ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>}
                                     {isFetchingArticle ? fetchProgress : '智能转存'}
                                 </button>
                             </div>
@@ -653,7 +763,6 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* ... (后续代码保持不变) ... */}
                     {activeTab === 'articles' && (
                         <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4 mt-4">
                             <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
@@ -662,7 +771,6 @@ export default function AdminDashboard() {
                                 <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-8 bg-gray-800 rounded overflow-hidden">
-                                            {/* ⚠️ 修复：关联视频预览图添加防盗链 */}
                                             {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
                                         </div>
                                         <div>
@@ -691,7 +799,6 @@ export default function AdminDashboard() {
                                             {videoSearchResults.map(v => (
                                                 <div key={v.id} onClick={() => selectVideo(v)} className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer border-b border-white/5 last:border-0 transition-colors">
                                                     <div className="w-10 h-6 bg-gray-800 rounded overflow-hidden flex-shrink-0">
-                                                        {/* ⚠️ 修复：搜索结果预览图添加防盗链 */}
                                                         <img src={v.thumbnail_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
