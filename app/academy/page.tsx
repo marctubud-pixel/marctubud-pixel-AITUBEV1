@@ -3,13 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient'; 
-import { Search, BookOpen, Clock, ChevronRight, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic, Newspaper } from 'lucide-react';
+// ✅ 新增 ArrowLeft 图标，移除了 GraduationCap（因为顶部不再需要，虽然侧边栏还在用，保留导入即可）
+import { Search, BookOpen, Clock, Tag, PlayCircle, Zap, Layers, GraduationCap, Mic, Newspaper, ArrowLeft } from 'lucide-react';
 
 export default function Academy() {
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // 🎯 分类体系 (保持与详情页一致)
+  // 🎯 分类体系
   const categories = [
       { id: '全部', label: '全部内容', icon: <Layers size={18}/> },
       { id: '新手入门', label: '新手入门', icon: <GraduationCap size={18}/> },
@@ -41,7 +42,6 @@ export default function Academy() {
     if (!tags) return [];
     let parsed: any[] = [];
 
-    // 1. 尝试标准化输入为数组
     if (Array.isArray(tags)) {
       parsed = tags;
     } else if (typeof tags === 'string') {
@@ -54,7 +54,6 @@ export default function Academy() {
       }
     }
 
-    // 2. 深度清洗
     return parsed
       .map(t => {
         if (typeof t !== 'string') return '';
@@ -74,15 +73,13 @@ export default function Academy() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
       
-      {/* 简单的顶部 Header */}
+      {/* 顶部 Header */}
       <div className="border-b border-white/5 bg-[#0A0A0A]/90 sticky top-0 z-40 backdrop-blur-xl px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                    <GraduationCap fill="white" size={20}/>
-                </div>
-                <h1 className="text-xl font-bold tracking-tight">AI 创作学院</h1>
-            </div>
+            {/* ✅ 修改点：替换为“回到首页”链接，样式与详情页一致 */}
+            <Link href="/" className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-white transition-colors">
+                <ArrowLeft size={20}/> 回到首页
+            </Link>
             
             {/* 搜索框 */}
             <div className="relative w-64 hidden md:block">
@@ -100,17 +97,15 @@ export default function Academy() {
 
       <main className="max-w-7xl mx-auto p-6 md:p-8 flex flex-col md:flex-row gap-8">
         
-        {/* 👈 左侧导航栏 (Sidebar) - 样式已同步为详情页风格 */}
+        {/* 👈 左侧导航栏 (Sidebar) */}
         <aside className="w-full md:w-64 flex-shrink-0">
             <div className="sticky top-24 space-y-1">
-                {/* 标题样式升级：大号、加粗、无 Tracking */}
                 <h3 className="text-xl font-bold mb-6 px-4 text-white">AI 学院</h3>
                 
                 {categories.map(cat => (
                     <button 
                         key={cat.id}
                         onClick={() => setActiveCategory(cat.id)}
-                        // 按钮样式升级：增加 Padding (px-4 py-3)，统一圆角 (rounded-xl)，选中态改为白底黑字+阴影
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                             activeCategory === cat.id 
                             ? 'bg-white text-black shadow-lg shadow-white/10' 
@@ -119,7 +114,6 @@ export default function Academy() {
                     >
                         {cat.icon}
                         {cat.label}
-                        {/* 计数器 */}
                         {cat.id === '全部' && <span className="ml-auto text-xs opacity-50">{articles.length}</span>}
                     </button>
                 ))}
@@ -144,7 +138,6 @@ export default function Academy() {
                             {/* 封面区 */}
                             <div className="aspect-video relative overflow-hidden bg-gray-800">
                                 {item.image_url ? (
-                                    // ⚠️ 防盗链策略
                                     <img src={item.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-black">
@@ -152,12 +145,11 @@ export default function Academy() {
                                     </div>
                                 )}
                                 
-                                {/* ✅ 优化：访谈/资讯/难度角标逻辑 (与详情页逻辑保持一致) */}
+                                {/* 角标逻辑 */}
                                 {(['商业访谈', '行业资讯'].includes(item.category) || item.difficulty) && (
                                     <div className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-0.5 rounded backdrop-blur-md shadow-lg ${
                                         item.category === '商业访谈' ? 'bg-blue-600/90 text-white' : 
                                         item.category === '行业资讯' ? 'bg-purple-600/90 text-white' : 
-                                        // 下面是普通难度颜色
                                         item.difficulty === '入门' ? 'bg-green-500/90 text-black' : 
                                         item.difficulty === '进阶' ? 'bg-yellow-500/90 text-black' : 'bg-red-600/90 text-white'
                                     }`}>
