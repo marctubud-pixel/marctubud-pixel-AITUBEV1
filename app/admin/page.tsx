@@ -57,7 +57,7 @@ export default function AdminDashboard() {
   // 🆕 文章抓取状态
   const [articleFetchLink, setArticleFetchLink] = useState('');
   const [isFetchingArticle, setIsFetchingArticle] = useState(false);
-  const [fetchProgress, setFetchProgress] = useState(''); // 进度提示
+  const [fetchProgress, setFetchProgress] = useState('');
 
   const [aiPasteContent, setAiPasteContent] = useState('');
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
@@ -154,41 +154,81 @@ export default function AdminDashboard() {
     } catch (err: any) { alert(err.message); }
   };
 
-  // 🌐 🆕 全网文章抓取 (前端直连版 - 破解IP拦截)
+  // 🌐 🆕 全网文章抓取 (浏览器直连解析版)
   const handleFetchArticle = async () => {
     if (!articleFetchLink) return alert('请填入文章链接');
     setIsFetchingArticle(true);
-    setFetchProgress('正在连接 Jina 解析...');
+    setFetchProgress('正在通过代理下载网页...');
     
     try {
-      // 1. 前端通过 CORS 代理直接访问 Jina
-      // 这样使用的是你的浏览器 IP，微信/Jina 不会拦截
-      const jinaUrl = `https://r.jina.ai/${articleFetchLink}`;
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`;
-      
+      // 1. 使用 allorigins 代理获取 HTML (避免 CORS，且通常未被微信完全屏蔽)
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(articleFetchLink)}&disableCache=true`;
       const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error('解析失败，请检查链接是否有效');
       
-      const markdown = await res.text();
+      if (!res.ok) throw new Error(`网页下载失败 (${res.status})，可能是链接无效或被反爬拦截`);
       
-      // 2. 提取标题和内容
-      const titleMatch = markdown.match(/^Title:\s*(.+)$/m);
-      const title = titleMatch ? titleMatch[1] : '未命名文章';
-      let content = markdown.replace(/^Title:.*$/gm, '').replace(/^URL Source:.*$/gm, '').replace(/^Markdown Content:.*$/gm, '').trim();
+      const htmlText = await res.text();
+      setFetchProgress('正在本地解析内容...');
 
-      // 3. 提取所有图片链接
-      const imgRegex = /!\[.*?\]\((https?:\/\/.*?)\)/g;
-      const matches = [...content.matchAll(imgRegex)];
-      const uniqueUrls = [...new Set(matches.map(m => m[1]))];
+      // 2. 浏览器本地解析 DOM
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, 'text/html');
 
+      // 3. 提取标题
+      let title = '';
+      const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
+      const wechatTitle = doc.querySelector('.rich_media_title')?.textContent;
+      title = (ogTitle || wechatTitle || doc.title || '未命名文章').trim();
+
+      // 4. 提取正文 (针对微信公众号优化)
+      let contentDiv = doc.querySelector('#js_content') || doc.querySelector('article') || doc.body;
+      let rawContent = contentDiv.innerHTML;
+
+      // 5. 提取图片列表
+      const imagesToUpload: string[] = [];
+      // 微信图片通常在 data-src 中
+      const imgRegex = /data-src="([^"]+)"|src="([^"]+)"/g;
+      let match;
+      while ((match = imgRegex.exec(rawContent)) !== null) {
+          const url = match[1] || match[2];
+          if (url && url.startsWith('http')) {
+              imagesToUpload.push(url);
+          }
+      }
+      
+      // 去重
+      const uniqueUrls = [...new Set(imagesToUpload)];
+      
+      // 6. 初步生成 Markdown (简单的 HTML -> Markdown)
+      // 先把图片标签替换成 Markdown 占位符
+      let markdown = rawContent;
+      
+      // 替换图片标签 (处理 data-src 和 src)
+      markdown = markdown.replace(/<img[^>]+data-src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
+      markdown = markdown.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
+      
+      // 清洗标签
+      markdown = markdown
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n\n')
+          .replace(/<section[^>]*>/gi, '\n') // 微信排版常用 section
+          .replace(/<\/section>/gi, '\n')
+          .replace(/<[^>]+>/g, '') // 去除剩余 HTML 标签
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .trim();
+
+      // 7. 图片转存
       if (uniqueUrls.length > 0) {
-          setFetchProgress(`发现 ${uniqueUrls.length} 张图片，正在转存...`);
+          setFetchProgress(`解析完成，正在转存 ${uniqueUrls.length} 张图片...`);
           
-          // 4. 循环调用后端 API 转存图片
           let newCover = '';
           for (let i = 0; i < uniqueUrls.length; i++) {
               const originalUrl = uniqueUrls[i];
               try {
+                  // 调用后端 API 转存
                   const uploadRes = await fetch('/api/proxy-image', {
                       method: 'POST',
                       body: JSON.stringify({ imageUrl: originalUrl })
@@ -197,39 +237,40 @@ export default function AdminDashboard() {
                   
                   if (uploadData.url) {
                       // 替换正文中的链接
-                      content = content.split(originalUrl).join(uploadData.url);
-                      // 第一张成功的图做封面
+                      markdown = markdown.split(originalUrl).join(uploadData.url);
+                      // 取第一张图做封面
                       if (!newCover) newCover = uploadData.url;
                   }
+                  // 更新进度条
                   setFetchProgress(`已转存 ${i + 1}/${uniqueUrls.length} 张...`);
               } catch (e) {
-                  console.error('图片转存失败', originalUrl);
+                  console.error('图片转存失败:', originalUrl);
               }
           }
           
-          // 更新表单
           setFormData((prev: any) => ({
             ...prev,
             title: title,
-            content: content,
+            content: markdown,
             image_url: newCover || prev.image_url,
             link_url: articleFetchLink
           }));
-          alert(`✅ 抓取成功！\n标题、正文及 ${uniqueUrls.length} 张图片已自动处理。`);
+          
+          alert(`✅ 抓取成功！\n\n标题: ${title}\n图片: 成功处理 ${uniqueUrls.length} 张\n\n请检查正文排版。`);
       } else {
-          // 无图文章直接填入
           setFormData((prev: any) => ({
             ...prev,
             title: title,
-            content: content,
+            content: markdown,
             link_url: articleFetchLink
           }));
-          alert('✅ 抓取成功 (纯文字模式)');
+          alert(`✅ 抓取成功 (纯文字)！\n标题: ${title}`);
       }
 
       setArticleFetchLink('');
     } catch (err: any) {
-      alert('抓取失败: ' + err.message + '\n\n建议：如果链接无法抓取，请使用下方的“批量配图”功能手动上传。');
+      console.error(err);
+      alert('抓取失败: ' + err.message + '\n\n💡 建议：微信反爬严格，如果此功能失效，请直接复制文章内容，粘贴到正文框，然后使用下方的“批量配图”功能。');
     } finally {
       setIsFetchingArticle(false);
       setFetchProgress('');
@@ -549,7 +590,7 @@ export default function AdminDashboard() {
                     {/* ✨ [AI 智能助手] + 🆕 全网抓取 + 批量配图 */}
                     {activeTab === 'articles' && (
                         <div className="space-y-4">
-                            {/* 🆕 1. 全网文章一键抓取 */}
+                            {/* 🆕 1. 全网文章一键抓取 (浏览器直连版) */}
                             <div className="bg-gradient-to-r from-green-900/20 to-teal-900/20 border border-green-500/30 p-4 rounded-xl flex gap-2 items-center">
                                 <Globe size={18} className="text-green-400 flex-shrink-0"/>
                                 <input 
@@ -612,15 +653,16 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
+                    {/* ... (后续代码保持不变) ... */}
                     {activeTab === 'articles' && (
                         <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4 mt-4">
                             <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
-                            {/* ... (此处保持不变) ... */}
                             
                             {formData.video_id ? (
                                 <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-8 bg-gray-800 rounded overflow-hidden">
+                                            {/* ⚠️ 修复：关联视频预览图添加防盗链 */}
                                             {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
                                         </div>
                                         <div>
@@ -649,6 +691,7 @@ export default function AdminDashboard() {
                                             {videoSearchResults.map(v => (
                                                 <div key={v.id} onClick={() => selectVideo(v)} className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer border-b border-white/5 last:border-0 transition-colors">
                                                     <div className="w-10 h-6 bg-gray-800 rounded overflow-hidden flex-shrink-0">
+                                                        {/* ⚠️ 修复：搜索结果预览图添加防盗链 */}
                                                         <img src={v.thumbnail_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
@@ -670,12 +713,10 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* ... (其余部分保持不变) ... */}
                     <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
 
                     {activeTab === 'videos' && (
                         <>
-                            {/* ... (videos 字段) ... */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs text-gray-500 block mb-1">作者</label><input value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">分类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>写实短片</option><option>AI教程</option><option>创意广告</option></select></div>
@@ -697,7 +738,6 @@ export default function AdminDashboard() {
 
                     {activeTab === 'articles' && (
                         <>
-                            {/* ... (articles 字段) ... */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs text-gray-500 block mb-1">大类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>新手入门</option><option>工具学习</option><option>高阶玩法</option><option>干货分享</option><option>行业资讯</option><option>商业访谈</option></select></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">难度</label><select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>入门</option><option>中等</option><option>进阶</option></select></div>
@@ -721,7 +761,6 @@ export default function AdminDashboard() {
 
                     {activeTab === 'banners' && (
                         <>
-                            {/* ... (banners 字段) ... */}
                             <div><label className="text-xs text-gray-500 block mb-1">图片 URL</label><div className="flex gap-2"><input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/><button onClick={() => imageInputRef.current?.click()} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button><input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} /></div></div>
                             <div><label className="text-xs text-gray-500 block mb-1">跳转链接</label><input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                             <div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-gray-500 block mb-1">角标</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div><div><label className="text-xs text-gray-500 block mb-1">权重</label><input type="number" value={formData.sort_order} onChange={e=>setFormData({...formData, sort_order: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/></div></div>
