@@ -53,9 +53,11 @@ export default function AdminDashboard() {
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
-  // 🆕 文章抓取链接状态
+  
+  // 🆕 文章抓取状态
   const [articleFetchLink, setArticleFetchLink] = useState('');
   const [isFetchingArticle, setIsFetchingArticle] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState(''); // 进度提示
 
   const [aiPasteContent, setAiPasteContent] = useState('');
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
@@ -133,7 +135,6 @@ export default function AdminDashboard() {
       setFormData((prev: any) => ({ ...prev, video_id: '' }));
   };
 
-  // 📺 B站一键抓取
   const handleFetchInfo = async () => {
     if (!bilibiliLink) return alert('请填入链接');
     const match = bilibiliLink.match(/(BV\w+)/);
@@ -153,31 +154,85 @@ export default function AdminDashboard() {
     } catch (err: any) { alert(err.message); }
   };
 
-  // 🌐 🆕 全网文章一键抓取 (自动转存图片)
+  // 🌐 🆕 全网文章抓取 (前端直连版 - 破解IP拦截)
   const handleFetchArticle = async () => {
     if (!articleFetchLink) return alert('请填入文章链接');
     setIsFetchingArticle(true);
+    setFetchProgress('正在连接 Jina 解析...');
+    
     try {
-      // 调用我们刚写的 API
-      const res = await fetch(`/api/fetch-article?url=${encodeURIComponent(articleFetchLink)}`);
-      const data = await res.json();
+      // 1. 前端通过 CORS 代理直接访问 Jina
+      // 这样使用的是你的浏览器 IP，微信/Jina 不会拦截
+      const jinaUrl = `https://r.jina.ai/${articleFetchLink}`;
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`;
       
-      if (!res.ok) throw new Error(data.error || '抓取失败');
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error('解析失败，请检查链接是否有效');
+      
+      const markdown = await res.text();
+      
+      // 2. 提取标题和内容
+      const titleMatch = markdown.match(/^Title:\s*(.+)$/m);
+      const title = titleMatch ? titleMatch[1] : '未命名文章';
+      let content = markdown.replace(/^Title:.*$/gm, '').replace(/^URL Source:.*$/gm, '').replace(/^Markdown Content:.*$/gm, '').trim();
 
-      setFormData((prev: any) => ({
-        ...prev,
-        title: data.title,
-        content: data.content, // 这是已经替换好图片链接的 Markdown
-        image_url: data.cover_image || prev.image_url, // 自动填封面
-        link_url: articleFetchLink // 自动填原文链接
-      }));
-      
-      alert('✅ 文章抓取成功！\n图片已自动转存至 Supabase，防盗链已破解。');
+      // 3. 提取所有图片链接
+      const imgRegex = /!\[.*?\]\((https?:\/\/.*?)\)/g;
+      const matches = [...content.matchAll(imgRegex)];
+      const uniqueUrls = [...new Set(matches.map(m => m[1]))];
+
+      if (uniqueUrls.length > 0) {
+          setFetchProgress(`发现 ${uniqueUrls.length} 张图片，正在转存...`);
+          
+          // 4. 循环调用后端 API 转存图片
+          let newCover = '';
+          for (let i = 0; i < uniqueUrls.length; i++) {
+              const originalUrl = uniqueUrls[i];
+              try {
+                  const uploadRes = await fetch('/api/proxy-image', {
+                      method: 'POST',
+                      body: JSON.stringify({ imageUrl: originalUrl })
+                  });
+                  const uploadData = await uploadRes.json();
+                  
+                  if (uploadData.url) {
+                      // 替换正文中的链接
+                      content = content.split(originalUrl).join(uploadData.url);
+                      // 第一张成功的图做封面
+                      if (!newCover) newCover = uploadData.url;
+                  }
+                  setFetchProgress(`已转存 ${i + 1}/${uniqueUrls.length} 张...`);
+              } catch (e) {
+                  console.error('图片转存失败', originalUrl);
+              }
+          }
+          
+          // 更新表单
+          setFormData((prev: any) => ({
+            ...prev,
+            title: title,
+            content: content,
+            image_url: newCover || prev.image_url,
+            link_url: articleFetchLink
+          }));
+          alert(`✅ 抓取成功！\n标题、正文及 ${uniqueUrls.length} 张图片已自动处理。`);
+      } else {
+          // 无图文章直接填入
+          setFormData((prev: any) => ({
+            ...prev,
+            title: title,
+            content: content,
+            link_url: articleFetchLink
+          }));
+          alert('✅ 抓取成功 (纯文字模式)');
+      }
+
       setArticleFetchLink('');
     } catch (err: any) {
-      alert('抓取失败: ' + err.message);
+      alert('抓取失败: ' + err.message + '\n\n建议：如果链接无法抓取，请使用下方的“批量配图”功能手动上传。');
     } finally {
       setIsFetchingArticle(false);
+      setFetchProgress('');
     }
   };
 
@@ -417,6 +472,7 @@ export default function AdminDashboard() {
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-3">
+                                            {/* ⚠️ 修复：列表图片添加防盗链 */}
                                             {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" /></div>}
                                             <div>
                                                 <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">{item.title || '无标题'}</div>
@@ -508,7 +564,7 @@ export default function AdminDashboard() {
                                     className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-green-900/20 whitespace-nowrap"
                                 >
                                     {isFetchingArticle ? <Loader2 size={14} className="animate-spin"/> : <ArrowRight size={14}/>}
-                                    智能转存
+                                    {isFetchingArticle ? fetchProgress : '智能转存'}
                                 </button>
                             </div>
 
@@ -556,17 +612,15 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* ... (后续代码保持不变) ... */}
                     {activeTab === 'articles' && (
                         <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4 mt-4">
-                            {/* ... */}
                             <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
+                            {/* ... (此处保持不变) ... */}
                             
                             {formData.video_id ? (
                                 <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-8 bg-gray-800 rounded overflow-hidden">
-                                            {/* ⚠️ 修复：关联视频预览图添加防盗链 */}
                                             {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
                                         </div>
                                         <div>
@@ -579,7 +633,13 @@ export default function AdminDashboard() {
                             ) : (
                                 <div className="relative">
                                     <div className="flex gap-2">
-                                        <input value={videoSearchQuery} onChange={e => setVideoSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchVideos()} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none" placeholder="输入关键词搜索视频库 (如: Midjourney)..."/>
+                                        <input 
+                                            value={videoSearchQuery}
+                                            onChange={e => setVideoSearchQuery(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && searchVideos()}
+                                            className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none"
+                                            placeholder="输入关键词搜索视频库 (如: Midjourney)..."
+                                        />
                                         <button onClick={searchVideos} className="bg-gray-800 hover:bg-gray-700 px-4 rounded text-gray-300">
                                             {isSearchingVideo ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
                                         </button>
@@ -589,7 +649,6 @@ export default function AdminDashboard() {
                                             {videoSearchResults.map(v => (
                                                 <div key={v.id} onClick={() => selectVideo(v)} className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer border-b border-white/5 last:border-0 transition-colors">
                                                     <div className="w-10 h-6 bg-gray-800 rounded overflow-hidden flex-shrink-0">
-                                                        {/* ⚠️ 修复：搜索结果预览图添加防盗链 */}
                                                         <img src={v.thumbnail_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
@@ -611,10 +670,12 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
+                    {/* ... (其余部分保持不变) ... */}
                     <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
 
                     {activeTab === 'videos' && (
                         <>
+                            {/* ... (videos 字段) ... */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs text-gray-500 block mb-1">作者</label><input value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">分类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>写实短片</option><option>AI教程</option><option>创意广告</option></select></div>
@@ -636,6 +697,7 @@ export default function AdminDashboard() {
 
                     {activeTab === 'articles' && (
                         <>
+                            {/* ... (articles 字段) ... */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="text-xs text-gray-500 block mb-1">大类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>新手入门</option><option>工具学习</option><option>高阶玩法</option><option>干货分享</option><option>行业资讯</option><option>商业访谈</option></select></div>
                                 <div><label className="text-xs text-gray-500 block mb-1">难度</label><select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>入门</option><option>中等</option><option>进阶</option></select></div>
@@ -659,6 +721,7 @@ export default function AdminDashboard() {
 
                     {activeTab === 'banners' && (
                         <>
+                            {/* ... (banners 字段) ... */}
                             <div><label className="text-xs text-gray-500 block mb-1">图片 URL</label><div className="flex gap-2"><input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/><button onClick={() => imageInputRef.current?.click()} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button><input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} /></div></div>
                             <div><label className="text-xs text-gray-500 block mb-1">跳转链接</label><input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
                             <div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-gray-500 block mb-1">角标</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div><div><label className="text-xs text-gray-500 block mb-1">权重</label><input type="number" value={formData.sort_order} onChange={e=>setFormData({...formData, sort_order: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/></div></div>
