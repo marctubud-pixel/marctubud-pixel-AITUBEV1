@@ -1,76 +1,69 @@
-# AI.Tube 项目核心上下文 (Project Context)
+# 🛰️ AI.Tube 项目 Master 开发规划与真理文档 (2025-12-27 最终对齐版)
 
-## 1. 项目简介
-- **名称**: AI.Tube (my-ai-video-planet)
-- **目标**: AI 视频内容聚合平台，提供视频展示、教程关联、分镜下载。
-- **技术栈**: Next.js 15 (App Router), Tailwind CSS, Supabase (PostgreSQL + Auth + Storage), Lucide React.
-- **部署**: Vercel + 阿里云域名 (www.aipian.top).
+## 🛠️ 一、 协作铁律 (The Iron Rules) - 永不动摇
+1.  **单文件修改**：必须由用户发送**完整代码** -> AI 确认后回复**修改后的完整代码**（杜绝片段代码）。
+2.  **多文件联动**：采取**“分步接力式”**修改。用户发 A -> AI 改 A 并索要 B -> 用户发 B -> AI 改 B。
+3.  **同步机制**：每日重大修改完结，AI 必须主动提醒用户同步此文档，并在“开发进度”区做增量更新。
 
-## 2. 核心文件结构
-- `app/page.tsx`: 首页 (全屏5列布局, Banner轮播, 智能筛选, 播放量转万).
-- `app/video/[id]/page.tsx`: 视频详情页 (B站/MP4混合播放器, 关联教程按钮, 实时人气值).
-- `app/admin/dashboard/page.tsx`: 视频管理后台 (B站一键抓取, 多工具识别, 7大分类, 热门/精选/获奖开关).
-- `app/admin/banners/page.tsx`: Banner 管理后台 (直接上传图片, 权重排序, 会员标).
-- `app/api/fetch-bilibili/route.ts`: B站抓取接口 (支持播放量同步, 多工具Tag提取).
+---
 
-## 3. 数据库结构 (Supabase)
+## 🎯 二、 核心愿景与战略 (Core Vision)
+* **定位**：全球领先的 AI 原生视频创作社区。
+* **目标**：集“创作灵感、商业对接、深度学习”于一体的综合性生态平台。
+* **三大支柱**：
+    * **灵感 (Inspiration)**：CineFlow 引擎、提示词词典、4K 工程原片下载。
+    * **商业 (Business)**：合作中心商单撮合、创作者激励体系、版权授权。
+    * **学习 (Academy)**：系统化 AI 教程、案例复盘、所见即所得的实战笔记。
 
-### 表名: `videos`
-- `id` (int8): 主键
-- `title` (text): 标题
-- `author` (text): 作者
-- `video_url` (text): 视频链接 (B站iframe或mp4)
-- `thumbnail_url` (text): 封面图 (需加 referrerPolicy="no-referrer")
-- `category` (text): 分类 (动画短片, 实验短片, 音乐MV, 写实短片, 创意广告, AI教程, 创意短片)
-- `tag` (text): 工具标签 (Sora, Runway, Pika...)
-- `prompt` (text): 提示词
-- `views` (int4): 播放量 (数字)
-- `is_hot` (bool): 🔥 近期热门
-- `is_selected` (bool): 🏆 编辑精选
-- `is_award` (bool): 🥇 获奖作品
-- `tutorial_url` (text): 关联教程链接
-- `created_at`: 创建时间
+---
 
-### 表名: `banners`
-- `id` (int8)
-- `title`, `image_url`, `link_url`
-- `tag` (text): 角标 (如: 会员, 独家)
-- `is_active` (bool): 是否启用
-- `is_vip` (bool): 会员专享
-- `sort_order` (int4): 排序权重
+## 🏗️ 三、 板块布局与逻辑架构 (System Architecture)
 
-### 其他表
-- `profiles`: 用户信息 (points, free_quota)
-- `favorites`, `comments`, `downloads`: 关联表 (已开启 Cascade Delete)
+### 1. 路由与功能分布
+* `/` : **首页**。5列瀑布流，含 Banner 轮播、多维度筛选、可拖拽 AI 助手（Bot）。
+* `/academy` : **AI 学院**。Markdown 教程列表与详情，支持关联视频。
+* `/video/[id]` : **播放页**。混合播放器（B站/MP4），含人气值算法、分镜下载权限控制。
+* `/tools` : **工具库**。提示词词典（可用）、分镜生成（VIP）、视频拆解（规划中）。
+* `/vip` : **会员专区**。黑金视觉体系，展示 `is_vip=true` 的高价值资产。
+* `/collaboration` : **合作中心**。商单广场，含预算管理、投递状态追踪。
+* `/upload` : **投稿中心**。UGC 录入，自带 +50 积分奖励逻辑。
+* `/admin` : **管理后台**。视频/文章/Banner/卡密/需求的 CRUD，含 B 站单体抓取。
 
-## 4. 关键业务逻辑
-1.  **抓取逻辑**: API 自动抓取 B 站信息，自动识别工具 (Tag)，但**不自动覆盖分类** (Category)，需人工选择。
-2.  **前端展示**: 首页分类栏不包含“精选/获奖”，这两个作为独立筛选按钮存在。卡片右上角显示荣誉徽章，左上角显示具体分类。
-3.  **防盗链**: 所有 B 站图片必须加 `referrerPolicy="no-referrer"`。
-4.  **管理员**: 仅限 `marctubud@gmail.com` (或 `782567903@qq.com`) 访问后台。
+### 2. 技术栈核心
+* **Frontend**: Next.js 15 (App Router) + Tailwind CSS + Lucide React。
+* **Backend**: Supabase (Auth, DB, Storage)。
+* **AI Engine**: Gemini 2.0 Flash (逻辑/清洗) + Pollinations/Replicate (多媒体)。
+* **Auth**: 调试期硬编码 UUID (`cec386b5-e80a-4105-aa80-d8d5b8b0a9bf`)。
 
+---
 
-## 5. 项目路线图 (Roadmap)
-### ✅ 已完成 (Phase 1)
-- [x] 基础展示与播放 (B站/MP4)
-- [x] 完整后台管理 (视频+Banner, 自动抓取)
-- [x] 关联教程功能
-- [x] 首页 UI 细调 (5列, 去重, 角标优化)
+## 📊 四、 数据库 Schema 核心 (Database Snapshot)
+* `videos`: `is_vip`, `price`, `storyboard_url`, `prompt`, `category`, `duration` (text)。
+* `articles`: `description`, `content`, `difficulty`, `tags` (text[]), `link_url`, `video_id` (关联)。
+* `profiles`: `points`, `is_vip`, `free_quota`, `avatar_url`, `username`, `last_check_in`。
+* `jobs`: `budget`, `company`, `deadline`, `status` (urgent/open/closed), `tags` (ARRAY)。
+* `saved_prompts`: `prompt_text`, `video_id`, `user_id` (关联视频与灵感收藏)。
 
-### 🚧 进行中/下周计划 (Phase 2 - 运营与社区)
-1.  **用户体系**: 
-    - 实现每日签到送积分。
-    - 个人中心 (`/profile`) 显示积分、收藏、下载记录。
-2.  **互动增强**:
-    - 评论区显示真实头像昵称。
-    - 点赞增加动画效果。
-3.  **UGC 投稿**:
-    - 开放用户投稿入口 (默认 `pending` 状态)。
-    - 后台增加“审核列表”。
+---
 
-### 📅 远期规划 (Phase 3 - 商业化)
-- [ ] 接入 Stripe/支付宝 支付。
-- [ ] 推出“Pro 会员”订阅制 (解锁独家视频/教程)。
-- [ ] 创作者激励计划。
+## 📈 五、 营销推广与商业化策略 (Marketing)
+* **内容获客**：利用 `/academy` 的高质 SEO 文章从搜索引流；B站/小红书同步发布精选视频。
+* **社区驱动**：创作者合伙人计划，通过积分奖励激励 UGC 投稿，沉淀私域。
+* **变现模型**：VIP 订阅（4K/工程文件）、积分充值（下载资源）、B端商单抽佣或发布费。
 
+---
 
+## 🚀 六、 开发进度追踪 (Current Progress) - **[动态更新区]**
+
+### ⏳ 待处理 (Pending)
+1.  **[Admin提效]**：实现 AI 学院文章智能清洗/排版助手 (Gemini 2.0)。
+2.  **[Admin提效]**：实现 B 站热点视频批量抓取逻辑（根据关键词入库）。
+3.  **[Bug修复]**：修复充值/投稿成功后，`/profile` 页面积分显示不刷新的问题。
+
+### 🚧 进行中 (In Progress)
+* **项目全景对齐**：已完成全站核心代码走读与逻辑同步。
+
+### ✅ 已完成 (Completed)
+* [2025-12-27] 全站基础路由与 UI 搭建。
+* [2025-12-27] CineFlow 本地环境配置与代理报错修复。
+* [2025-12-27] 后台 B 站单体视频抓取回填逻辑。
