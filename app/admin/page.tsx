@@ -17,9 +17,6 @@ export default function AdminDashboard() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   
-  // ----------------------------------------------------------------
-  // 🔐 1. 鉴权与初始化
-  // ----------------------------------------------------------------
   useEffect(() => {
     const isAuth = localStorage.getItem('admin_auth');
     if (isAuth !== 'true') {
@@ -52,62 +49,39 @@ export default function AdminDashboard() {
     setLoading(false);
   }
 
-  // ----------------------------------------------------------------
-  // 🎥 2. 核心逻辑状态管理
-  // ----------------------------------------------------------------
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [bilibiliLink, setBilibiliLink] = useState('');
-  
-  // ✨ AI 解析专用状态
   const [aiPasteContent, setAiPasteContent] = useState('');
-
-  // 🔍 视频搜索专用状态
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
   const [videoSearchResults, setVideoSearchResults] = useState<any[]>([]);
   const [isSearchingVideo, setIsSearchingVideo] = useState(false);
   
-  // 文件上传 Refs
   const fileInputRef = useRef<HTMLInputElement>(null); 
   const imageInputRef = useRef<HTMLInputElement>(null); 
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // 📝 统一大表单
   const [formData, setFormData] = useState<any>({
-    // --- 通用/视频字段 ---
     title: '', author: '', category: '创意短片', 
     prompt: '', tag: '', thumbnail_url: '', video_url: '', 
     views: 0, duration: '', storyboard_url: '', price: 10, 
     is_vip: false, tutorial_url: '',
     is_hot: false, is_selected: false, is_award: false,
-    
-    // --- 文章字段 ---
     description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
-    tags: '', video_id: '', // 关联视频ID
-    
-    // --- 需求字段 ---
+    tags: '', video_id: '', 
     budget: '', company: '', deadline: '', status: 'open', applicants: 0,
-    
-    // --- Banner字段 ---
     is_active: true, sort_order: 0,
-
-    // --- 卡密字段 ---
     batch_count: 10, duration_days: 30, prefix: 'VIP'
   });
 
-  // 🔎 智能解析函数
   const handleSmartParse = () => {
     if (!aiPasteContent.trim()) return alert('请先粘贴 AI 生成的内容');
-    
     try {
       let parsedData: any = null;
       const jsonMatch = aiPasteContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedData = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('未找到有效的 JSON 格式');
-      }
+      if (jsonMatch) parsedData = JSON.parse(jsonMatch[0]);
+      else throw new Error('未找到有效的 JSON 格式');
 
       setFormData((prev: any) => ({
         ...prev,
@@ -121,16 +95,11 @@ export default function AdminDashboard() {
         image_url: parsedData.image_url || prev.image_url,
         link_url: parsedData.link_url || prev.link_url,
       }));
-
       setAiPasteContent('');
       alert('✨ AI 数据已成功解析并回填表单！');
-    } catch (err) {
-      console.error(err);
-      alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。');
-    }
+    } catch (err) { alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。'); }
   };
 
-  // 🔎 搜索视频库
   const searchVideos = async () => {
       if (!videoSearchQuery.trim()) return;
       setIsSearchingVideo(true);
@@ -143,14 +112,13 @@ export default function AdminDashboard() {
       setIsSearchingVideo(false);
   };
 
-  // ✅ 选中视频并自动回填
   const selectVideo = (video: any) => {
       setFormData((prev: any) => ({
           ...prev,
-          video_id: video.id,          // 关联 ID
-          title: video.title,          // 自动同步标题
-          duration: video.duration,    // 自动同步时长
-          image_url: video.thumbnail_url // 自动同步封面
+          video_id: video.id,          
+          title: video.title,          
+          duration: video.duration,    
+          image_url: video.thumbnail_url 
       }));
       setVideoSearchResults([]); 
       setVideoSearchQuery('');   
@@ -160,41 +128,31 @@ export default function AdminDashboard() {
       setFormData((prev: any) => ({ ...prev, video_id: '' }));
   };
 
-  // 📺 B站一键抓取
   const handleFetchInfo = async () => {
     if (!bilibiliLink) return alert('请填入链接');
     const match = bilibiliLink.match(/(BV\w+)/);
     const bvid = match ? match[1] : null;
     if (!bvid) return alert('无效 BV 号');
-
     try {
       const res = await fetch(`/api/fetch-bilibili?bvid=${bvid}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-
       setFormData((prev: any) => ({
         ...prev,
-        title: data.title, 
-        author: data.author, 
-        thumbnail_url: data.thumbnail_url,
-        video_url: data.video_url, 
-        views: data.views || 0,
-        tag: data.tag || prev.tag,
-        duration: data.duration || '', 
-        prompt: prev.prompt || '', 
+        title: data.title, author: data.author, thumbnail_url: data.thumbnail_url,
+        video_url: data.video_url, views: data.views || 0, tag: data.tag || prev.tag,
+        duration: data.duration || '', prompt: prev.prompt || '', 
       }));
       alert('✅ 抓取成功！数据已回填');
     } catch (err: any) { alert(err.message); }
   };
 
-  // 📤 文件上传
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    
     try {
         const { error: uploadError } = await supabase.storage.from('storyboards').upload(fileName, file, { upsert: true });
         if (uploadError) throw uploadError;
@@ -204,47 +162,38 @@ export default function AdminDashboard() {
     } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
   };
 
-  // 🖼️ 图片上传 (💡 已修复：强制清洗文件名，去除乱码)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
     
-    // 💡 1. 智能提取后缀名 (容错处理)
-    let fileExt = 'jpg'; // 默认后缀
+    // 💡 智能命名 + 桶分流
+    let fileExt = 'jpg';
     const lowerName = file.name.toLowerCase();
     if (lowerName.endsWith('.png')) fileExt = 'png';
     else if (lowerName.endsWith('.gif')) fileExt = 'gif';
     else if (lowerName.endsWith('.webp')) fileExt = 'webp';
-    else if (lowerName.endsWith('.jpeg')) fileExt = 'jpg';
     
-    // 💡 2. 彻底重命名：使用 "cover-时间戳.后缀" 格式，完全抛弃原文件名
     const fileName = `cover-${Date.now()}.${fileExt}`; 
-    
-    // 3. 区分 Bucket
     const bucketName = activeTab === 'articles' ? 'articles' : 'banners';
 
     try {
-        // 4. 上传
         const { error } = await supabase.storage.from(bucketName).upload(fileName, file);
         if (error) throw error;
-        
         const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
-        
         if (activeTab === 'videos') setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
         else setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
-        
         alert(`✅ 图片已成功上传到 ${bucketName} 存储桶！`);
     } catch (error: any) { 
-        alert(`上传失败 (请检查 ${bucketName} 桶设置): ` + error.message); 
+        alert(`上传失败: ` + error.message); 
     } finally { 
         setUploadingFile(false); 
     }
   };
 
-  // 💾 提交保存
   const handleSubmit = async () => {
     if (activeTab === 'codes' && !editMode) {
+        // ... (卡密逻辑不变)
         const count = parseInt(formData.batch_count) || 1;
         const days = parseInt(formData.duration_days) || 30;
         const prefix = formData.prefix || 'VIP';
@@ -281,14 +230,12 @@ export default function AdminDashboard() {
         if (formData.tags) {
             formattedTags = formData.tags.toString().split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => t.length > 0);
         }
-
         payload = {
             title: formData.title, description: formData.description, 
             category: formData.category, difficulty: formData.difficulty, 
             duration: formData.duration, image_url: formData.image_url,
             content: formData.content, is_vip: formData.is_vip, link_url: formData.link_url,
-            tags: formattedTags, 
-            video_id: formData.video_id ? Number(formData.video_id) : null
+            tags: formattedTags, video_id: formData.video_id ? Number(formData.video_id) : null
         };
     } else if (activeTab === 'jobs') {
         payload = {
@@ -329,17 +276,12 @@ export default function AdminDashboard() {
 
   const openEdit = (item: any) => {
     let processedItem = { ...item };
-    if (activeTab === 'articles' && Array.isArray(item.tags)) {
-        processedItem.tags = item.tags.join(', ');
-    }
-
+    if (activeTab === 'articles' && Array.isArray(item.tags)) processedItem.tags = item.tags.join(', ');
     setFormData(processedItem); 
     if (activeTab === 'videos' && item.video_url && item.video_url.includes('bvid=')) {
         const match = item.video_url.match(/bvid=(BV\w+)/);
         if (match) setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
-    } else {
-        setBilibiliLink('');
-    }
+    } else setBilibiliLink('');
     setVideoSearchQuery('');
     setVideoSearchResults([]);
     setCurrentId(item.id);
@@ -375,8 +317,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-black text-white flex font-sans">
-      
-      {/* 侧边栏 */}
       <aside className="w-64 bg-[#111] border-r border-white/5 flex flex-col h-screen sticky top-0">
         <div className="p-6 border-b border-white/5">
             <h1 className="text-xl font-bold flex items-center gap-2">
@@ -396,7 +336,6 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
-      {/* 主内容区 */}
       <main className="flex-1 p-8 overflow-y-auto h-screen">
         <div className="flex justify-between items-center mb-8">
             <h2 className="text-3xl font-bold capitalize">
@@ -427,7 +366,8 @@ export default function AdminDashboard() {
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-3">
-                                            {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" /></div>}
+                                            {/* ⚠️ 修复：列表图片添加防盗链 */}
+                                            {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" /></div>}
                                             <div>
                                                 <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">{item.title || '无标题'}</div>
                                                 {activeTab === 'videos' && <div className="text-xs text-gray-600">@{item.author}</div>}
@@ -473,9 +413,6 @@ export default function AdminDashboard() {
             </div>
         )}
 
-        {/* -----------------------------------------------------------
-          📢 统一弹窗 (Modal)
-        ----------------------------------------------------------- */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-[#151515] border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 relative">
@@ -503,7 +440,6 @@ export default function AdminDashboard() {
                         </div>
                     )}
 
-                    {/* ✨ [AI 智能助手] */}
                     {activeTab === 'articles' && (
                         <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl mb-6 space-y-3">
                             <div className="flex items-center justify-between">
@@ -512,17 +448,8 @@ export default function AdminDashboard() {
                                 </h3>
                                 <div className="text-[10px] text-gray-500 bg-black/50 px-2 py-0.5 rounded">免 API 网络稳定</div>
                             </div>
-                            <textarea 
-                                rows={3}
-                                className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-xs text-blue-100 placeholder-gray-600 focus:border-blue-500 transition-all font-mono"
-                                placeholder="在这里粘贴 AI 生成的 JSON 内容..."
-                                value={aiPasteContent}
-                                onChange={(e) => setAiPasteContent(e.target.value)}
-                            />
-                            <button 
-                                onClick={handleSmartParse}
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20"
-                            >
+                            <textarea rows={3} className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-xs text-blue-100 placeholder-gray-600 focus:border-blue-500 transition-all font-mono" placeholder="在这里粘贴 AI 生成的 JSON 内容..." value={aiPasteContent} onChange={(e) => setAiPasteContent(e.target.value)}/>
+                            <button onClick={handleSmartParse} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20">
                                 <ClipboardPaste size={14} /> 一键解析并自动填充
                             </button>
                             <p className="text-[10px] text-gray-500 text-center italic">
@@ -539,7 +466,8 @@ export default function AdminDashboard() {
                                 <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-8 bg-gray-800 rounded overflow-hidden">
-                                            {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover"/>}
+                                            {/* ⚠️ 修复：关联视频预览图添加防盗链 */}
+                                            {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
                                         </div>
                                         <div>
                                             <div className="text-sm font-bold text-white line-clamp-1">{formData.title}</div>
@@ -551,13 +479,7 @@ export default function AdminDashboard() {
                             ) : (
                                 <div className="relative">
                                     <div className="flex gap-2">
-                                        <input 
-                                            value={videoSearchQuery}
-                                            onChange={e => setVideoSearchQuery(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && searchVideos()}
-                                            className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none"
-                                            placeholder="输入关键词搜索视频库 (如: Midjourney)..."
-                                        />
+                                        <input value={videoSearchQuery} onChange={e => setVideoSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchVideos()} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none" placeholder="输入关键词搜索视频库 (如: Midjourney)..."/>
                                         <button onClick={searchVideos} className="bg-gray-800 hover:bg-gray-700 px-4 rounded text-gray-300">
                                             {isSearchingVideo ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
                                         </button>
@@ -567,7 +489,8 @@ export default function AdminDashboard() {
                                             {videoSearchResults.map(v => (
                                                 <div key={v.id} onClick={() => selectVideo(v)} className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer border-b border-white/5 last:border-0 transition-colors">
                                                     <div className="w-10 h-6 bg-gray-800 rounded overflow-hidden flex-shrink-0">
-                                                        <img src={v.thumbnail_url} className="w-full h-full object-cover"/>
+                                                        {/* ⚠️ 修复：搜索结果预览图添加防盗链 */}
+                                                        <img src={v.thumbnail_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <div className="text-sm text-white line-clamp-1">{v.title}</div>
@@ -652,7 +575,6 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
