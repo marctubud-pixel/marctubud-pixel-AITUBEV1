@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient'; 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useUser } from '@/contexts/user-context'; // 👈 引入全局状态 Hook
+import { useUser } from '@/contexts/user-context'; 
 import { 
   ArrowLeft, LogOut, Trash2, Heart, Video, Download, 
   Plus, Edit2, Crown, Gem, Camera, Package, Diamond, 
@@ -18,7 +18,7 @@ export default function ProfilePage() {
   // 🔗 接入全局用户状态
   const { user, profile, isLoading: isUserLoading, refreshProfile } = useUser();
   
-  // 本地数据状态 (次要数据依然由页面自己管理)
+  // 本地数据状态
   const [loadingData, setLoadingData] = useState(true);
   
   // 编辑状态
@@ -26,7 +26,7 @@ export default function ProfilePage() {
   const [newName, setNewName] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // 签到状态 (根据全局 profile 计算)
+  // 签到状态
   const [checkingIn, setCheckingIn] = useState(false);
 
   // 🎁 兑换功能状态
@@ -42,15 +42,13 @@ export default function ProfilePage() {
   const [myUploads, setMyUploads] = useState<any[]>([]);
   const [myDownloads, setMyDownloads] = useState<any[]>([]);
 
-  // 🔄 初始化逻辑：监听 User 变化
+  // 🔄 初始化逻辑
   useEffect(() => {
     if (!isUserLoading) {
         if (!user) {
-            router.push('/login'); // 未登录踢回
+            router.push('/login'); 
         } else {
-            // 用户已加载，开始获取次要数据
             fetchSecondaryData(user.id, user.email || '');
-            // 初始化编辑框名字
             if (profile?.username) setNewName(profile.username);
         }
     }
@@ -115,7 +113,7 @@ export default function ProfilePage() {
     if (!newName.trim() || !user) return;
     const { error } = await supabase.from('profiles').update({ username: newName }).eq('id', user.id);
     if (!error) {
-      await refreshProfile(); // 🔄 同步全局状态
+      await refreshProfile();
       setIsEditingName(false);
     }
   }
@@ -140,7 +138,7 @@ export default function ProfilePage() {
     const { error: updateError } = await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id);
     
     if (!updateError) {
-      await refreshProfile(); // 🔄 同步全局状态
+      await refreshProfile(); 
     }
     setUploadingAvatar(false);
   }
@@ -160,7 +158,7 @@ export default function ProfilePage() {
     }).eq('id', user.id);
 
     if (!error) {
-        await refreshProfile(); // 🔄 关键：告诉全局 Context 数据变了，顶栏会自动刷新
+        await refreshProfile(); 
         alert(`🎉 签到成功！积分 +${reward}`);
     } else {
         alert('签到失败，请稍后再试');
@@ -195,12 +193,10 @@ export default function ProfilePage() {
       setRedeemMsg('');
 
       try {
-          // 1. 查卡密
           const { data: codeData, error: codeError } = await supabase.from('redemption_codes').select('*').eq('code', redeemCode.trim()).single();
           if (codeError || !codeData) throw new Error('无效的兑换码');
           if (codeData.is_used) throw new Error('该兑换码已被使用');
 
-          // 2. 计算过期时间
           const now = new Date();
           let newExpiresAt = now;
           if (profile?.is_vip && profile?.vip_expires_at && new Date(profile.vip_expires_at) > now) {
@@ -208,18 +204,16 @@ export default function ProfilePage() {
           }
           newExpiresAt.setDate(newExpiresAt.getDate() + codeData.duration_days);
 
-          // 3. 事务操作 (注意：Supabase 客户端不能直接做事务，这里模拟顺序操作，生产环境建议用 RPC 或 Edge Function)
           const { error: updateCodeError } = await supabase.from('redemption_codes').update({ is_used: true, used_by: user.id, used_at: new Date().toISOString() }).eq('id', codeData.id);
           if (updateCodeError) throw new Error('兑换失败');
 
           const { error: updateProfileError } = await supabase.from('profiles').update({ is_vip: true, vip_expires_at: newExpiresAt.toISOString() }).eq('id', user.id);
           if (updateProfileError) throw new Error('账户更新失败');
 
-          // 4. 成功
           setRedeemStatus('success');
           setRedeemMsg(`兑换成功！增加 ${codeData.duration_days} 天 VIP`);
           
-          await refreshProfile(); // 🔄 关键：同步全局状态
+          await refreshProfile(); 
           
           setTimeout(() => {
               setIsRedeemOpen(false);
@@ -233,7 +227,6 @@ export default function ProfilePage() {
       }
   };
 
-  // 加载状态展示 (User 加载中 或 数据加载中)
   if (isUserLoading || (user && loadingData)) return <div className="min-h-screen bg-[#0A0A0A] text-white flex items-center justify-center"><Loader2 className="animate-spin text-purple-600" /></div>;
 
   return (
@@ -263,12 +256,24 @@ export default function ProfilePage() {
               
               <div className="relative z-10 flex flex-col items-center text-center">
                 
-                {/* 头像 */}
+                {/* 👑 头像区域 (已增加 VIP 皇冠) */}
                 <div 
                     className="relative w-24 h-24 mb-4 cursor-pointer group/avatar"
                     onClick={() => fileInputRef.current?.click()}
                 >
-                    <div className={`w-full h-full rounded-full border-2 border-purple-500/50 p-1 shadow-[0_0_20px_rgba(168,85,247,0.3)] overflow-hidden ${uploadingAvatar ? 'opacity-50' : ''}`}>
+                    {/* VIP 皇冠角标 */}
+                    {profile?.is_vip && (
+                        <div className="absolute -top-2 -right-2 z-20 bg-gradient-to-br from-yellow-300 to-yellow-600 w-8 h-8 rounded-full flex items-center justify-center border-4 border-[#111] shadow-[0_0_15px_rgba(234,179,8,0.5)]">
+                            <Crown size={14} className="text-black fill-black" />
+                        </div>
+                    )}
+
+                    {/* 头像容器：根据 VIP 状态改变边框颜色 */}
+                    <div className={`w-full h-full rounded-full border-2 p-1 overflow-hidden transition-all duration-500 ${
+                        profile?.is_vip 
+                        ? 'border-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.3)]' 
+                        : 'border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.3)]'
+                    } ${uploadingAvatar ? 'opacity-50' : ''}`}>
                         {profile?.avatar_url ? (
                             <img src={profile.avatar_url} className="w-full h-full rounded-full object-cover" />
                         ) : (
@@ -277,10 +282,11 @@ export default function ProfilePage() {
                             </div>
                         )}
                     </div>
-                    <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+                    
+                    <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity z-10">
                         <Camera size={24} className="text-white" />
                     </div>
-                    {uploadingAvatar && <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-purple-500"/></div>}
+                    {uploadingAvatar && <div className="absolute inset-0 flex items-center justify-center z-20"><Loader2 className="animate-spin text-purple-500"/></div>}
                 </div>
                 <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleAvatarUpload} />
 
@@ -298,7 +304,9 @@ export default function ProfilePage() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 group/name cursor-pointer" onClick={() => setIsEditingName(true)}>
-                        <h2 className="text-xl font-bold text-white">{profile?.username || user?.email?.split('@')[0]}</h2>
+                        <h2 className={`text-xl font-bold transition-colors ${profile?.is_vip ? 'text-yellow-500' : 'text-white'}`}>
+                            {profile?.username || user?.email?.split('@')[0]}
+                        </h2>
                         <Edit2 size={12} className="text-gray-600 group-hover/name:text-white transition-colors"/>
                     </div>
                   )}
@@ -338,7 +346,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* 会员状态卡片 (带兑换功能) */}
+            {/* 会员状态卡片 */}
             <div className={`border rounded-2xl p-5 relative overflow-hidden ${profile?.is_vip ? 'bg-gradient-to-br from-yellow-900/20 to-black border-yellow-500/30' : 'bg-[#111] border-white/5'}`}>
                 <div className="flex items-center gap-4 mb-3">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${profile?.is_vip ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-500'}`}>
@@ -365,7 +373,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 右侧：Tab 内容区 (无变化，仅使用新数据) */}
+          {/* 右侧内容区 (保持不变) */}
           <div className="md:col-span-8 lg:col-span-9">
              <div className="flex gap-6 border-b border-white/10 mb-6 overflow-x-auto no-scrollbar">
                 <button onClick={() => setActiveTab('favorites')} className={`pb-4 text-sm font-bold flex items-center gap-2 transition-all relative whitespace-nowrap ${activeTab === 'favorites' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
@@ -388,7 +396,7 @@ export default function ProfilePage() {
 
              <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
-                  {/* 发布按钮 (仅在上传页显示) */}
+                  {/* 发布按钮 */}
                   {activeTab === 'uploads' && (
                     <Link href="/upload" className="group flex flex-col items-center justify-center bg-[#121212] border border-dashed border-white/20 rounded-xl overflow-hidden hover:border-blue-500 hover:bg-white/5 transition-all duration-300 min-h-[180px] cursor-pointer">
                       <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center mb-3 group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -398,7 +406,7 @@ export default function ProfilePage() {
                     </Link>
                   )}
 
-                  {/* 内容列表渲染逻辑 */}
+                  {/* 列表渲染 */}
                   {(() => {
                       if (activeTab === 'prompts') {
                           if (savedPrompts.length === 0) return <div className="col-span-full"><EmptyState icon={<Sparkles size={48}/>} text="还没收藏提示词" /></div>;
@@ -461,7 +469,7 @@ export default function ProfilePage() {
         </div>
       </main>
 
-      {/* 🎁 兑换弹窗 (逻辑未变，仅状态来源改变) */}
+      {/* 兑换弹窗 (代码保持一致) */}
       {isRedeemOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
               <div className="bg-[#181818] border border-white/10 rounded-2xl w-full max-w-sm p-6 relative shadow-2xl">
