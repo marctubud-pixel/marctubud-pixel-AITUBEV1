@@ -2,21 +2,24 @@
 
 import * as React from 'react';
 import { useEffect, useState, useRef } from 'react';
-import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play, Clock, Flame, Sparkles, Bot, Send, MessageSquare, GripHorizontal } from 'lucide-react';
+import { Search, Upload, X, ChevronLeft, ChevronRight, Loader2, Eye, Crown, MonitorPlay, Trophy, Play, Sparkles, Bot, Send } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useUser } from '../contexts/user-context'; // 👈 接入全局状态
 
 export default function Home() {
   const router = useRouter();
   
+  // 🔗 接入全局用户状态
+  // 直接解构获取 user 和 profile，不再需要在 useEffect 里手动 fetch
+  const { user, profile: userProfile } = useUser();
+  
   // ----------------------------------------------------------------
-  // 1. 数据状态
+  // 1. 数据状态 (仅保留非用户数据)
   // ----------------------------------------------------------------
   const [videos, setVideos] = useState<any[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
-  const [user, setUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
   // 搜索与筛选
@@ -25,7 +28,7 @@ export default function Home() {
   const [currentBanner, setCurrentBanner] = useState(0);
   const [visibleCount, setVisibleCount] = useState(10);
 
-  // 🤖 AI 助手状态 (含拖拽逻辑)
+  // 🤖 AI 助手状态
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<{role: 'ai'|'user', content: string}[]>([
     { role: 'ai', content: '你好！我是 AI.Tube 创作助手。' }
@@ -34,33 +37,30 @@ export default function Home() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // 拖拽相关状态
-  const [position, setPosition] = useState({ x: -1, y: -1 }); // -1 代表尚未初始化，使用默认 CSS
+  const [position, setPosition] = useState({ x: -1, y: -1 }); 
   const [isDragging, setIsDragging] = useState(false);
-  const dragStartPos = useRef({ x: 0, y: 0 }); // 记录按下时的位置，用于判断是点击还是拖拽
+  const dragStartPos = useRef({ x: 0, y: 0 }); 
 
   const categories = ["近期热门", "编辑精选", "获奖作品", "动画短片", "音乐MV", "写实短片", "创意短片", "AI教程", "创意广告", "实验短片"];
 
   // ----------------------------------------------------------------
-  // 2. 初始化逻辑
+  // 2. 初始化逻辑 (仅获取视频和 Banner)
   // ----------------------------------------------------------------
   useEffect(() => {
-    // 初始化按钮位置 (右下角)
     if (typeof window !== 'undefined') {
         setPosition({ x: window.innerWidth - 80, y: window.innerHeight - 100 });
     }
 
     async function initData() {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setUser(session.user);
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (profile) setUserProfile(profile);
-      }
+      // ⚠️ 已移除 auth fetch 逻辑，改由 UserProvider 托管
+      
       const { data: videoData } = await supabase.from('videos').select('*').order('created_at', { ascending: false });
       if (videoData) setVideos(videoData);
+      
       const { data: bannerData } = await supabase.from('banners').select('*').eq('is_active', true).order('sort_order', { ascending: true });
       if (bannerData) setBanners(bannerData);
+      
       setLoading(false);
     }
     initData();
@@ -86,7 +86,6 @@ export default function Home() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
         if (!isDragging) return;
-        // 简单的拖拽跟随
         setPosition(prev => ({
             x: prev.x + e.movementX,
             y: prev.y + e.movementY
@@ -114,13 +113,11 @@ export default function Home() {
   };
 
   const handleBotClick = (e: React.MouseEvent) => {
-    // 计算移动距离，如果移动太远，说明是拖拽，不触发点击
     const moveDist = Math.hypot(e.clientX - dragStartPos.current.x, e.clientY - dragStartPos.current.y);
     if (moveDist < 5) {
         setIsChatOpen(!isChatOpen);
     }
   };
-
 
   // ----------------------------------------------------------------
   // 4. 常规交互逻辑
@@ -179,7 +176,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30">
       
-      {/* 顶部导航 (统一字体和颜色) */}
+      {/* 顶部导航 */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-white/5 sticky top-0 bg-[#0A0A0A]/90 backdrop-blur-xl z-50">
         <div 
           className="flex items-center gap-2 cursor-pointer flex-shrink-0" 
@@ -193,7 +190,6 @@ export default function Home() {
 
         <div className="hidden md:flex flex-1 items-center ml-10 mr-4 gap-8">
             <div className="flex items-center gap-6 text-sm flex-shrink-0">
-                {/* 统一为 text-gray-300 + font-bold */}
                 <Link href="/academy" className="text-gray-300 hover:text-white transition-colors font-bold">
                     AI 学院
                 </Link>
@@ -228,9 +224,8 @@ export default function Home() {
             </button>
           </Link>
           
-{user ? (
+          {user ? (
             <div className="flex items-center gap-4">
-              {/* 🟢 新增：积分充值按钮 (金色高亮) */}
               <Link href="/pricing">
                 <button className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-yellow-600/80 to-amber-600/80 hover:from-yellow-500 hover:to-amber-500 text-white px-4 py-1.5 rounded-full text-xs font-bold transition-all border border-yellow-500/30 shadow-lg shadow-yellow-900/20">
                   <Sparkles size={14} className="text-yellow-200" /> 
@@ -238,20 +233,33 @@ export default function Home() {
                 </button>
               </Link>
 
-              {/* 原有的用户名显示 */}
-              <span className="text-sm text-gray-300 hidden sm:block font-medium">
+              <span className={`text-sm hidden sm:block font-medium ${userProfile?.is_vip ? 'text-yellow-500 font-bold' : 'text-gray-300'}`}>
                 {userProfile?.username || user.email?.split('@')[0]}
               </span>
 
-              {/* 原有的头像与个人中心链接 */}
-              <Link href="/profile">
-                {userProfile?.avatar_url ? (
-                  <img src={userProfile.avatar_url} className="w-9 h-9 rounded-full object-cover border border-purple-500/50 hover:border-purple-500 transition-colors shadow-lg"/>
-                ) : (
-                  <div className="w-9 h-9 bg-purple-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-purple-700 transition-transform hover:scale-105" title="个人中心">
-                    <span className="text-xs font-bold">{user.email?.[0].toUpperCase()}</span>
-                  </div>
+              {/* 👑 升级后的头像区域 */}
+              <Link href="/profile" className="relative group/avatar block">
+                {/* VIP 皇冠 (绝对定位，露出右上角) */}
+                {userProfile?.is_vip && (
+                    <div className="absolute -top-1.5 -right-1.5 z-20 bg-gradient-to-br from-yellow-300 to-yellow-600 w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0A0A0A] shadow-[0_0_10px_rgba(234,179,8,0.8)] pointer-events-none">
+                        <Crown size={8} className="text-black fill-black" />
+                    </div>
                 )}
+
+                {/* 头像容器：根据 VIP 状态切换边框 */}
+                <div className={`w-9 h-9 rounded-full overflow-hidden transition-all duration-300 ${
+                    userProfile?.is_vip 
+                    ? 'border border-yellow-500 shadow-[0_0_12px_rgba(234,179,8,0.4)]' 
+                    : 'border border-purple-500/50 hover:border-purple-500'
+                }`}>
+                    {userProfile?.avatar_url ? (
+                        <img src={userProfile.avatar_url} className="w-full h-full object-cover"/>
+                    ) : (
+                        <div className="w-full h-full bg-purple-600 flex items-center justify-center">
+                            <span className="text-xs font-bold text-white">{user.email?.[0].toUpperCase()}</span>
+                        </div>
+                    )}
+                </div>
               </Link>
             </div>
           ) : (
@@ -262,8 +270,8 @@ export default function Home() {
         </div>
       </nav>
 
+      {/* Main Content (保持不变) */}
       <main className="p-6 max-w-7xl mx-auto relative">
-        
         {/* Banner */}
         {banners.length > 0 && !searchTerm && (
           <Link href={banners[currentBanner].link_url || '#'}>
@@ -306,7 +314,6 @@ export default function Home() {
           <div className="text-center text-gray-500 py-20 flex items-center justify-center gap-2"><Loader2 className="animate-spin" /> 加载中...</div>
         ) : (
           <>
-            {/* 视频网格 (已删除 HOT 角标) */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {displayVideos.length > 0 ? (
                 displayVideos.map((video: any) => (
@@ -332,7 +339,6 @@ export default function Home() {
                        <div className="absolute top-2 right-2 flex gap-1">
                          {video.is_selected && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/50 text-yellow-400 shadow-lg" title="编辑精选"><Crown size={12} fill="currentColor"/></div>}
                          {video.is_award && <div className="w-6 h-6 bg-yellow-500/20 backdrop-blur rounded-full flex items-center justify-center border border-yellow-500/500 text-yellow-400 shadow-lg" title="获奖作品"><Trophy size={12} fill="currentColor"/></div>}
-                         {/* 已移除 HOT 角标 */}
                        </div>
 
                        <div className="absolute bottom-2 left-2 text-[10px] text-white flex items-center gap-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
@@ -371,21 +377,18 @@ export default function Home() {
         )}
       </main>
 
-      {/* ----------------------------------------------------------------
-         🤖 AI 悬浮创作助手 (可拖拽 + 幽灵模式)
-      ---------------------------------------------------------------- */}
+      {/* AI Assistant (保持不变) */}
       <div 
         style={{ 
             position: 'fixed', 
             left: position.x === -1 ? 'auto' : position.x, 
             top: position.y === -1 ? 'auto' : position.y,
-            right: position.x === -1 ? '32px' : 'auto', // 默认右边距
-            bottom: position.y === -1 ? '32px' : 'auto', // 默认底边距
+            right: position.x === -1 ? '32px' : 'auto', 
+            bottom: position.y === -1 ? '32px' : 'auto', 
             zIndex: 100
         }}
         className="flex flex-col items-end gap-4 select-none touch-none"
       >
-        {/* 聊天窗口 (跟随按钮，出现在按钮上方) */}
         {isChatOpen && (
             <div className="absolute bottom-12 right-0 bg-[#151515] border border-white/10 rounded-2xl w-80 shadow-2xl overflow-hidden flex flex-col h-96 mb-2 animate-in slide-in-from-bottom-5 fade-in duration-200">
                 <div className="bg-purple-900/20 p-3 border-b border-white/5 flex justify-between items-center cursor-move" onMouseDown={handleMouseDown}>
@@ -410,7 +413,6 @@ export default function Home() {
                     <div ref={chatEndRef}></div>
                 </div>
 
-                {/* 快捷指令 */}
                 <div className="px-3 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
                     <button onClick={() => setChatInput('帮我生成分镜')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-2 py-0.5 text-[10px] text-gray-400 hover:text-white transition-colors">生成分镜</button>
                     <button onClick={() => setChatInput('会员有什么权益？')} className="whitespace-nowrap bg-white/5 hover:bg-white/10 border border-white/5 rounded-full px-2 py-0.5 text-[10px] text-gray-400 hover:text-white transition-colors">会员权益</button>
@@ -431,20 +433,18 @@ export default function Home() {
             </div>
         )}
 
-        {/* 悬浮按钮 */}
         <div 
             onMouseDown={handleMouseDown}
             onClick={handleBotClick}
             className={`w-10 h-10 rounded-full flex items-center justify-center text-white backdrop-blur-md border border-white/10 transition-all duration-300 cursor-pointer shadow-lg hover:scale-110 active:scale-95
             ${isChatOpen 
-                ? 'bg-purple-600 border-purple-500 opacity-100' // 打开时：紫色、不透明
-                : 'bg-black/40 hover:bg-black/60 opacity-30 hover:opacity-100' // 关闭时：透明、幽灵模式
+                ? 'bg-purple-600 border-purple-500 opacity-100'
+                : 'bg-black/40 hover:bg-black/60 opacity-30 hover:opacity-100' 
             }`}
         >
             {isChatOpen ? <X size={18} /> : <Bot size={20} />}
         </div>
       </div>
-
     </div>
   );
 }
