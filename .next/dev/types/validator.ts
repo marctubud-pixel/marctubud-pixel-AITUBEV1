@@ -236,10 +236,37 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../../app/api/admin/bilibili-search/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/admin/bilibili-search">> = Specific
+  const handler = {} as typeof import("../../../app/api/admin/bilibili-search/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../../app/api/fetch-article/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/fetch-article">> = Specific
+  const handler = {} as typeof import("../../../app/api/fetch-article/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../../app/api/fetch-bilibili/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/fetch-bilibili">> = Specific
   const handler = {} as typeof import("../../../app/api/fetch-bilibili/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../../app/api/proxy-image/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/proxy-image">> = Specific
+  const handler = {} as typeof import("../../../app/api/proxy-image/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

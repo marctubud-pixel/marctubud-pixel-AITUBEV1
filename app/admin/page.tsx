@@ -4,12 +4,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient'; 
 import { 
-    LayoutDashboard, Video, FileText, Image as ImageIcon, Briefcase, Ticket, 
-    Plus, Trash2, Edit, X, LogOut, Upload, Loader2, Link as LinkIcon, 
-    Clock, Download, DollarSign, Crown, FileUp, Save, Eye, EyeOff, 
-    Flame, Trophy, Star, ExternalLink, Copy, CheckCircle, Search, Link as LinkIcon2,
-    Sparkles, Zap, ClipboardPaste, Images, Globe, ArrowRight, RefreshCcw
+    Video, FileText, Image as ImageIcon, Briefcase, Ticket, 
+    LogOut, Plus, Trash2, Edit, X, Loader2, 
+    CheckCircle, Search, Link as LinkIcon2, Sparkles, ClipboardPaste, 
+    Images, Globe, RefreshCcw, Eye, EyeOff, Copy, Upload, Clock, User, CheckSquare
 } from 'lucide-react';
+// 👇 引入独立的视频管理组件
+import VideoTab from './tabs/VideoTab'; 
+
+// 汉化标题映射
+const TAB_TITLES: Record<string, string> = {
+    videos: '视频管理',
+    articles: '学院文章',
+    jobs: '合作需求',
+    banners: 'Banner 配置',
+    codes: 'VIP 兑换码'
+};
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -25,9 +35,11 @@ export default function AdminDashboard() {
     if (isAuth !== 'true') {
         router.push('/admin/login');
     } else {
-        fetchData(activeTab);
+        if (activeTab !== 'videos') {
+            fetchData(activeTab);
+        }
     }
-  }, [activeTab]);
+  }, [activeTab, router]);
 
   const handleLogout = () => {
       localStorage.removeItem('admin_auth');
@@ -47,116 +59,116 @@ export default function AdminDashboard() {
         query = query.order('created_at', { ascending: false });
     }
 
-    const { data: result, error } = await query;
-    if (result) setData(result);
+    const { data: result } = await query;
+    if (result) setData(result || []);
     setLoading(false);
   }
 
   // ----------------------------------------------------------------
-  // 🎥 2. 核心逻辑状态管理
+  // 📝 2. 通用状态管理
   // ----------------------------------------------------------------
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
-  const [bilibiliLink, setBilibiliLink] = useState('');
   
-  // 🆕 文章抓取状态
+  // 列表搜索状态
+  const [mainSearchQuery, setMainSearchQuery] = useState('');
+
+  // 文章抓取状态
   const [articleFetchLink, setArticleFetchLink] = useState('');
   const [isFetchingArticle, setIsFetchingArticle] = useState(false);
   const [fetchProgress, setFetchProgress] = useState('');
 
-  // ✨ AI 解析专用状态
+  // AI 解析专用状态
   const [aiPasteContent, setAiPasteContent] = useState('');
 
-  // 🔍 视频搜索专用状态
+  // 🔍 文章关联视频专用搜索
   const [videoSearchQuery, setVideoSearchQuery] = useState('');
   const [videoSearchResults, setVideoSearchResults] = useState<any[]>([]);
   const [isSearchingVideo, setIsSearchingVideo] = useState(false);
   
   // 文件上传 Refs
-  const fileInputRef = useRef<HTMLInputElement>(null); 
   const imageInputRef = useRef<HTMLInputElement>(null); 
   const batchInputRef = useRef<HTMLInputElement>(null); 
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // 📝 统一大表单
+  // 统一表单数据
   const [formData, setFormData] = useState<any>({
-    // --- 通用/视频字段 ---
-    title: '', author: '', category: '创意短片', 
-    prompt: '', tag: '', thumbnail_url: '', video_url: '', 
-    views: 0, duration: '', storyboard_url: '', price: 10, 
-    is_vip: false, tutorial_url: '',
-    is_hot: false, is_selected: false, is_award: false,
-    
     // --- 文章字段 ---
-    description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
-    tags: '', video_id: '', // 关联视频ID
+    title: '', description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
+    tags: '', video_id: '', category: '新手入门', 
+    // 新增/找回的字段
+    author: '', reading_time: '', is_authorized: false,
     
     // --- 需求字段 ---
-    budget: '', company: '', deadline: '', status: 'open', applicants: 0,
+    budget: '', company: '', deadline: '', status: 'open',
     
     // --- Banner字段 ---
-    is_active: true, sort_order: 0,
+    is_active: true, sort_order: 0, tag: '',
 
     // --- 卡密字段 ---
     batch_count: 10, duration_days: 30, prefix: 'VIP'
   });
 
+  // ⏳ 自动估算阅读时间
+  useEffect(() => {
+    // 只有在文章Tab且没有关联视频时，才根据字数估算
+    if (activeTab === 'articles' && !formData.video_id && formData.content) {
+        const wordCount = formData.content.length;
+        const estimatedMinutes = Math.ceil(wordCount / 500); // 假设阅读速度 500字/分钟
+        // 避免覆盖用户手动输入（仅当当前为空或看起来是自动生成的才覆盖，这里简化为自动更新）
+        // 如果你想让用户手动改了就不动，可以加个判断。这里为了方便，只要改内容就更新。
+        setFormData((prev: any) => ({ ...prev, reading_time: `${estimatedMinutes} 分钟` }));
+    }
+  }, [formData.content, activeTab, formData.video_id]);
+
   // 🔎 智能解析函数
   const handleSmartParse = () => {
     if (!aiPasteContent.trim()) return alert('请先粘贴 AI 生成的内容');
-    
     try {
-      let parsedData: any = null;
       const jsonMatch = aiPasteContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        parsedData = JSON.parse(jsonMatch[0]);
+        const parsedData = JSON.parse(jsonMatch[0]);
+        setFormData((prev: any) => ({ ...prev, ...parsedData }));
+        setAiPasteContent('');
+        alert('✨ AI 数据已成功解析！');
       } else {
-        throw new Error('未找到有效的 JSON 格式');
+        throw new Error('未找到有效的 JSON');
       }
-
-      setFormData((prev: any) => ({
-        ...prev,
-        title: parsedData.title || prev.title,
-        description: parsedData.description || prev.description,
-        content: parsedData.content || prev.content,
-        category: parsedData.category || prev.category,
-        difficulty: parsedData.difficulty || prev.difficulty,
-        duration: parsedData.duration || prev.duration,
-        tags: parsedData.tags || prev.tags,
-        image_url: parsedData.image_url || prev.image_url,
-        link_url: parsedData.link_url || prev.link_url,
-      }));
-
-      setAiPasteContent('');
-      alert('✨ AI 数据已成功解析并回填表单！');
-    } catch (err) {
-      console.error(err);
-      alert('解析失败：请确保粘贴的内容包含正确的 JSON 格式。');
-    }
+    } catch (err) { alert('解析失败'); }
   };
 
-  // 🔎 搜索视频库
+  // 🔎 搜索视频库 (用于文章关联视频)
   const searchVideos = async () => {
       if (!videoSearchQuery.trim()) return;
       setIsSearchingVideo(true);
+      // 🔥 修改：查询时带上 author 字段
       const { data } = await supabase
           .from('videos')
-          .select('id, title, duration, thumbnail_url, author')
+          .select('id, title, duration, thumbnail_url, author') 
           .ilike('title', `%${videoSearchQuery}%`)
           .limit(5); 
       setVideoSearchResults(data || []);
       setIsSearchingVideo(false);
   };
 
-  // ✅ 选中视频并自动回填
+  // ✅ 选中关联视频 (自动提取信息核心逻辑)
   const selectVideo = (video: any) => {
+      // 格式化时间函数
+      const formatDuration = (seconds: number) => {
+          if (!seconds) return '5 分钟';
+          const min = Math.floor(seconds / 60);
+          const sec = seconds % 60;
+          return `${min}分${sec}秒`;
+      };
+
       setFormData((prev: any) => ({
           ...prev,
-          video_id: video.id,          // 关联 ID
-          title: video.title,          // 自动同步标题
-          duration: video.duration,    // 自动同步时长
-          image_url: video.thumbnail_url // 自动同步封面
+          video_id: video.id,
+          image_url: video.thumbnail_url || prev.image_url, // 优先用视频封面
+          title: prev.title || video.title, // 如果标题为空，自动填入视频标题
+          author: prev.author || video.author || 'AI.Tube', // 自动提取作者
+          reading_time: formatDuration(video.duration) // 根据时长自动填写阅读时间
       }));
       setVideoSearchResults([]); 
       setVideoSearchQuery('');   
@@ -164,301 +176,101 @@ export default function AdminDashboard() {
 
   const removeLinkedVideo = () => {
       setFormData((prev: any) => ({ ...prev, video_id: '' }));
+      // 取消关联后，阅读时间可以清空或重置为字数估算，这里暂时不清空，留给useEffect处理或用户修改
   };
 
-  // 📺 B站一键抓取
-  const handleFetchInfo = async () => {
-    if (!bilibiliLink) return alert('请填入链接');
-    const match = bilibiliLink.match(/(BV\w+)/);
-    const bvid = match ? match[1] : null;
-    if (!bvid) return alert('无效 BV 号');
-
-    try {
-      const res = await fetch(`/api/fetch-bilibili?bvid=${bvid}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      setFormData((prev: any) => ({
-        ...prev,
-        title: data.title, 
-        author: data.author, 
-        thumbnail_url: data.thumbnail_url,
-        video_url: data.video_url, 
-        views: data.views || 0,
-        tag: data.tag || prev.tag,
-        duration: data.duration || '', 
-        prompt: prev.prompt || '', 
-      }));
-      alert('✅ 抓取成功！数据已回填');
-    } catch (err: any) { alert(err.message); }
-  };
-
-  // 🌐 🆕 全网文章一键抓取 (多线路故障转移 + 优化排版版)
+  // 🌐 全网文章一键抓取
   const handleFetchArticle = async () => {
     if (!articleFetchLink) return alert('请填入文章链接');
     setIsFetchingArticle(true);
-    setFetchProgress('正在初始化抓取引擎...');
+    setFetchProgress('正在初始化...');
     
     try {
       let htmlText = '';
       const targetUrl = articleFetchLink;
 
-      // 🔄 线路 1: CorsProxy (通常最快)
-      setFetchProgress('尝试线路 1 (高速)...');
       try {
           const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
           if (res.ok) htmlText = await res.text();
       } catch (e) { console.log('线路1失败'); }
 
-      // 🔄 线路 2: AllOrigins (备用)
       if (!htmlText || htmlText.length < 500) {
-          setFetchProgress('尝试线路 2 (稳定)...');
           try {
               const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}&disableCache=true`);
               if (res.ok) htmlText = await res.text();
           } catch (e) { console.log('线路2失败'); }
       }
 
-      // 🔄 线路 3: CodeTabs (兜底)
-      if (!htmlText || htmlText.length < 500) {
-          setFetchProgress('尝试线路 3 (兜底)...');
-          try {
-              const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`);
-              if (res.ok) htmlText = await res.text();
-          } catch (e) { console.log('线路3失败'); }
-      }
+      if (!htmlText) throw new Error('抓取失败');
 
-      if (!htmlText || htmlText.length < 500) {
-          throw new Error('所有抓取线路均无法连接目标网页，请检查链接是否有效或目标网站有强力反爬。');
-      }
-
-      setFetchProgress('网页下载成功，解析内容中...');
-
-      // 2. 浏览器本地解析 DOM
+      setFetchProgress('解析内容中...');
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlText, 'text/html');
 
-      // 3. 提取标题
-      let title = '';
-      const ogTitle = doc.querySelector('meta[property="og:title"]')?.getAttribute('content');
-      const wechatTitle = doc.querySelector('.rich_media_title')?.textContent;
-      const h1Title = doc.querySelector('h1')?.textContent;
-      title = (ogTitle || wechatTitle || h1Title || doc.title || '未命名文章').trim();
-
-      // 4. 提取正文 (优先找微信的 js_content，否则找 article，否则找 body)
+      let title = doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || doc.title || '未命名文章';
       let contentDiv = doc.querySelector('#js_content') || doc.querySelector('article') || doc.body;
-      let rawContent = contentDiv.innerHTML;
-
-      // 5. 提取图片列表
-      const imagesToUpload: string[] = [];
-      const imgRegex = /data-src="([^"]+)"|src="([^"]+)"/g;
-      let match;
-      while ((match = imgRegex.exec(rawContent)) !== null) {
-          const url = match[1] || match[2];
-          if (url && url.startsWith('http')) {
-              // 简单过滤掉太小的图标或追踪像素
-              if (!url.includes('.svg') && !url.includes('icon')) {
-                  imagesToUpload.push(url);
-              }
-          }
-      }
-      const uniqueUrls = [...new Set(imagesToUpload)];
-      
-      // 6. 转换为 Markdown (优化排版版)
-      let markdown = rawContent;
-
-      // ✅ 优化排版逻辑：先处理加粗，再清理标签
-      
-      // 1. 保留加粗: 将 strong, b, style="font-weight: bold" 替换为 **
-      markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
-      markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**');
-      // 针对微信公众号的加粗样式优化 (匹配 font-weight: bold 或 font-weight: 700)
-      markdown = markdown.replace(/<span[^>]*style="[^"]*font-weight:\s*(bold|700)[^"]*"[^>]*>(.*?)<\/span>/gi, '**$2**');
-
-      // 2. 替换图片为占位符
-      markdown = markdown.replace(/<img[^>]+data-src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
-      markdown = markdown.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n');
-
-      // 3. 优化标题 (可选，尝试将 h1-h3 转换为 Markdown 标题)
-      markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n\n');
-      markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n\n');
-      markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '\n### $1\n\n');
-      
-      // 4. 清洗标签 & 优化行间距
-      markdown = markdown
-          .replace(/<br\s*\/?>/gi, '\n')
-          // 微信的段落通常是用 section 或 p 包裹的，确保段落结束有双换行
-          .replace(/<\/p>/gi, '\n\n')
-          .replace(/<\/section>/gi, '\n\n')
-          // 去除 section 和 div 的起始标签
-          .replace(/<section[^>]*>/gi, '')
-          .replace(/<div[^>]*>/gi, '')
-          // div 结束标签换行
-          .replace(/<\/div>/gi, '\n')
-          // 暴力去除剩余所有HTML标签
-          .replace(/<[^>]+>/g, '') 
-          // 处理常见转义符
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&amp;/g, '&')
-          // 核心：合并过多的空行 (保证最多只有两个连续换行符)
-          .replace(/\n\s*\n\s*\n/g, '\n\n')
-          // 去除首尾空格
+      let markdown = contentDiv.innerHTML
+          .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+          .replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, '\n\n![]($1)\n\n')
+          .replace(/<[^>]+>/g, '')
           .trim();
 
-      // 7. 图片转存
-      if (uniqueUrls.length > 0) {
-          setFetchProgress(`发现 ${uniqueUrls.length} 张图片，转存中...`);
-          
-          let newCover = '';
-          for (let i = 0; i < uniqueUrls.length; i++) {
-              const originalUrl = uniqueUrls[i];
-              try {
-                  // 调用后端 API 转存
-                  const uploadRes = await fetch('/api/proxy-image', {
-                      method: 'POST',
-                      body: JSON.stringify({ imageUrl: originalUrl })
-                  });
-                  const uploadData = await uploadRes.json();
-                  
-                  if (uploadData.url) {
-                      markdown = markdown.split(originalUrl).join(uploadData.url);
-                      if (!newCover) newCover = uploadData.url;
-                  }
-                  // 进度反馈
-                  setFetchProgress(`图片处理: ${i + 1}/${uniqueUrls.length}`);
-              } catch (e) {
-                  console.error('图片转存失败:', originalUrl);
-              }
-          }
-          
-          setFormData((prev: any) => ({
-            ...prev,
-            title: title,
-            content: markdown,
-            image_url: newCover || prev.image_url,
-            link_url: articleFetchLink
-          }));
-          
-          alert(`✅ 抓取成功！排版已优化。\n标题: ${title}\n图片: 已转存 ${uniqueUrls.length} 张`);
-      } else {
-          setFormData((prev: any) => ({
-            ...prev,
-            title: title,
-            content: markdown,
-            link_url: articleFetchLink
-          }));
-          alert(`✅ 抓取成功 (纯文字，排版已优化)！\n标题: ${title}`);
-      }
-
-      setArticleFetchLink('');
+      setFormData((prev: any) => ({ ...prev, title, content: markdown, link_url: articleFetchLink }));
+      alert(`✅ 抓取成功！`);
     } catch (err: any) {
-      console.error(err);
-      alert('抓取失败: ' + err.message + '\n\n💡 建议：如果自动抓取失败，请手动复制文章内容粘贴，并使用下方的“批量配图”功能上传图片。');
+      alert('抓取失败: ' + err.message);
     } finally {
       setIsFetchingArticle(false);
       setFetchProgress('');
     }
   };
 
-  // 📤 文件上传
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    setUploadingFile(true);
-    const file = e.target.files[0];
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    
-    try {
-        const { error: uploadError } = await supabase.storage.from('storyboards').upload(fileName, file, { upsert: true });
-        if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from('storyboards').getPublicUrl(fileName);
-        setFormData((prev: any) => ({ ...prev, storyboard_url: data.publicUrl }));
-        alert('✅ 文件上传成功！');
-    } catch (error: any) { alert('上传失败: ' + error.message); } finally { setUploadingFile(false); }
-  };
-
-  // 🖼️ 图片上传 (自动命名)
+  // 🖼️ 图片上传
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const file = e.target.files[0];
-    
-    let fileExt = 'jpg'; 
-    const lowerName = file.name.toLowerCase();
-    if (lowerName.endsWith('.png')) fileExt = 'png';
-    else if (lowerName.endsWith('.gif')) fileExt = 'gif';
-    else if (lowerName.endsWith('.webp')) fileExt = 'webp';
-    else if (lowerName.endsWith('.jpeg')) fileExt = 'jpg';
-    
-    const fileName = `cover-${Date.now()}.${fileExt}`; 
+    const fileName = `img-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const bucketName = activeTab === 'articles' ? 'articles' : 'banners';
 
     try {
         const { error } = await supabase.storage.from(bucketName).upload(fileName, file);
         if (error) throw error;
-        
         const { data } = supabase.storage.from(bucketName).getPublicUrl(fileName);
-        
-        if (activeTab === 'videos') setFormData((prev: any) => ({ ...prev, thumbnail_url: data.publicUrl }));
-        else setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
-        
-        alert(`✅ 图片已成功上传到 ${bucketName} 存储桶！`);
-    } catch (error: any) { 
-        alert(`上传失败: ` + error.message); 
-    } finally { 
-        setUploadingFile(false); 
-    }
+        setFormData((prev: any) => ({ ...prev, image_url: data.publicUrl }));
+        alert('✅ 上传成功！');
+    } catch (error: any) { alert('上传失败: ' + error.message); } 
+    finally { setUploadingFile(false); }
   };
 
-  // 📸 批量图片上传并替换占位符
+  // 📸 批量图片上传
   const handleBatchUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     setUploadingFile(true);
     const files = Array.from(e.target.files);
-    const uploadedUrls: string[] = [];
-    let uploadErrors = 0;
-
-    for (const file of files) {
-        let fileExt = 'jpg';
-        const lowerName = file.name.toLowerCase();
-        if (lowerName.endsWith('.png')) fileExt = 'png';
-        else if (lowerName.endsWith('.gif')) fileExt = 'gif';
-        else if (lowerName.endsWith('.webp')) fileExt = 'webp';
-        
-        const fileName = `article-img-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-
-        try {
-            const { error } = await supabase.storage.from('articles').upload(fileName, file);
-            if (error) throw error;
-            const { data } = supabase.storage.from('articles').getPublicUrl(fileName);
-            uploadedUrls.push(data.publicUrl);
-        } catch (err) {
-            console.error(err);
-            uploadErrors++;
-        }
-    }
-
     let newContent = formData.content || '';
     
-    for (const url of uploadedUrls) {
-        const placeholderRegex = /\[(img|image|pic|photo|图片|图)(\d+)?\]/i;
-        if (placeholderRegex.test(newContent)) {
-            newContent = newContent.replace(placeholderRegex, `![](${url})`);
-        } else {
-            newContent += `\n\n![](${url})`;
+    for (const file of files) {
+        const fileName = `batch-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const { error } = await supabase.storage.from('articles').upload(fileName, file);
+        if (!error) {
+            const { data } = supabase.storage.from('articles').getPublicUrl(fileName);
+            const placeholderRegex = /\[(img|image|pic|photo|图片|图)(\d+)?\]/i;
+            if (placeholderRegex.test(newContent)) {
+                newContent = newContent.replace(placeholderRegex, `![](${data.publicUrl})`);
+            } else {
+                newContent += `\n\n![](${data.publicUrl})`;
+            }
         }
     }
-
     setFormData((prev: any) => ({ ...prev, content: newContent }));
     setUploadingFile(false);
-    
-    alert(`📸 批量处理完成！\n成功: ${uploadedUrls.length} 张\n失败: ${uploadErrors} 张`);
+    alert('📸 批量配图完成！');
   };
 
   // 💾 提交保存
   const handleSubmit = async () => {
+    // 1. 卡密逻辑
     if (activeTab === 'codes' && !editMode) {
         const count = parseInt(formData.batch_count) || 1;
         const days = parseInt(formData.duration_days) || 30;
@@ -471,44 +283,32 @@ export default function AdminDashboard() {
         }
         const { error } = await supabase.from('redemption_codes').insert(newCodes);
         if (!error) { alert(`✅ 成功生成 ${count} 个兑换码！`); setIsModalOpen(false); fetchData('codes'); } 
-        else { alert('生成失败: ' + error.message); }
         return;
     }
 
     if (!formData.title && activeTab !== 'codes') return alert('标题不能为空');
 
     let payload: any = {};
-    let tableName = activeTab === 'codes' ? 'redemption_codes' : activeTab;
-    
-    if (activeTab === 'videos') {
-        payload = {
-            title: formData.title, author: formData.author, category: formData.category,
-            prompt: formData.prompt, tag: formData.tag, 
-            thumbnail_url: formData.thumbnail_url, video_url: formData.video_url, 
-            views: Number(formData.views), duration: formData.duration,
-            storyboard_url: formData.storyboard_url, price: Number(formData.price), 
-            is_vip: formData.is_vip, is_hot: formData.is_hot, 
-            is_selected: formData.is_selected, is_award: formData.is_award,
-            tutorial_url: formData.tutorial_url
-        };
-    } else if (activeTab === 'articles') {
-        let formattedTags: string[] = [];
-        if (formData.tags) {
-            formattedTags = formData.tags.toString().split(/[,，]/).map((t: string) => t.trim()).filter((t: string) => t.length > 0);
-        }
+    let tableName: string = activeTab;
+    if (activeTab === 'codes') tableName = 'redemption_codes';
 
+    if (activeTab === 'articles') {
         payload = {
             title: formData.title, description: formData.description, 
             category: formData.category, difficulty: formData.difficulty, 
-            duration: formData.duration, image_url: formData.image_url,
-            content: formData.content, is_vip: formData.is_vip, link_url: formData.link_url,
-            tags: formattedTags, 
-            video_id: formData.video_id ? Number(formData.video_id) : null
+            image_url: formData.image_url, content: formData.content, 
+            link_url: formData.link_url,
+            tags: formData.tags ? formData.tags.toString().split(/[,，]/).map((t: string) => t.trim()) : [], 
+            video_id: formData.video_id ? Number(formData.video_id) : null,
+            // 新增字段
+            author: formData.author,
+            reading_time: formData.reading_time,
+            is_authorized: formData.is_authorized
         };
     } else if (activeTab === 'jobs') {
         payload = {
             title: formData.title, budget: formData.budget, company: formData.company,
-            deadline: formData.deadline, status: formData.status, tags: formData.tag ? formData.tag.split(',') : []
+            deadline: formData.deadline, status: formData.status
         };
     } else if (activeTab === 'banners') {
         payload = {
@@ -547,14 +347,14 @@ export default function AdminDashboard() {
     if (activeTab === 'articles' && Array.isArray(item.tags)) {
         processedItem.tags = item.tags.join(', ');
     }
+    // 确保打开编辑时，新增字段有默认值
+    if (activeTab === 'articles') {
+        processedItem.author = processedItem.author || '';
+        processedItem.reading_time = processedItem.reading_time || '';
+        processedItem.is_authorized = processedItem.is_authorized || false;
+    }
 
     setFormData(processedItem); 
-    if (activeTab === 'videos' && item.video_url && item.video_url.includes('bvid=')) {
-        const match = item.video_url.match(/bvid=(BV\w+)/);
-        if (match) setBilibiliLink(`https://www.bilibili.com/video/${match[1]}`);
-    } else {
-        setBilibiliLink('');
-    }
     setVideoSearchQuery('');
     setVideoSearchResults([]);
     setCurrentId(item.id);
@@ -564,17 +364,13 @@ export default function AdminDashboard() {
 
   const openNew = () => {
     setFormData({ 
-        title: '', author: '', category: activeTab === 'videos' ? '创意短片' : '新手入门', 
-        prompt: '', tag: '', thumbnail_url: '', video_url: '', views: 0, 
-        duration: '', storyboard_url: '', price: 10, is_vip: false,
-        is_hot: false, is_selected: false, is_award: false, tutorial_url: '',
-        description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
-        tags: '', video_id: '', 
-        budget: '', company: '', deadline: '', status: 'open', applicants: 0,
-        is_active: true, sort_order: 0,
+        title: '', description: '', image_url: '', difficulty: '入门', content: '', link_url: '',
+        tags: '', video_id: '', category: '新手入门', 
+        author: '', reading_time: '', is_authorized: false, // 初始化
+        budget: '', company: '', deadline: '', status: 'open',
+        is_active: true, sort_order: 0, tag: '',
         batch_count: 10, duration_days: 30, prefix: 'VIP'
     });
-    setBilibiliLink('');
     setVideoSearchQuery('');
     setVideoSearchResults([]);
     setEditMode(false);
@@ -587,6 +383,17 @@ export default function AdminDashboard() {
       navigator.clipboard.writeText(unused);
       alert(`已复制 ${unused.split('\n').length} 个未使用卡密到剪贴板！`);
   };
+
+  // 🔥 列表数据过滤 (搜索功能)
+  const filteredData = data.filter(item => {
+      if (!mainSearchQuery) return true;
+      const lowerQ = mainSearchQuery.toLowerCase();
+      // 根据不同 Tab 搜索不同字段
+      if (activeTab === 'articles') {
+          return item.title?.toLowerCase().includes(lowerQ) || item.author?.toLowerCase().includes(lowerQ);
+      }
+      return item.title?.toLowerCase().includes(lowerQ);
+  });
 
   return (
     <div className="min-h-screen bg-black text-white flex font-sans">
@@ -601,7 +408,7 @@ export default function AdminDashboard() {
         </div>
         <nav className="flex-1 p-4 space-y-2">
             {[{ id: 'videos', label: '视频管理', icon: <Video size={18}/> }, { id: 'articles', label: '学院文章', icon: <FileText size={18}/> }, { id: 'jobs', label: '合作需求', icon: <Briefcase size={18}/> }, { id: 'banners', label: 'Banner 配置', icon: <ImageIcon size={18}/> }, { id: 'codes', label: '卡密管理', icon: <Ticket size={18}/> }].map(item => (
-                <button key={item.id} onClick={() => { setActiveTab(item.id as any); setData([]); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-white text-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                <button key={item.id} onClick={() => { setActiveTab(item.id as any); setData([]); setMainSearchQuery(''); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-white text-black' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
                     {item.icon} {item.label}
                 </button>
             ))}
@@ -612,300 +419,241 @@ export default function AdminDashboard() {
       </aside>
 
       {/* 主内容区 */}
-      <main className="flex-1 p-8 overflow-y-auto h-screen">
-        <div className="flex justify-between items-center mb-8">
-            <h2 className="text-3xl font-bold capitalize">
-                {activeTab === 'codes' ? 'VIP 兑换码管理' : activeTab === 'videos' ? '视频库' : activeTab === 'articles' ? '文章列表' : activeTab === 'jobs' ? '需求列表' : '首页轮播图'}
-            </h2>
-            <div className="flex gap-4 items-center">
-                <span className="text-gray-500 text-sm">共 {data.length} 条数据</span>
-                {activeTab === 'codes' && <button onClick={copyUnusedCodes} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-white/10 text-sm"><Copy size={16}/> 复制未使用卡密</button>}
-                <button onClick={openNew} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors"><Plus size={18}/> {activeTab === 'codes' ? '批量生成卡密' : '新增内容'}</button>
-            </div>
-        </div>
+      <main className="flex-1 p-8 overflow-y-auto h-screen relative">
+        
+        {/* 🔥 核心分流：视频 Tab 独立渲染 */}
+        {activeTab === 'videos' ? (
+            <VideoTab />
+        ) : (
+            /* ⚠️ 其他 Tab 的常规渲染逻辑 */
+            <>
+                <div className="flex justify-between items-center mb-8">
+                    {/* 🔥 标题汉化 + 数量显示 */}
+                    <div className="flex items-center gap-4">
+                        <h2 className="text-3xl font-bold">{TAB_TITLES[activeTab] || activeTab}</h2>
+                        <span className="text-gray-500 text-lg font-mono bg-white/5 px-3 py-1 rounded-lg">
+                            共 {filteredData.length} 条
+                        </span>
+                    </div>
 
-        {loading ? <div className="text-center py-20 text-gray-500">加载中...</div> : (
-            <div className="bg-[#151515] rounded-2xl border border-white/10 overflow-hidden">
-                <table className="w-full text-left text-sm text-gray-400">
-                    <thead className="bg-white/5 text-gray-200 font-bold">
-                        <tr><th className="p-4">ID</th><th className="p-4">{activeTab === 'codes' ? '兑换码' : '预览/标题'}</th><th className="p-4">信息</th><th className="p-4 text-right">操作</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                        {data.map(item => (
-                            <tr key={item.id} className={`hover:bg-white/5 transition-colors ${activeTab === 'banners' && !item.is_active ? 'opacity-50' : ''}`}>
-                                <td className="p-4 font-mono text-xs text-gray-600">#{item.id}</td>
-                                <td className="p-4">
-                                    {activeTab === 'codes' ? (
-                                        <div className="flex items-center gap-3">
-                                            <div className="font-mono text-lg text-white tracking-wider">{item.code}</div>
-                                            {item.is_used ? <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">已使用</span> : <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded flex items-center gap-1"><CheckCircle size={10}/> 待兑换</span>}
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-3">
-                                            {(item.thumbnail_url || item.image_url) && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0">
-                                                <img src={item.thumbnail_url || item.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                            </div>}
-                                            <div>
-                                                <div className="font-bold text-white line-clamp-1 max-w-xs flex items-center gap-2">{item.title || '无标题'}</div>
-                                                {activeTab === 'videos' && <div className="text-xs text-gray-600">@{item.author}</div>}
-                                            </div>
-                                        </div>
-                                    )}
-                                </td>
-                                <td className="p-4">
-                                    {activeTab === 'codes' ? (
-                                        <div className="text-xs text-gray-500">
-                                            <div>时长: <span className="text-white font-bold">{item.duration_days} 天</span></div>
-                                            <div>创建于: {new Date(item.created_at).toLocaleDateString()}</div>
-                                            {item.is_used && <div className="text-purple-400">使用人: {item.used_by?.slice(0,8)}...</div>}
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-wrap gap-2 text-xs">
-                                            {activeTab === 'banners' ? (
-                                                <div className="flex flex-col gap-1"><span>权重: {item.sort_order}</span><span className="text-gray-600 truncate max-w-[150px]">{item.link_url}</span></div>
-                                            ) : (
-                                                <>
-                                                    {item.category && <span className="bg-white/10 px-2 py-0.5 rounded">{item.category}</span>}
-                                                    {activeTab === 'videos' && <span>{item.views} views</span>}
-                                                    {activeTab === 'articles' && (
-                                                        <>
-                                                            <span className="bg-white/5 border border-white/10 px-2 py-0.5 rounded">{item.difficulty}</span>
-                                                            {item.video_id && <span className="text-blue-400 flex items-center gap-1"><LinkIcon2 size={10}/> 已关联视频</span>}
-                                                        </>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </td>
-                                <td className="p-4 text-right">
-                                    {activeTab === 'banners' && <button onClick={() => toggleBannerActive(item)} className="text-gray-400 hover:text-white mr-3 p-2 hover:bg-white/10 rounded">{item.is_active ? <Eye size={16}/> : <EyeOff size={16}/>}</button>}
-                                    {activeTab !== 'codes' && <button onClick={() => openEdit(item)} className="text-blue-400 hover:text-blue-300 mr-3 p-2 hover:bg-blue-500/10 rounded"><Edit size={16}/></button>}
-                                    <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/10 rounded"><Trash2 size={16}/></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        )}
-
-        {/* -----------------------------------------------------------
-          📢 统一弹窗 (Modal)
-        ----------------------------------------------------------- */}
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#151515] border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 relative">
-              <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={24}/></button>
-              <h2 className="text-xl font-bold mb-6">{editMode ? '编辑内容' : (activeTab === 'codes' ? '批量生成 VIP 卡密' : '发布新内容')}</h2>
-
-              {activeTab === 'codes' ? (
-                  <div className="space-y-6">
-                      <div className="bg-purple-900/20 border border-purple-500/30 p-4 rounded-lg">
-                          <h3 className="text-sm font-bold text-purple-400 mb-2">生成器配置</h3>
-                          <div className="grid grid-cols-2 gap-4">
-                              <div><label className="text-xs text-gray-500 block mb-1">生成数量</label><input type="number" value={formData.batch_count} onChange={e=>setFormData({...formData, batch_count: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white font-mono text-lg"/></div>
-                              <div><label className="text-xs text-gray-500 block mb-1">会员时长</label><select value={formData.duration_days} onChange={e=>setFormData({...formData, duration_days: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option value="7">7天 (周卡)</option><option value="30">30天 (月卡)</option><option value="90">90天 (季卡)</option><option value="365">365天 (年卡)</option></select></div>
-                          </div>
-                          <div className="mt-4"><label className="text-xs text-gray-500 block mb-1">前缀</label><input type="text" value={formData.prefix} onChange={e=>setFormData({...formData, prefix: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white font-mono"/></div>
-                      </div>
-                      <button onClick={handleSubmit} className="w-full bg-green-600 hover:bg-green-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2"><Ticket size={24}/> 立即生成</button>
-                  </div>
-              ) : (
-                  <div className="space-y-4">
-                    {activeTab === 'videos' && (
-                        <div className="bg-gray-900 p-4 rounded mb-6 flex gap-2">
-                        <input className="flex-1 bg-black border border-gray-700 rounded px-3 py-2 text-sm" placeholder="粘贴 B 站链接 (BV号)..." value={bilibiliLink} onChange={e => setBilibiliLink(e.target.value)} />
-                        <button onClick={handleFetchInfo} className="bg-blue-600 px-4 rounded font-bold hover:bg-blue-500 text-sm">一键抓取</button>
-                        </div>
-                    )}
-
-                    {/* ✨ [AI 智能助手] + 🆕 全网抓取 + 批量配图 */}
-                    {activeTab === 'articles' && (
-                        <div className="space-y-4">
-                            {/* 🆕 1. 全网文章一键抓取 (多线路自动切换版) */}
-                            <div className="bg-gradient-to-r from-green-900/20 to-teal-900/20 border border-green-500/30 p-4 rounded-xl flex gap-2 items-center">
-                                <Globe size={18} className="text-green-400 flex-shrink-0"/>
+                    <div className="flex gap-4 items-center">
+                        {/* 🔍 列表搜索框 */}
+                        {activeTab !== 'codes' && (
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
                                 <input 
-                                    className="flex-1 bg-black/50 border border-green-500/30 rounded px-3 py-2 text-sm text-green-100 placeholder-green-500/50" 
-                                    placeholder="粘贴公众号/博客链接 (自动线路切换)..." 
-                                    value={articleFetchLink}
-                                    onChange={e => setArticleFetchLink(e.target.value)}
+                                    type="text" 
+                                    placeholder={activeTab === 'articles' ? "搜索标题或作者..." : "搜索..."}
+                                    value={mainSearchQuery}
+                                    onChange={(e) => setMainSearchQuery(e.target.value)}
+                                    className="bg-[#151515] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:border-purple-500 w-64"
                                 />
-                                <button 
-                                    onClick={handleFetchArticle} 
-                                    disabled={isFetchingArticle}
-                                    className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-green-900/20 whitespace-nowrap"
-                                >
-                                    {isFetchingArticle ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>}
-                                    {isFetchingArticle ? fetchProgress : '智能转存'}
-                                </button>
                             </div>
+                        )}
 
-                            {/* AI 解析模块 */}
-                            <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-sm font-bold text-blue-300 flex items-center gap-2">
-                                        <Sparkles size={16} /> AI 智能助手 (本地解析)
-                                    </h3>
-                                    <div className="text-[10px] text-gray-500 bg-black/50 px-2 py-0.5 rounded">免 API 网络稳定</div>
-                                </div>
-                                <textarea 
-                                    rows={3}
-                                    className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-xs text-blue-100 placeholder-gray-600 focus:border-blue-500 transition-all font-mono"
-                                    placeholder="在这里粘贴 AI 生成的 JSON 内容..."
-                                    value={aiPasteContent}
-                                    onChange={(e) => setAiPasteContent(e.target.value)}
-                                />
-                                <button 
-                                    onClick={handleSmartParse}
-                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20"
-                                >
-                                    <ClipboardPaste size={14} /> 一键解析并自动填充
-                                </button>
-                            </div>
+                        {activeTab === 'codes' && <button onClick={copyUnusedCodes} className="bg-gray-800 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 text-sm border border-white/10"><Copy size={16}/> 复制未使用</button>}
+                        <button onClick={openNew} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors"><Plus size={18}/> 新增内容</button>
+                    </div>
+                </div>
 
-                            {/* 🆕 批量配图模块 */}
-                            <div className="bg-gray-900 border border-gray-700 p-4 rounded-xl flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
-                                        <Images size={16} className="text-blue-400"/> 批量配图 (手动)
-                                    </h3>
-                                    <p className="text-[10px] text-gray-500 mt-1">上传本地图片并自动替换 [img] 占位符</p>
-                                </div>
-                                <button 
-                                    onClick={() => batchInputRef.current?.click()}
-                                    disabled={uploadingFile}
-                                    className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors"
-                                >
-                                    {uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>}
-                                    批量上传
-                                </button>
-                                <input type="file" ref={batchInputRef} multiple accept="image/*" hidden onChange={handleBatchUpload} />
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'articles' && (
-                        <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4 mt-4">
-                            <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联内容 (核心)</h3>
-                            
-                            {formData.video_id ? (
-                                <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-8 bg-gray-800 rounded overflow-hidden">
-                                            {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />}
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-bold text-white line-clamp-1">{formData.title}</div>
-                                            <div className="text-xs text-gray-500">ID: {formData.video_id} | 时长: {formData.duration}</div>
-                                        </div>
-                                    </div>
-                                    <button onClick={removeLinkedVideo} className="text-red-500 hover:text-red-400 p-2 text-xs font-bold">取消关联</button>
-                                </div>
-                            ) : (
-                                <div className="relative">
-                                    <div className="flex gap-2">
-                                        <input 
-                                            value={videoSearchQuery}
-                                            onChange={e => setVideoSearchQuery(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && searchVideos()}
-                                            className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm focus:border-purple-500 outline-none"
-                                            placeholder="输入关键词搜索视频库 (如: Midjourney)..."
-                                        />
-                                        <button onClick={searchVideos} className="bg-gray-800 hover:bg-gray-700 px-4 rounded text-gray-300">
-                                            {isSearchingVideo ? <Loader2 size={16} className="animate-spin"/> : <Search size={16}/>}
-                                        </button>
-                                    </div>
-                                    {videoSearchResults.length > 0 && (
-                                        <div className="absolute top-full left-0 w-full bg-[#181818] border border-gray-700 rounded-lg mt-2 shadow-2xl z-50 max-h-48 overflow-y-auto">
-                                            {videoSearchResults.map(v => (
-                                                <div key={v.id} onClick={() => selectVideo(v)} className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer border-b border-white/5 last:border-0 transition-colors">
-                                                    <div className="w-10 h-6 bg-gray-800 rounded overflow-hidden flex-shrink-0">
-                                                        <img src={v.thumbnail_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="text-sm text-white line-clamp-1">{v.title}</div>
-                                                        <div className="text-xs text-gray-500">时长: {v.duration}</div>
-                                                    </div>
-                                                    <button className="text-xs bg-purple-600 px-2 py-1 rounded text-white">选择</button>
+                {loading ? <div className="text-center py-20 text-gray-500">加载中...</div> : (
+                    <div className="bg-[#151515] rounded-2xl border border-white/10 overflow-hidden">
+                        <table className="w-full text-left text-sm text-gray-400">
+                            <thead className="bg-white/5 text-gray-200 font-bold">
+                                <tr>
+                                    <th className="p-4">ID</th>
+                                    <th className="p-4">{activeTab === 'codes' ? '兑换码' : '预览/标题'}</th>
+                                    {/* 🔥 文章列表增加作者列 */}
+                                    {activeTab === 'articles' && <th className="p-4">作者/授权</th>}
+                                    <th className="p-4">信息</th>
+                                    <th className="p-4 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                {filteredData.map(item => (
+                                    <tr key={item.id} className={`hover:bg-white/5 transition-colors ${activeTab === 'banners' && !item.is_active ? 'opacity-50' : ''}`}>
+                                        <td className="p-4 font-mono text-xs text-gray-600">#{item.id}</td>
+                                        <td className="p-4">
+                                            {activeTab === 'codes' ? (
+                                                <div className="flex items-center gap-3">
+                                                    <div className="font-mono text-lg text-white tracking-wider">{item.code}</div>
+                                                    {item.is_used ? <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">已使用</span> : <span className="text-xs bg-green-900 text-green-400 px-2 py-0.5 rounded flex items-center gap-1"><CheckCircle size={10}/> 待兑换</span>}
                                                 </div>
-                                            ))}
+                                            ) : (
+                                                <div className="flex items-center gap-3">
+                                                    {item.image_url && <div className="w-16 h-10 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={item.image_url} className="w-full h-full object-cover"/></div>}
+                                                    <div className="font-bold text-white line-clamp-1">{item.title || '无标题'}</div>
+                                                </div>
+                                            )}
+                                        </td>
+                                        
+                                        {/* 🔥 文章Tab的作者显示 */}
+                                        {activeTab === 'articles' && (
+                                            <td className="p-4">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-white text-xs font-bold">{item.author || '-'}</span>
+                                                    {item.is_authorized && <span className="text-[10px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded w-fit border border-blue-500/30">已授权</span>}
+                                                </div>
+                                            </td>
+                                        )}
+
+                                        <td className="p-4">
+                                            {/* 简化显示不同Tab的信息 */}
+                                            {activeTab === 'codes' ? (
+                                                <div className="text-xs text-gray-500">时长: <span className="text-white">{item.duration_days}天</span></div>
+                                            ) : activeTab === 'articles' ? (
+                                                <div className="text-xs text-gray-500">
+                                                    <span className="block text-gray-400">{item.category}</span>
+                                                    {item.reading_time && <span className="block text-gray-600 mt-1">{item.reading_time}</span>}
+                                                </div>
+                                            ) : (
+                                                <div className="text-xs text-gray-500">{item.tag}</div>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            {activeTab === 'banners' && <button onClick={() => toggleBannerActive(item)} className="text-gray-400 hover:text-white mr-3 p-2">{item.is_active ? <Eye size={16}/> : <EyeOff size={16}/>}</button>}
+                                            {activeTab !== 'codes' && <button onClick={() => openEdit(item)} className="text-blue-400 hover:text-blue-300 mr-3 p-2"><Edit size={16}/></button>}
+                                            <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-400 p-2"><Trash2 size={16}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* 统一弹窗 (Modal) */}
+                {isModalOpen && (
+                  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-[#151515] border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 relative">
+                      <button onClick={() => setIsModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={24}/></button>
+                      <h2 className="text-xl font-bold mb-6">{editMode ? '编辑内容' : (activeTab === 'codes' ? '批量生成卡密' : '发布新内容')}</h2>
+
+                      {activeTab === 'codes' ? (
+                          <div className="space-y-6">
+                              <div className="bg-purple-900/20 border border-purple-500/30 p-4 rounded-lg">
+                                  <div className="grid grid-cols-2 gap-4">
+                                      <div><label className="text-xs text-gray-500 block mb-1">数量</label><input type="number" value={formData.batch_count} onChange={e=>setFormData({...formData, batch_count: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white font-mono text-lg"/></div>
+                                      <div><label className="text-xs text-gray-500 block mb-1">天数</label><select value={formData.duration_days} onChange={e=>setFormData({...formData, duration_days: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option value="7">7天</option><option value="30">30天</option><option value="365">365天</option></select></div>
+                                  </div>
+                                  <div className="mt-4"><label className="text-xs text-gray-500 block mb-1">前缀</label><input type="text" value={formData.prefix} onChange={e=>setFormData({...formData, prefix: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white font-mono"/></div>
+                              </div>
+                              <button onClick={handleSubmit} className="w-full bg-green-600 hover:bg-green-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2"><Ticket size={24}/> 生成</button>
+                          </div>
+                      ) : (
+                          <div className="space-y-4">
+                            {/* 文章专用：全网抓取 + AI解析 */}
+                            {activeTab === 'articles' && (
+                                <div className="space-y-4">
+                                    <div className="bg-gradient-to-r from-green-900/20 to-teal-900/20 border border-green-500/30 p-4 rounded-xl flex gap-2 items-center">
+                                        <Globe size={18} className="text-green-400 flex-shrink-0"/>
+                                        <input className="flex-1 bg-black/50 border border-green-500/30 rounded px-3 py-2 text-sm text-green-100" placeholder="粘贴公众号链接..." value={articleFetchLink} onChange={e => setArticleFetchLink(e.target.value)} />
+                                        <button onClick={handleFetchArticle} disabled={isFetchingArticle} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2">{isFetchingArticle ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>} {isFetchingArticle ? fetchProgress : '智能转存'}</button>
+                                    </div>
+
+                                    <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-4 rounded-xl space-y-3">
+                                        <h3 className="text-sm font-bold text-blue-300 flex items-center gap-2"><Sparkles size={16} /> AI 智能助手</h3>
+                                        <textarea rows={3} className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-xs text-blue-100 placeholder-gray-600 font-mono" placeholder="粘贴 AI 生成的 JSON..." value={aiPasteContent} onChange={(e) => setAiPasteContent(e.target.value)} />
+                                        <button onClick={handleSmartParse} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2"><ClipboardPaste size={14} /> 一键解析</button>
+                                    </div>
+                                    
+                                    <div className="bg-gray-900 border border-gray-700 p-4 rounded-xl flex items-center justify-between">
+                                        <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2"><Images size={16} className="text-blue-400"/> 批量配图</h3>
+                                        <button onClick={() => batchInputRef.current?.click()} disabled={uploadingFile} className="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2"><Upload size={14}/> 批量上传</button>
+                                        <input type="file" ref={batchInputRef} multiple accept="image/*" hidden onChange={handleBatchUpload} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 关联视频 (文章Tab专用) */}
+                            {activeTab === 'articles' && (
+                                <div className="bg-purple-900/10 border border-purple-500/20 p-4 rounded-xl space-y-4 mb-4 mt-4">
+                                    <h3 className="text-xs font-bold text-purple-400 uppercase flex items-center gap-2"><LinkIcon2 size={14}/> 关联视频 (自动同步信息)</h3>
+                                    {formData.video_id ? (
+                                        <div className="flex items-center justify-between bg-black/50 p-3 rounded-lg border border-purple-500/50">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-12 h-8 bg-gray-800 rounded overflow-hidden">
+                                                    {formData.image_url && <img src={formData.image_url} className="w-full h-full object-cover"/>}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    <span className="text-white block">ID: {formData.video_id}</span>
+                                                    <span>(已自动提取标题、作者与时长)</span>
+                                                </div>
+                                            </div>
+                                            <button onClick={removeLinkedVideo} className="text-red-500 text-xs font-bold">取消</button>
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <div className="flex gap-2">
+                                                <input value={videoSearchQuery} onChange={e => setVideoSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && searchVideos()} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm" placeholder="搜索视频库..."/>
+                                                <button onClick={searchVideos} className="bg-gray-800 px-4 rounded text-gray-300"><Search size={16}/></button>
+                                            </div>
+                                            {videoSearchResults.length > 0 && (
+                                                <div className="absolute top-full left-0 w-full bg-[#181818] border border-gray-700 rounded-lg mt-2 shadow-2xl z-50 max-h-48 overflow-y-auto">
+                                                    {videoSearchResults.map(v => (
+                                                        <div key={v.id} onClick={() => selectVideo(v)} className="flex items-center gap-3 p-3 hover:bg-purple-900/20 cursor-pointer border-b border-white/5">
+                                                            <div className="w-10 h-6 bg-gray-800 rounded overflow-hidden flex-shrink-0"><img src={v.thumbnail_url} className="w-full h-full object-cover"/></div>
+                                                            <div className="flex-1 min-w-0 text-sm text-white line-clamp-1">{v.title}</div>
+                                                            <div className="text-xs text-gray-500">{v.author}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
                             )}
+
+                            {/* 通用字段 - 标题 */}
+                            <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 font-bold text-white"/></div>
+
+                            {activeTab === 'articles' && (
+                                <>
+                                    {/* 🔥 新增：作者与授权 & 阅读时间 */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1 flex items-center gap-1"><User size={12}/> 作者名称</label>
+                                            <input value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white" placeholder="如: AI.Tube 官方"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1 flex items-center gap-1"><Clock size={12}/> 阅读时间</label>
+                                            <input value={formData.reading_time} onChange={e=>setFormData({...formData, reading_time: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white" placeholder="自动计算或手动输入..."/>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2 py-2">
+                                        <input type="checkbox" id="auth_check" checked={formData.is_authorized} onChange={e => setFormData({...formData, is_authorized: e.target.checked})} className="w-4 h-4 accent-blue-500" />
+                                        <label htmlFor="auth_check" className="text-sm text-gray-300 flex items-center gap-1"><CheckSquare size={14}/> 标注为已获得授权内容</label>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="text-xs text-gray-500 block mb-1">分类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>新手入门</option><option>工具学习</option><option>干货分享</option></select></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">难度</label><select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>入门</option><option>中等</option><option>进阶</option></select></div>
+                                    </div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">封面URL</label><div className="flex gap-2"><input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/><button onClick={() => imageInputRef.current?.click()} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button><input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} /></div></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">内容 (Markdown)</label><textarea rows={8} value={formData.content} onChange={e=>setFormData({...formData, content: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono"></textarea></div>
+                                </>
+                            )}
+
+                            {activeTab === 'banners' && (
+                                <>
+                                    <div><label className="text-xs text-gray-500 block mb-1">图片URL</label><div className="flex gap-2"><input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/><button onClick={() => imageInputRef.current?.click()} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button><input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} /></div></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">链接</label><input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
+                                    <div className="flex items-center gap-2 pt-2"><input type="checkbox" checked={formData.is_active} onChange={e=>setFormData({...formData, is_active: e.target.checked})} className="w-5 h-5 accent-green-500"/><label className="text-sm font-bold text-white">启用</label></div>
+                                </>
+                            )}
                             
-                            <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs text-gray-500">或者：</span>
-                                <input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="flex-1 bg-black/50 border border-gray-800 rounded px-2 py-1 text-xs text-blue-400 focus:border-blue-500 outline-none" placeholder="填写外部跳转链接 (http://...)"/>
-                            </div>
-                        </div>
-                    )}
+                            {activeTab === 'jobs' && (
+                                <div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-gray-500 block mb-1">预算</label><input value={formData.budget} onChange={e=>setFormData({...formData, budget: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div><div><label className="text-xs text-gray-500 block mb-1">公司</label><input value={formData.company} onChange={e=>setFormData({...formData, company: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div></div>
+                            )}
 
-                    <div><label className="text-xs text-gray-500 block mb-1">标题</label><input value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-
-                    {activeTab === 'videos' && (
-                        <>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs text-gray-500 block mb-1">作者</label><input value={formData.author} onChange={e=>setFormData({...formData, author: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-                                <div><label className="text-xs text-gray-500 block mb-1">分类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>创意短片</option><option>动画短片</option><option>实验短片</option><option>音乐MV</option><option>写实短片</option><option>AI教程</option><option>创意广告</option></select></div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-4">
-                                <div><label className="text-xs text-gray-500 block mb-1">播放量</label><input type="number" value={formData.views} onChange={e=>setFormData({...formData, views: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-                                <div><label className="text-xs text-gray-500 block mb-1">时长</label><input value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-                                <div><label className="text-xs text-gray-500 block mb-1">工具标签</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-                            </div>
-                            <div className="bg-white/5 border border-white/10 p-4 rounded-lg space-y-3">
-                                <div><label className="text-xs text-gray-500 block mb-1">分镜链接 (支持上传)</label><div className="flex gap-2"><input value={formData.storyboard_url} onChange={e=>setFormData({...formData, storyboard_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm text-green-500"/><button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="bg-gray-700 px-4 rounded text-xs font-bold">{uploadingFile ? <Loader2 size={14} className="animate-spin"/> : <FileUp size={14} />}</button><input type="file" ref={fileInputRef} hidden onChange={handleFileUpload} /></div></div>
-                                <div className="grid grid-cols-2 gap-4"><div className="flex items-center gap-2 bg-black border border-gray-700 rounded px-2"><DollarSign size={14} className="text-gray-500"/><input type="number" value={formData.price} onChange={e=>setFormData({...formData, price: parseInt(e.target.value) || 0})} className="w-full bg-transparent p-2 outline-none"/></div><div className="flex items-center gap-2 pt-2"><input type="checkbox" checked={formData.is_vip} onChange={e => setFormData({ ...formData, is_vip: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label className="text-sm font-bold text-yellow-500">会员专享</label></div></div>
-                            </div>
-                            <div><label className="text-xs text-gray-500 block mb-1">教程链接</label><input placeholder="https://..." value={formData.tutorial_url} onChange={e=>setFormData({...formData, tutorial_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-                            <div><label className="text-xs text-gray-500 block mb-1">提示词</label><textarea rows={3} value={formData.prompt} onChange={e=>setFormData({...formData, prompt: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono"></textarea></div>
-                            <div className="flex flex-wrap gap-4 bg-gray-900 p-3 rounded border border-gray-700"><div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_hot} onChange={e => setFormData({ ...formData, is_hot: e.target.checked })} className="w-5 h-5 accent-red-600"/><label className="text-sm text-white">近期热门</label></div><div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_selected} onChange={e => setFormData({ ...formData, is_selected: e.target.checked })} className="w-5 h-5 accent-yellow-500"/><label className="text-sm text-yellow-500">编辑精选</label></div><div className="flex items-center gap-2"><input type="checkbox" checked={formData.is_award} onChange={e => setFormData({ ...formData, is_award: e.target.checked })} className="w-5 h-5 accent-purple-500"/><label className="text-sm text-purple-500">获奖作品</label></div></div>
-                        </>
-                    )}
-
-                    {activeTab === 'articles' && (
-                        <>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs text-gray-500 block mb-1">大类</label><select value={formData.category} onChange={e=>setFormData({...formData, category: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>新手入门</option><option>工具学习</option><option>高阶玩法</option><option>干货分享</option><option>行业资讯</option><option>商业访谈</option></select></div>
-                                <div><label className="text-xs text-gray-500 block mb-1">难度</label><select value={formData.difficulty} onChange={e=>setFormData({...formData, difficulty: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white"><option>入门</option><option>中等</option><option>进阶</option></select></div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs text-gray-500 block mb-1">自定义标签</label><input value={formData.tags} onChange={e=>setFormData({...formData, tags: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2" placeholder="电商, ComfyUI"/></div>
-                                <div><label className="text-xs text-gray-500 block mb-1">阅读时长</label><input value={formData.duration} onChange={e=>setFormData({...formData, duration: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2" placeholder="10 min"/></div>
-                            </div>
-                            <div>
-                                <label className="text-xs text-gray-500 block mb-1">封面图 URL (支持上传)</label>
-                                <div className="flex gap-2">
-                                    <input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/>
-                                    <button onClick={() => imageInputRef.current?.click()} disabled={uploadingFile} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button>
-                                    <input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} />
-                                </div>
-                            </div>
-                            <div><label className="text-xs text-gray-500 block mb-1">简介</label><textarea rows={2} value={formData.description} onChange={e=>setFormData({...formData, description: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm"/></div>
-                            <div><label className="text-xs text-gray-500 block mb-1">笔记/正文 (Markdown)</label><textarea rows={8} value={formData.content} onChange={e=>setFormData({...formData, content: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-sm font-mono" placeholder="# 课程笔记..."></textarea></div>
-                        </>
-                    )}
-
-                    {activeTab === 'banners' && (
-                        <>
-                            <div><label className="text-xs text-gray-500 block mb-1">图片 URL</label><div className="flex gap-2"><input value={formData.image_url} onChange={e=>setFormData({...formData, image_url: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded p-2 text-sm"/><button onClick={() => imageInputRef.current?.click()} className="bg-gray-700 px-3 rounded"><ImageIcon size={14}/></button><input type="file" ref={imageInputRef} hidden accept="image/*" onChange={handleImageUpload} /></div></div>
-                            <div><label className="text-xs text-gray-500 block mb-1">跳转链接</label><input value={formData.link_url} onChange={e=>setFormData({...formData, link_url: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div>
-                            <div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-gray-500 block mb-1">角标</label><input value={formData.tag} onChange={e=>setFormData({...formData, tag: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div><div><label className="text-xs text-gray-500 block mb-1">权重</label><input type="number" value={formData.sort_order} onChange={e=>setFormData({...formData, sort_order: parseInt(e.target.value) || 0})} className="w-full bg-black border border-gray-700 rounded p-2"/></div></div>
-                            <div className="flex items-center gap-2 pt-2"><input type="checkbox" checked={formData.is_active} onChange={e=>setFormData({...formData, is_active: e.target.checked})} className="w-5 h-5 accent-green-500"/><label className="text-sm font-bold text-white">启用展示</label></div>
-                        </>
-                    )}
-                    {activeTab === 'jobs' && (
-                        <div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-gray-500 block mb-1">预算</label><input value={formData.budget} onChange={e=>setFormData({...formData, budget: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div><div><label className="text-xs text-gray-500 block mb-1">公司</label><input value={formData.company} onChange={e=>setFormData({...formData, company: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2"/></div></div>
-                    )}
-
-                    <button onClick={handleSubmit} className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded font-bold mt-4">{editMode ? '保存修改' : '确认发布'}</button>
+                            <button onClick={handleSubmit} className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded font-bold mt-4">{editMode ? '保存修改' : '确认发布'}</button>
+                          </div>
+                      )}
+                    </div>
                   </div>
-              )}
-            </div>
-          </div>
+                )}
+            </>
         )}
       </main>
     </div>

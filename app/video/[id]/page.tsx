@@ -3,9 +3,12 @@
 import React, { useState, useEffect, use } from 'react';
 import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check, Loader2, Crown } from 'lucide-react';
 import Link from 'next/link';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient'; // 请根据实际情况调整路径
 import { useRouter } from 'next/navigation';
-import { useUser } from '../../../contexts/user-context'; // 🛠️ 修正为相对路径，防止报错
+// 🛠️ 假设 contexts 文件夹在项目根目录，根据你的文件结构调整相对路径
+import { useUser } from '../../../contexts/user-context'; 
+// 🆕 引入智能播放器组件 (假设在 components 目录下)
+import SmartVideoPlayer from '../../../components/SmartVideoPlayer'; 
 
 export default function VideoDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -250,19 +253,12 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
       <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
           
-          {/* 视频播放区 */}
-          <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden relative flex items-center justify-center border border-white/5 shadow-2xl">
-            {video.video_url ? (
-              video.video_url.includes('player.bilibili.com') ? (
-                <iframe src={video.video_url} className="w-full h-full" scrolling="no" allowFullScreen={true} referrerPolicy="no-referrer"></iframe>
-              ) : (
-                <video src={video.video_url} poster={video.thumbnail_url} controls className="w-full h-full object-contain" playsInline />
-              )
-            ) : video.thumbnail_url ? (
-              <img src={video.thumbnail_url} referrerPolicy="no-referrer" className="w-full h-full object-cover opacity-50" />
-            ) : (
-              <Play size={64} className="text-gray-700" />
-            )}
+          {/* 🔥 视频播放区 (已升级为智能播放器) */}
+          <div className="w-full">
+            <SmartVideoPlayer 
+                videoUrl={video.video_url} 
+                posterUrl={video.thumbnail_url} 
+            />
           </div>
 
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
