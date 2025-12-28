@@ -1,10 +1,14 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabaseClient'; // ⚠️ 注意：请确认这里引用的路径是否正确，如果是 ../lib 请自行调整
+// 🔴 修复：将 @/lib... 改为相对路径。
+// 根据你 Profile 页面的引用，lib 应该在 app/lib，所以路径如下：
+import { supabase } from '../app/lib/supabaseClient'; 
+// ⚠️ 如果再次报错，请尝试改为 '../lib/supabaseClient' (如果 lib 在根目录)
+
 import { User } from '@supabase/supabase-js';
 
-// 定义 Profile 类型 (与数据库 Schema 对应)
+// 定义 Profile 类型
 type UserProfile = {
   id: string;
   username: string | null;
@@ -20,7 +24,7 @@ type UserContextType = {
   user: User | null;
   profile: UserProfile | null;
   isLoading: boolean;
-  refreshProfile: () => Promise<void>; // ✨ 核心：暴露刷新方法供任何组件调用
+  refreshProfile: () => Promise<void>; 
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -63,7 +67,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 监听 Auth 变化 (登录/登出自动刷新)
+  // 监听 Auth 变化
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -75,7 +79,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // 初始化获取
     fetchUserData();
 
     return () => {
@@ -90,7 +93,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// 自定义 Hook，方便组件调用
 export function useUser() {
   const context = useContext(UserContext);
   if (context === undefined) {
