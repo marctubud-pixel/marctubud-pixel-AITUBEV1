@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient'; 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useUser } from '../contexts/user-context'; // 👈 引入全局状态 Hook
+import { useUser } from '@/contexts/user-context'; // 👈 引入全局状态 Hook
 import { 
   ArrowLeft, LogOut, Trash2, Heart, Video, Download, 
   Plus, Edit2, Crown, Gem, Camera, Package, Diamond, 
