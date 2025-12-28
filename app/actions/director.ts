@@ -1,91 +1,81 @@
 'use server'
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { setGlobalDispatcher, ProxyAgent } from 'undici';
+const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
+const ARK_TEXT_ENDPOINT_ID = process.env.VOLC_TEXT_ENDPOINT_ID;
+// 火山引擎方舟的文字对话接口
+const ARK_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
-// ============================================================
-// 🔥 强制代理补丁 (保留你的配置)
-// ============================================================
-if (process.env.NODE_ENV === 'development') {
-  try {
-    const proxyUrl = 'http://127.0.0.1:7890';
-    const dispatcher = new ProxyAgent(proxyUrl);
-    setGlobalDispatcher(dispatcher);
-  } catch (err) {
-    console.error('代理设置失败:', err);
+export async function analyzeScript(scriptText: string) {
+  console.log("[Director] 开始分析剧本 (Using Volcengine)...");
+
+  if (!ARK_API_KEY || !ARK_TEXT_ENDPOINT_ID) {
+    throw new Error("请在 .env.local 中配置 VOLC_ARK_API_KEY 和 VOLC_TEXT_ENDPOINT_ID");
   }
-}
-
-const ai = new GoogleGenAI({ 
-  apiKey: process.env.GOOGLE_API_KEY
-});
-
-// ✅ 更新数据结构：增加 svgCode 字段
-export interface ScriptBreakdown {
-  panels: {
-    sceneNumber: string;
-    description: string;
-    shotType: string;
-    visualPrompt: string;
-    svgCode: string; // 新增：SVG 代码字符串
-  }[];
-}
-
-export const analyzeScript = async (script: string): Promise<ScriptBreakdown> => {
-  const model = "gemini-2.0-flash-exp"; 
-  
-  // ✅ 核心修改：让 AI 学会写 SVG
-  const systemInstruction = `
-    You are a professional storyboard artist. Analyze the script and break it down into 4 key visual panels.
-    
-    For each panel:
-    1. Determine the Shot Type (CS, MS, LS).
-    2. Write a Stable Diffusion prompt.
-    3. **CRITICAL TASK**: Generate a simple, abstract SVG string (<svg>...</svg>) to represent the COMPOSITION and BLOCKING of the shot.
-       - Use a 16:9 viewBox="0 0 160 90".
-       - Use simple strokes (black) and no fill (or white fill) to mimic a rough pencil sketch.
-       - Use rectangles/circles to represent characters and lines for perspective/background.
-       - Keep the SVG code concise (under 500 characters if possible).
-       - Do NOT use markdown code blocks for the SVG, just the raw string.
-  `;
-
-  const responseSchema: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      panels: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            sceneNumber: { type: Type.STRING },
-            description: { type: Type.STRING },
-            shotType: { type: Type.STRING },
-            visualPrompt: { type: Type.STRING },
-            svgCode: { type: Type.STRING }, // 告诉 AI 返回这个字段
-          },
-          required: ["sceneNumber", "description", "shotType", "visualPrompt", "svgCode"],
-        },
-      },
-    },
-    required: ["panels"],
-  };
 
   try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: `Analyze this script: "${script}"`,
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema,
+    const systemPrompt = `
+      你是一位专业的电影分镜导演。请将下面的剧本拆解成一系列的关键分镜镜头。
+      
+      要求：
+      1. 输出必须是纯粹的 JSON 格式，不要包含 Markdown 标记（不要写 \`\`\`json）。
+      2. 返回一个 JSON 对象，包含 "panels" 数组。
+      3. 每个镜头包含：
+         - description: 画面内容的详细视觉描述（中文）。
+         - visualPrompt: 用于 AI 绘画的英文提示词（包含光影、风格、细节）。
+         - shotType: 景别 (如: "Close-up", "Medium Shot", "Wide Shot")。
+    `;
+
+    // 构造请求
+    const response = await fetch(ARK_CHAT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${ARK_API_KEY}`
       },
+      body: JSON.stringify({
+        model: ARK_TEXT_ENDPOINT_ID, // 使用文字模型接入点
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `剧本内容：\n"${scriptText}"` }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000
+      })
     });
 
-    if (!response.text) throw new Error("Gemini 没有返回文本");
-    return JSON.parse(response.text) as ScriptBreakdown;
+    const resJson = await response.json();
+
+    if (!response.ok) {
+      console.error("[Volcengine Error]", resJson);
+      throw new Error(resJson.error?.message || "火山引擎调用失败");
+    }
+
+    let content = resJson.choices?.[0]?.message?.content || "";
+    console.log("[Director] 原始返回:", content.slice(0, 100) + "...");
+
+    // 清洗可能存在的 Markdown 符号
+    content = content.replace(/```json/g, "").replace(/```/g, "").trim();
+
+    // 解析 JSON
+    const data = JSON.parse(content);
+
+    // 兼容性处理：如果AI直接返回了数组而非对象
+    if (Array.isArray(data)) {
+        return { panels: data };
+    }
+    
+    if (!data.panels) {
+        throw new Error("AI 返回格式缺少 panels 字段");
+    }
+
+    return data;
 
   } catch (error: any) {
-    console.error("AI Analysis Failed:", error);
-    throw new Error(`剧本分析失败: ${error.message}`);
+    console.error("[Director Error]", error);
+    // 如果是 JSON 解析失败，通常意味着 AI 没有按格式返回
+    if (error instanceof SyntaxError) {
+        throw new Error("AI 返回内容不是有效的 JSON，请重试");
+    }
+    throw new Error("剧本拆解失败: " + error.message);
   }
-};
+}

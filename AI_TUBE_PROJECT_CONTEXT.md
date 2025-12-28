@@ -78,20 +78,41 @@ comments: content, video_id, user_id, user_email (关联 profiles 获取 VIP 状
 
 变现模型：VIP 订阅、积分充值、商单抽佣。
 
-🚀 六、 开发进度追踪 (Current Progress) - [2025-12-28 22:15 更新]
+🚀 六、 开发进度追踪 (Current Progress) - [2025-12-29 01:55 更新]
 🔭 当前阶段：Phase 2.4 - 商业化与生态闭环 (Business & Ecosystem)
-核心目标：内容填充工具已就绪，转向平台核心盈利能力（商单/支付）与创作者投稿流程的开发。
-
-☀️ 下一步行动指南 (Next Action Plan)
-核心任务：[Collaboration] 合作中心/商单系统 (或 用户投稿中心) [待定 - 请指示]
-
-建议方向：完成 /collaboration 页面，实现甲方发布需求与创作者接单的闭环，落实“三大支柱”中的商业板块。
+核心目标：构建“灵感工具”与“商业化”模块，验证平台盈利能力。
 
 ✅ 已完成 (Completed)
-[2025-12-28 晚间战果 - 核武器级工具交付]
+[2025-12-29 凌晨战果 - CineFlow 核心引擎交付]
 
-[Admin - 内容核武器] B 站批量抓取工具：
+[CineFlow 分镜生成器 (MVP 版)]：
 
+[x] 全链路跑通：用户输入剧本 -> AI 自动拆解分镜 (JSON) -> 批量生成线稿/渲染图 -> 自动入库。
+
+[x] 双模引擎切换：成功从 Google/Replicate 迁移至 国产火山引擎 (Volcengine)，实现“豆包大模型”拆解剧本 + “即梦/Seedream”生成画面。
+
+[x] 前端交互升级：实现了 StoryboardPage (新建向导) 与 ProjectEditor (精细编辑) 的分离与衔接。
+
+[x] 基础设施：打通了 Supabase Storage images 存储桶的自动上传与权限配置。
+
+[2025-12-28 历史战果]
+
+[x] [Admin] B 站批量抓取工具 (内容填充核武器)。
+
+[x] [User] 全局用户状态管理 & VIP 视觉体系。
+
+☀️ 下一步行动指南 (Next Action Plan)
+核心任务：[CineFlow] 角色一致性与场景替换 (进阶功能)
+
+背景：目前生成的分镜是“单张独立”的，角色长相会变。商业级分镜需要角色固定。
+
+任务拆解：
+
+角色库 (Character Bank)：允许用户上传/生成一个“主角”，并固定其特征 (LoRA 或 Reference)。
+
+场景锁 (Scene Lock)：确认一张场景图后，后续镜头保持背景不变，只动人物。
+
+编辑器优化：在 ProjectEditor 中增加“替换角色”和“重绘背景”的按钮。
 [x] 后端 API：突破 B 站防盗链，实现封面/视频源自动转存 Supabase Storage。
 
 [x] 前端交互：Admin 面板新增“批量抓取” Tab，实现 关键词搜索 -> 预览 -> 勾选 -> 一键入库 的丝滑流程。
