@@ -1,4 +1,4 @@
-🛰️ AI.Tube 项目 Master 开发规划与真理文档 (2025-12-28 02:00 更新版)
+🛰️ AI.Tube 项目 Master 开发规划与真理文档 (2025-12-28 18:00 更新版)
 🛠️ 一、 协作铁律 (The Iron Rules) - 永不动摇
 单文件修改：必须由用户发送完整代码 -> AI 确认后回复修改后的完整代码。
 
@@ -35,40 +35,30 @@ Step 4: 只有完成上述步骤，才可进入下一个功能开发。
 1. 路由与功能分布
 / : 首页。5列瀑布流，含 Banner 轮播、多维度筛选、可拖拽 AI 助手。
 
-/academy : AI 学院 (列表页)。采用 Grid 12列布局，左侧栏 (2列) 与详情页像素级对齐，支持 URL 参数 (?category=) 自动定位分类。
+/academy : AI 学院 (列表页)。Grid 12列布局，像素级对齐。
 
-/academy/[id] : 文章详情。三栏布局（左导航+中正文+右工具），支持日夜间模式，左侧导航点击后带参跳转回列表页。
+/academy/[id] : 文章详情。三栏布局，支持日夜间模式。
 
-/video/[id] : 播放页。混合播放器（B站/MP4），含人气值算法、分镜下载权限控制。
+/video/[id] : 播放页。混合播放器，含 VIP 评论区皇冠标识、分镜下载。
 
-/tools : 工具库。提示词词典（可用）、分镜生成（VIP）。
+/tools : 工具库。提示词词典、分镜生成。
 
-/vip : 会员专区。黑金视觉体系，展示 is_vip=true 的高价值资产。
+/vip : 会员专区。黑金视觉体系。
 
-/collaboration : 合作中心。商单广场，含预算管理。
+/collaboration : 合作中心。
 
-/upload : 投稿中心。UGC 录入，自带 +50 积分奖励。
+/upload : 投稿中心。
 
 /admin : 管理后台。
-
-视频管理：B 站单体/批量抓取（规划中）。
-
-文章管理：全网文章一键转存（客户端直连+多线路自动切换）、批量配图（自动替换占位符）。
 
 2. 技术栈核心
 Frontend: Next.js 15 (App Router) + Tailwind CSS + Lucide React。
 
 Backend: Supabase (Auth, DB, Storage)。
 
-Spider Engine:
+State Management: React Context (UserContext) 全局状态管理。
 
-Client-side Fetching: AllOrigins / CorsProxy / CodeTabs (多线路故障转移)。
-
-Parser: 浏览器原生 DOMParser (本地解析 HTML，稳如老狗)。
-
-Image Proxy: /api/proxy-image (负责将外链图片转存至 Supabase articles 桶)。
-
-Auth: 调试期硬编码 UUID (cec386b5-e80a-4105-aa80-d8d5b8b0a9bf)。
+Spider Engine: Client-side Fetching (AllOrigins) + DOMParser。
 
 📊 四、 数据库 Schema 核心 (Database Snapshot)
 videos: is_vip, price, storyboard_url, prompt, category, duration (text)。
@@ -77,72 +67,63 @@ articles: description, content, difficulty, tags (text[]), link_url, video_id (�
 
 profiles: points, is_vip, free_quota, avatar_url, username, last_check_in。
 
-jobs: budget, company, deadline, status (urgent/open/closed), tags (ARRAY)。
+comments: content, video_id, user_id, user_email (关联 profiles 获取 VIP 状态)。
 
 📈 五、 营销推广与商业化策略 (Marketing)
-内容获客：利用 /academy 的高质 SEO 文章从搜索引流；B站/小红书同步发布精选视频。
+内容获客：SEO 文章引流；B站同步。
 
-社区驱动：创作者合伙人计划，通过积分奖励激励 UGC 投稿，沉淀私域。
+社区驱动：创作者合伙人，积分激励。
 
-变现模型：VIP 订阅（4K/工程文件）、积分充值（下载资源）、B端商单抽佣或发布费。
+变现模型：VIP 订阅、积分充值、商单抽佣。
 
-🚀 六、 开发进度追踪 (Current Progress) - [2025-12-28 02:00 更新]
-🔭 下周整体目标 (Phase 2.3 - 资源扩充与交互)
-关键词：“扩充”与“交互”，让平台内容丰富且具备用户粘性。
+🚀 六、 开发进度追踪 (Current Progress) - [2025-12-28 18:00 更新]
+🔭 当前阶段：Phase 2.3 - 资源扩充与交互 (User & Content)
+核心目标：在完善用户交互体验（积分/VIP感知）的基础上，通过自动化工具快速填充平台内容。
 
-资源填充 (Admin - 核武器级)：
+☀️ 下一步行动指南 (Next Action Plan)
+核心任务：[Admin - 核武器级] B 站批量抓取工具 (优先级：🔥 最高)
 
-开发 B 站批量抓取工具。在后台支持输入关键词（如“Sora教程”），一键抓取并入库前 20 个视频，解决内容空缺问题。
+背景：解决内容冷启动问题，手动录入效率过低。
 
-用户交互 (User - 留存率)：
+任务拆解：
 
-修复并完善 积分系统（签到、投稿奖励的即时反馈）。
+后端 API (/api/admin/spider)：
 
-实现 收藏/点赞 功能的后端逻辑。
+编写爬虫逻辑（利用 B 站 API 或 DOM 解析）。
 
-商单板块 (Collaboration - 商业化)：
+处理图片转存（突破 B 站 403 防盗链，自动上传至 Supabase）。
 
-将目前静态的合作中心变为动态，允许用户发布真实或模拟的需求。
+前端界面 (/admin/videos)：
 
-☀️ 明日行动指南 (Tomorrow's Action Plan)
-[Bug 修复] 积分刷新问题 (优先级：高)
+新增“批量抓取” Tab。
 
-任务：检查 /profile 页面，解决用户投稿或操作后，积分数字无法即时更新的问题（可能需要 React Context 或 SWR 重新验证）。
-
-[新功能] 后台 B 站批量抓取 UI (优先级：中)
-
-任务：在 Admin 的“视频管理”Tab 下，设计并实现“🔎 关键词批量抓取”的交互区域。
-
-准备：检查/编写 /api/admin/search-bilibili 接口。
-
-[数据填充] 真实内容录入 (优先级：低)
-
-任务：利用已完成的文章抓取工具，真实录入 5-10 篇高质量 AI 教程，提升前台观感。
-
-⏳ 待处理 (Pending)
-[Admin提效]：实现“多选一键入库”交互逻辑（配合批量抓取）。
-
-[用户体验]：完善登录/注册流程的 UI 反馈。
+实现：输入关键词 -> 预览前 20 条结果 -> 勾选 -> 一键入库。
 
 ✅ 已完成 (Completed)
-[Phase 2.1] 学院内容生态 (UI/UX 终极重构)：
+[2025-12-28 今日战果 - 用户体系与交互重构]
 
-[x] 布局一致性重构：将列表页 (/academy) 从 Flex 布局重构为 Grid (12列) 布局，确保侧边栏在桌面端严格占用 col-span-2，与详情页实现像素级视觉对齐。
+[架构升级] 全局用户状态管理：
 
-[x] 导航逻辑闭环：详情页侧边栏点击分类后，携带 ?category=xxx 参数跳转回列表页，列表页自动读取参数并高亮对应板块。
+[x] 创建 contexts/user-context.tsx，消除数据孤岛。
 
-[x] 视觉统一：列表页顶部左侧同步改为“⬅️ 回到首页”；侧边栏标题统一样式为大号粗体。
+[x] 重构 Profile、Navbar (首页)、VideoDetail 接入全局状态。
 
-[x] 详情页优化：实现三栏布局，增加日夜间模式，去除多余紫色强调色，视觉风格极简纯净。
+[Bug 修复] 积分刷新问题：
 
-[Phase 2.2] 运营提效工具 (后台升级)：
+[x] 解决用户签到、兑换 VIP 后，顶栏积分余额无法即时更新的问题。
 
-[x] 全网文章一键转存：前端多线路代理直连 + 本地 DOM 解析 + 自动图片转存。
+[UI 升级] VIP 尊贵标识体系：
 
-[x] 批量配图：后台支持批量上传图片并自动正则替换 [img] 占位符。
+[x] 个人中心：头像增加金色流光边框 + 皇冠角标。
 
-[基础建设]：
+[x] 首页顶栏：登录态头像同步显示 VIP 样式。
 
-[x] 全站图片防盗链 (referrerPolicy="no-referrer")。
+[x] 视频评论区：VIP 用户的评论头像增加高层级皇冠标识 (z-50)，增加黑色底衬防止背景干扰。
 
-[x] 存储桶分流 (articles vs banners)。
+[Phase 2.2 & 2.1 历史归档]
+
+[x] 学院内容生态 (UI/UX 终极重构)。
+
+[x] 运营提效工具：全网文章一键转存、批量配图。
+
+[x] 基础建设：全站图片防盗链、存储桶分流。
