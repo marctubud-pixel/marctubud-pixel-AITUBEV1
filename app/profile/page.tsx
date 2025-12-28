@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient'; 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useUser } from '../contexts/user-context'; // 👈 引入全局状态 Hook
 import { 
   ArrowLeft, LogOut, Trash2, Heart, Video, Download, 
   Plus, Edit2, Crown, Gem, Camera, Package, Diamond, 
@@ -14,17 +15,18 @@ export default function ProfilePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [user, setUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  // 🔗 接入全局用户状态
+  const { user, profile, isLoading: isUserLoading, refreshProfile } = useUser();
+  
+  // 本地数据状态 (次要数据依然由页面自己管理)
+  const [loadingData, setLoadingData] = useState(true);
   
   // 编辑状态
   const [isEditingName, setIsEditingName] = useState(false);
   const [newName, setNewName] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // 签到状态
-  const [hasCheckedIn, setHasCheckedIn] = useState(false);
+  // 签到状态 (根据全局 profile 计算)
   const [checkingIn, setCheckingIn] = useState(false);
 
   // 🎁 兑换功能状态
@@ -40,40 +42,36 @@ export default function ProfilePage() {
   const [myUploads, setMyUploads] = useState<any[]>([]);
   const [myDownloads, setMyDownloads] = useState<any[]>([]);
 
+  // 🔄 初始化逻辑：监听 User 变化
   useEffect(() => {
-    checkUserAndFetchData();
-  }, []);
-
-  async function checkUserAndFetchData() {
-    // 强制刷新 session
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      router.push('/login');
-      return;
+    if (!isUserLoading) {
+        if (!user) {
+            router.push('/login'); // 未登录踢回
+        } else {
+            // 用户已加载，开始获取次要数据
+            fetchSecondaryData(user.id, user.email || '');
+            // 初始化编辑框名字
+            if (profile?.username) setNewName(profile.username);
+        }
     }
-    setUser(session.user);
-    
-    // 获取详细资料
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-    if (profile) {
-      setUserProfile(profile);
-      setNewName(profile.username || session.user.email?.split('@')[0]);
+  }, [user, isUserLoading, profile, router]);
 
-      // 📅 检查今日是否已签到
-      const today = new Date().toISOString().split('T')[0]; 
-      if (profile.last_check_in === today) {
-          setHasCheckedIn(true);
-      }
-    }
+  // 计算今日是否已签到
+  const hasCheckedIn = React.useMemo(() => {
+      if (!profile?.last_check_in) return false;
+      const today = new Date().toISOString().split('T')[0];
+      return profile.last_check_in === today;
+  }, [profile]);
 
-    // 并行获取各类数据
+  async function fetchSecondaryData(userId: string, email: string) {
+    setLoadingData(true);
     await Promise.all([
-        fetchFavorites(session.user.id),
-        fetchSavedPrompts(session.user.id),
-        fetchMyUploads(session.user),
-        fetchDownloads(session.user.id)
+        fetchFavorites(userId),
+        fetchSavedPrompts(userId),
+        fetchMyUploads(email),
+        fetchDownloads(userId)
     ]);
-    setLoading(false);
+    setLoadingData(false);
   }
 
   // --- 数据获取函数 ---
@@ -94,8 +92,8 @@ export default function ProfilePage() {
     if (data) setSavedPrompts(data);
   }
 
-  async function fetchMyUploads(currentUser: any) {
-    const authorName = currentUser.email.split('@')[0]; 
+  async function fetchMyUploads(email: string) {
+    const authorName = email.split('@')[0]; 
     const { data } = await supabase.from('videos').select('*').eq('author', authorName).order('created_at', { ascending: false });
     if (data) setMyUploads(data);
   }
@@ -114,16 +112,16 @@ export default function ProfilePage() {
 
   // --- 交互操作 ---
   async function handleUpdateName() {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !user) return;
     const { error } = await supabase.from('profiles').update({ username: newName }).eq('id', user.id);
     if (!error) {
-      setUserProfile({ ...userProfile, username: newName });
+      await refreshProfile(); // 🔄 同步全局状态
       setIsEditingName(false);
     }
   }
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!e.target.files || e.target.files.length === 0) return;
+    if (!e.target.files || e.target.files.length === 0 || !user) return;
     setUploadingAvatar(true);
     const file = e.target.files[0];
     const fileExt = file.name.split('.').pop();
@@ -142,19 +140,19 @@ export default function ProfilePage() {
     const { error: updateError } = await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id);
     
     if (!updateError) {
-      setUserProfile({ ...userProfile, avatar_url: data.publicUrl });
+      await refreshProfile(); // 🔄 同步全局状态
     }
     setUploadingAvatar(false);
   }
 
   // ✨ 每日签到
   async function handleCheckIn() {
-    if (hasCheckedIn || checkingIn) return;
+    if (hasCheckedIn || checkingIn || !user || !profile) return;
     setCheckingIn(true);
 
     const today = new Date().toISOString().split('T')[0];
     const reward = 10; 
-    const newPoints = (userProfile?.points || 0) + reward;
+    const newPoints = (profile.points || 0) + reward;
 
     const { error } = await supabase.from('profiles').update({ 
         points: newPoints,
@@ -162,8 +160,7 @@ export default function ProfilePage() {
     }).eq('id', user.id);
 
     if (!error) {
-        setUserProfile({ ...userProfile, points: newPoints, last_check_in: today });
-        setHasCheckedIn(true);
+        await refreshProfile(); // 🔄 关键：告诉全局 Context 数据变了，顶栏会自动刷新
         alert(`🎉 签到成功！积分 +${reward}`);
     } else {
         alert('签到失败，请稍后再试');
@@ -193,7 +190,7 @@ export default function ProfilePage() {
 
   // 🎁 核心逻辑：兑换 VIP
   const handleRedeem = async () => {
-      if (!redeemCode.trim()) return;
+      if (!redeemCode.trim() || !user) return;
       setRedeemStatus('loading');
       setRedeemMsg('');
 
@@ -206,12 +203,12 @@ export default function ProfilePage() {
           // 2. 计算过期时间
           const now = new Date();
           let newExpiresAt = now;
-          if (userProfile?.is_vip && userProfile?.vip_expires_at && new Date(userProfile.vip_expires_at) > now) {
-              newExpiresAt = new Date(userProfile.vip_expires_at);
+          if (profile?.is_vip && profile?.vip_expires_at && new Date(profile.vip_expires_at) > now) {
+              newExpiresAt = new Date(profile.vip_expires_at);
           }
           newExpiresAt.setDate(newExpiresAt.getDate() + codeData.duration_days);
 
-          // 3. 事务操作
+          // 3. 事务操作 (注意：Supabase 客户端不能直接做事务，这里模拟顺序操作，生产环境建议用 RPC 或 Edge Function)
           const { error: updateCodeError } = await supabase.from('redemption_codes').update({ is_used: true, used_by: user.id, used_at: new Date().toISOString() }).eq('id', codeData.id);
           if (updateCodeError) throw new Error('兑换失败');
 
@@ -222,8 +219,7 @@ export default function ProfilePage() {
           setRedeemStatus('success');
           setRedeemMsg(`兑换成功！增加 ${codeData.duration_days} 天 VIP`);
           
-          // ✅ 修复点：添加 (prev: any) 类型注解
-          setUserProfile((prev: any) => ({ ...prev, is_vip: true, vip_expires_at: newExpiresAt.toISOString() }));
+          await refreshProfile(); // 🔄 关键：同步全局状态
           
           setTimeout(() => {
               setIsRedeemOpen(false);
@@ -237,7 +233,8 @@ export default function ProfilePage() {
       }
   };
 
-  if (loading) return <div className="min-h-screen bg-[#0A0A0A] text-white flex items-center justify-center"><Loader2 className="animate-spin text-purple-600" /></div>;
+  // 加载状态展示 (User 加载中 或 数据加载中)
+  if (isUserLoading || (user && loadingData)) return <div className="min-h-screen bg-[#0A0A0A] text-white flex items-center justify-center"><Loader2 className="animate-spin text-purple-600" /></div>;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white font-sans selection:bg-purple-500/30 pb-20">
@@ -272,8 +269,8 @@ export default function ProfilePage() {
                     onClick={() => fileInputRef.current?.click()}
                 >
                     <div className={`w-full h-full rounded-full border-2 border-purple-500/50 p-1 shadow-[0_0_20px_rgba(168,85,247,0.3)] overflow-hidden ${uploadingAvatar ? 'opacity-50' : ''}`}>
-                        {userProfile?.avatar_url ? (
-                            <img src={userProfile.avatar_url} className="w-full h-full rounded-full object-cover" />
+                        {profile?.avatar_url ? (
+                            <img src={profile.avatar_url} className="w-full h-full rounded-full object-cover" />
                         ) : (
                             <div className="w-full h-full bg-gray-800 rounded-full flex items-center justify-center text-2xl font-bold text-gray-500">
                             {user?.email?.[0].toUpperCase()}
@@ -301,7 +298,7 @@ export default function ProfilePage() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 group/name cursor-pointer" onClick={() => setIsEditingName(true)}>
-                        <h2 className="text-xl font-bold text-white">{userProfile?.username || user?.email?.split('@')[0]}</h2>
+                        <h2 className="text-xl font-bold text-white">{profile?.username || user?.email?.split('@')[0]}</h2>
                         <Edit2 size={12} className="text-gray-600 group-hover/name:text-white transition-colors"/>
                     </div>
                   )}
@@ -312,11 +309,11 @@ export default function ProfilePage() {
                 <div className="w-full grid grid-cols-2 gap-3 mb-6">
                   <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center border border-white/5 hover:border-purple-500/30 transition-colors">
                     <span className="text-xs text-gray-400 mb-1 flex items-center gap-1"><Diamond size={12} className="text-blue-400"/> 积分</span>
-                    <span className="text-xl font-bold text-white font-mono">{userProfile?.points || 0}</span>
+                    <span className="text-xl font-bold text-white font-mono">{profile?.points || 0}</span>
                   </div>
                   <div className="bg-white/5 rounded-xl p-3 flex flex-col items-center border border-white/5 hover:border-yellow-500/30 transition-colors">
                     <span className="text-xs text-gray-400 mb-1 flex items-center gap-1"><Package size={12} className="text-yellow-400"/> 免费次数</span>
-                    <span className="text-xl font-bold text-white font-mono">{userProfile?.free_quota || 0}</span>
+                    <span className="text-xl font-bold text-white font-mono">{profile?.free_quota || 0}</span>
                   </div>
                 </div>
 
@@ -342,18 +339,18 @@ export default function ProfilePage() {
             </div>
 
             {/* 会员状态卡片 (带兑换功能) */}
-            <div className={`border rounded-2xl p-5 relative overflow-hidden ${userProfile?.is_vip ? 'bg-gradient-to-br from-yellow-900/20 to-black border-yellow-500/30' : 'bg-[#111] border-white/5'}`}>
+            <div className={`border rounded-2xl p-5 relative overflow-hidden ${profile?.is_vip ? 'bg-gradient-to-br from-yellow-900/20 to-black border-yellow-500/30' : 'bg-[#111] border-white/5'}`}>
                 <div className="flex items-center gap-4 mb-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${userProfile?.is_vip ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-500'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${profile?.is_vip ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-500'}`}>
                         <Crown size={20} />
                     </div>
                     <div>
-                        <div className={`text-sm font-bold ${userProfile?.is_vip ? 'text-yellow-500' : 'text-gray-400'}`}>
-                            {userProfile?.is_vip ? '尊贵 VIP 会员' : '普通用户'}
+                        <div className={`text-sm font-bold ${profile?.is_vip ? 'text-yellow-500' : 'text-gray-400'}`}>
+                            {profile?.is_vip ? '尊贵 VIP 会员' : '普通用户'}
                         </div>
                         <div className="text-[10px] text-gray-500">
-                            {userProfile?.is_vip && userProfile?.vip_expires_at 
-                                ? `有效期至：${new Date(userProfile.vip_expires_at).toLocaleDateString()}` 
+                            {profile?.is_vip && profile?.vip_expires_at 
+                                ? `有效期至：${new Date(profile.vip_expires_at).toLocaleDateString()}` 
                                 : '开通会员解锁无限下载'
                             }
                         </div>
@@ -363,19 +360,18 @@ export default function ProfilePage() {
                     onClick={() => setIsRedeemOpen(true)}
                     className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
-                    <Gift size={14}/> {userProfile?.is_vip ? '续费/兑换' : '使用卡密兑换 VIP'}
+                    <Gift size={14}/> {profile?.is_vip ? '续费/兑换' : '使用卡密兑换 VIP'}
                 </button>
             </div>
           </div>
 
-          {/* 右侧：Tab 内容区 */}
+          {/* 右侧：Tab 内容区 (无变化，仅使用新数据) */}
           <div className="md:col-span-8 lg:col-span-9">
              <div className="flex gap-6 border-b border-white/10 mb-6 overflow-x-auto no-scrollbar">
                 <button onClick={() => setActiveTab('favorites')} className={`pb-4 text-sm font-bold flex items-center gap-2 transition-all relative whitespace-nowrap ${activeTab === 'favorites' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
                   <Heart size={16} className={activeTab === 'favorites' ? 'text-red-500 fill-red-500' : ''} /> 视频收藏 ({favVideos.length})
                   {activeTab === 'favorites' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-red-500 rounded-full"></div>}
                 </button>
-                {/* ✨ 新增 Prompts Tab */}
                 <button onClick={() => setActiveTab('prompts')} className={`pb-4 text-sm font-bold flex items-center gap-2 transition-all relative whitespace-nowrap ${activeTab === 'prompts' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
                   <Sparkles size={16} className={activeTab === 'prompts' ? 'text-yellow-500 fill-yellow-500' : ''} /> 提示词库 ({savedPrompts.length})
                   {activeTab === 'prompts' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-yellow-500 rounded-full"></div>}
@@ -405,7 +401,6 @@ export default function ProfilePage() {
                   {/* 内容列表渲染逻辑 */}
                   {(() => {
                       if (activeTab === 'prompts') {
-                          // ✨ 提示词列表渲染
                           if (savedPrompts.length === 0) return <div className="col-span-full"><EmptyState icon={<Sparkles size={48}/>} text="还没收藏提示词" /></div>;
                           return savedPrompts.map(item => (
                               <div key={item.id} className="col-span-full bg-[#151515] border border-white/5 rounded-xl p-4 flex gap-4 group hover:border-yellow-500/30 transition-all">
@@ -430,7 +425,6 @@ export default function ProfilePage() {
                           ));
                       }
 
-                      // 其他 Tab (视频列表)
                       let list = [];
                       if (activeTab === 'favorites') list = favVideos;
                       else if (activeTab === 'uploads') list = myUploads;
@@ -467,7 +461,7 @@ export default function ProfilePage() {
         </div>
       </main>
 
-      {/* 🎁 兑换弹窗 */}
+      {/* 🎁 兑换弹窗 (逻辑未变，仅状态来源改变) */}
       {isRedeemOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
               <div className="bg-[#181818] border border-white/10 rounded-2xl w-full max-w-sm p-6 relative shadow-2xl">
