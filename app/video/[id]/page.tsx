@@ -1,25 +1,27 @@
 'use client';
 
 import React, { useState, useEffect, use } from 'react';
-import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, Play, Copy, MessageSquare, Send, Eye, Download, Lock, PenTool, FileText, BookOpen, ThumbsUp, Flame, Lightbulb, X, Check, Loader2, Crown } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
-import { useRouter } from 'next/navigation'; // 1. 引入 useRouter
+import { useRouter } from 'next/navigation';
+import { useUser } from '../../../contexts/user-context'; // 🛠️ 修正为相对路径，防止报错
 
 export default function VideoDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter(); // 2. 初始化 router
+  const router = useRouter();
+
+  // 🔗 接入全局用户状态
+  const { user, profile: userProfile, isLoading: isUserLoading, refreshProfile } = useUser();
 
   const [video, setVideo] = useState<any>(null);
-  const [user, setUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
   
   // 💛 视频本身的收藏状态
   const [isFavorited, setIsFavorited] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
 
-  // ❤️ 3. 新增：提示词收藏状态
+  // ❤️ 提示词收藏状态
   const [isPromptSaved, setIsPromptSaved] = useState(false);
 
   const [comments, setComments] = useState<any[]>([]);
@@ -36,22 +38,17 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
   // 📋 复制状态反馈
   const [copied, setCopied] = useState(false);
 
+  // 🔄 初始化逻辑
   useEffect(() => {
-    async function getUserData() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setUser(session.user);
-        const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-        if (data) setUserProfile(data);
-        
-        // 检查状态
-        checkPurchaseStatus(session.user.id);
-        checkFavoriteStatus(session.user.id);
-        checkPromptSavedStatus(session.user.id); // 4. 检查提示词是否收藏
+    async function checkUserStatus() {
+      if (user && id) {
+        checkPurchaseStatus(user.id);
+        checkFavoriteStatus(user.id);
+        checkPromptSavedStatus(user.id);
       }
     }
-    getUserData();
-  }, [id]);
+    checkUserStatus();
+  }, [id, user]);
 
   useEffect(() => {
     if (!id) return;
@@ -60,33 +57,27 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
   }, [id]);
 
   async function checkPurchaseStatus(userId: string) {
-    if (!id) return;
     const { data } = await supabase
         .from('downloads')
         .select('*')
         .eq('user_id', userId)
         .eq('video_id', id)
         .single();
-    
     if (data) setHasPurchased(true);
   }
 
   async function checkFavoriteStatus(userId: string) {
-    if (!id) return;
     const { data } = await supabase.from('favorites').select('*').eq('video_id', id).eq('user_id', userId).single();
     if (data) setIsFavorited(true);
   }
 
-  // 5. 新增：检查提示词收藏状态函数
   async function checkPromptSavedStatus(userId: string) {
-    if (!id) return;
     const { data } = await supabase
         .from('saved_prompts')
         .select('*')
         .eq('user_id', userId)
-        .eq('video_id', id) // 关联当前视频ID
+        .eq('video_id', id)
         .single();
-    
     if (data) setIsPromptSaved(true);
   }
 
@@ -103,10 +94,11 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     }
   }
 
+  // 🔄 Fetch Comments
   async function fetchComments() {
     const { data } = await supabase
       .from('comments')
-      .select('*, profiles(username, avatar_url)')
+      .select('*, profiles(username, avatar_url, is_vip)') 
       .eq('video_id', id)
       .order('created_at', { ascending: false });
     if (data) setComments(data);
@@ -120,7 +112,6 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
 
   const popularity = ((video?.views || 0) * 1) + (likeCount * 5) + (comments.length * 10);
 
-  // 6. 新增：处理收藏/取消收藏提示词
   const handleSavePrompt = async () => {
     if (!user) {
         alert("请先登录！");
@@ -130,29 +121,20 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
     if (!video.prompt) return;
 
     if (isPromptSaved) {
-        // 取消收藏
-        const { error } = await supabase
-            .from('saved_prompts')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('video_id', id);
-        
+        const { error } = await supabase.from('saved_prompts').delete().eq('user_id', user.id).eq('video_id', id);
         if (!error) setIsPromptSaved(false);
     } else {
-        // 添加收藏
         const { error } = await supabase.from('saved_prompts').insert({
             user_id: user.id,
             prompt_text: video.prompt,
             source: `视频: ${video.title}`,
             video_id: video.id
         });
-
         if (!error) setIsPromptSaved(true);
         else alert("收藏失败：" + error.message);
     }
   };
 
-  // 智能下载逻辑
   const handleDownloadStoryboard = async () => {
     if (!user) return alert('请先登录后下载！');
     if (!userProfile) return alert('用户信息加载中...');
@@ -176,7 +158,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
 
                     await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: price }]);
                     
-                    setUserProfile({ ...userProfile, points: newPoints });
+                    await refreshProfile(); 
                     setHasPurchased(true); 
                     window.open(video.storyboard_url, '_blank');
                 }
@@ -193,7 +175,7 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
                     
                     await supabase.from('downloads').insert([{ user_id: user.id, video_id: video.id, cost: 0 }]);
                     
-                    setUserProfile({ ...userProfile, free_quota: newQuota });
+                    await refreshProfile();
                     setHasPurchased(true);
                     window.open(video.storyboard_url, '_blank');
                 }
@@ -305,22 +287,20 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
           </div>
 
           <div className="flex flex-wrap gap-4 pb-6 border-b border-white/5 items-center">
-            
-            {/* 下载按钮 */}
             {video.storyboard_url && (
               <button 
                 onClick={handleDownloadStoryboard} 
                 disabled={downloading}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                     hasPurchased 
-                    ? 'border-green-500/50 text-green-400 bg-green-500/10 hover:bg-green-500/20' // 已购：淡绿色描边
-                    : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white' // 未购：默认灰色描边
+                    ? 'border-green-500/50 text-green-400 bg-green-500/10 hover:bg-green-500/20' 
+                    : 'border-white/10 text-gray-400 hover:border-white/30 hover:text-white' 
                 }`}
               >
                 {downloading ? (
                     <Loader2 size={14} className="animate-spin" />
                 ) : hasPurchased ? (
-                    <Check size={14} /> // 已购显示对号
+                    <Check size={14} /> 
                 ) : (
                     video.is_vip ? <Lock size={14} /> : <Download size={14} />
                 )}
@@ -347,12 +327,11 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
               </Link>
             )}
 
-            {user && video.author === user.email.split('@')[0] && (
+            {user && user.email && video.author === user.email.split('@')[0] && (
               <button onClick={handleDeleteVideo} className="ml-auto text-xs text-red-500 hover:text-red-400 px-3 py-2">删除作品</button>
             )}
           </div>
 
-          {/* 工具信息栏 (保持不变) */}
           {showToolInfo && (
             <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200">
               <div className="flex justify-between items-start mb-2"><h3 className="text-sm font-bold text-gray-300">使用工具</h3><button onClick={() => setShowToolInfo(false)}><X size={14} className="text-gray-500 hover:text-white" /></button></div>
@@ -360,13 +339,11 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
-          {/* 提示词栏 (修改：加入了收藏按钮) */}
           {showPromptInfo && (
             <div className="bg-[#151515] rounded-xl p-6 border border-white/10 animate-in slide-in-from-top-2 fade-in duration-200 relative group">
               <div className="flex justify-between items-center mb-4">
                   <h3 className="text-sm font-bold text-gray-300">提示词 (Prompt)</h3>
                   <div className="flex gap-2 items-center">
-                    {/* 7. 新增：提示词收藏按钮 (仅在展开时显示) */}
                     <button 
                         onClick={handleSavePrompt} 
                         className={`p-1.5 transition-colors rounded-lg ${isPromptSaved ? 'text-red-500 bg-red-500/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`} 
@@ -389,28 +366,60 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
             </div>
           )}
 
-          {/* 评论区 (保持不变) */}
+          {/* 👑 评论区 (修复与增强) */}
           <div>
             <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-gray-200"><MessageSquare size={18} /> 评论 ({comments.length})</h3>
+            
+            {/* 1. 发布框：当前用户的头像 */}
             <div className="flex gap-4 mb-8">
-              <div className="w-10 h-10 rounded-full flex-shrink-0 bg-white/5 overflow-hidden border border-white/10">
-                {userProfile?.avatar_url ? (<img src={userProfile.avatar_url} className="w-full h-full object-cover" />) : (<div className="w-full h-full flex items-center justify-center text-sm font-bold text-gray-400">{user ? user.email?.[0].toUpperCase() : '?'}</div>)}
+              <div className="relative flex-shrink-0">
+                {/* 皇冠标识 */}
+                {userProfile?.is_vip && (
+                    <div className="absolute -top-2 -right-2 z-50 bg-[#0A0A0A] rounded-full p-[2px]"> 
+                        <div className="bg-gradient-to-br from-yellow-300 to-yellow-600 w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-[0_0_10px_rgba(234,179,8,0.8)]">
+                            <Crown size={8} className="text-black fill-black" />
+                        </div>
+                    </div>
+                )}
+                <div className={`w-10 h-10 rounded-full flex-shrink-0 bg-white/5 overflow-hidden flex items-center justify-center transition-all ${userProfile?.is_vip ? 'border border-yellow-500 shadow-md shadow-yellow-500/20' : 'border border-white/10'}`}>
+                    {userProfile?.avatar_url ? (<img src={userProfile.avatar_url} className="w-full h-full object-cover" />) : (<div className="w-full h-full flex items-center justify-center text-sm font-bold text-gray-400">{user ? user.email?.[0].toUpperCase() : '?'}</div>)}
+                </div>
               </div>
+
               <div className="flex-1 relative">
                 <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder={user ? "发表你的观点..." : "请先登录参与讨论"} disabled={!user} className="w-full bg-white/5 border border-white/10 rounded-xl p-4 min-h-[100px] text-sm focus:outline-none focus:border-purple-500/50 transition-colors resize-none text-gray-300" />
                 <button onClick={handlePostComment} disabled={!user || !newComment.trim() || commentLoading} className="absolute bottom-3 right-3 bg-white text-black px-4 py-1.5 rounded-full text-xs font-bold hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2">{commentLoading ? '...' : <><Send size={12} /> 发布</>}</button>
               </div>
             </div>
+
+            {/* 2. 评论列表：其他用户的头像 */}
             <div className="space-y-6">
               {comments.map((comment) => (
                 <div key={comment.id} className="flex gap-4">
-                  <div className="w-8 h-8 rounded-full flex-shrink-0 bg-white/5 overflow-hidden border border-white/10 flex items-center justify-center">
-                    {/* @ts-ignore */}
-                    {comment.profiles?.avatar_url ? (<img src={comment.profiles.avatar_url} className="w-full h-full object-cover" />) : (<span className="text-xs text-gray-500 font-bold">{comment.user_email?.[0].toUpperCase()}</span>)}
+                  {/* ⚡️ 父容器加上 flex-shrink-0 防止被挤压 */}
+                  <div className="relative flex-shrink-0">
+                      {/* @ts-ignore */}
+                      {comment.profiles?.is_vip && (
+                          <div className="absolute -top-2 -right-2 z-50 bg-[#0A0A0A] rounded-full p-[2px]">
+                              <div className="bg-gradient-to-br from-yellow-300 to-yellow-600 w-3.5 h-3.5 rounded-full flex items-center justify-center shadow-[0_0_8px_rgba(234,179,8,0.6)]">
+                                  <Crown size={7} className="text-black fill-black" />
+                              </div>
+                          </div>
+                      )}
+                      {/* @ts-ignore */}
+                      <div className={`w-8 h-8 rounded-full overflow-hidden flex items-center justify-center ${comment.profiles?.is_vip ? 'border border-yellow-500 shadow-sm shadow-yellow-500/20' : 'bg-white/5 border border-white/10'}`}>
+                          {/* @ts-ignore */}
+                          {comment.profiles?.avatar_url ? (<img src={comment.profiles.avatar_url} className="w-full h-full object-cover" />) : (<span className="text-xs text-gray-500 font-bold">{comment.user_email?.[0].toUpperCase()}</span>)}
+                      </div>
                   </div>
+                  
                   <div>
                     <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-sm font-bold text-gray-300">{/* @ts-ignore */}{comment.profiles?.username || comment.user_email?.split('@')[0]}</span>
+                      {/* @ts-ignore */}
+                      <span className={`text-sm font-bold ${comment.profiles?.is_vip ? 'text-yellow-500' : 'text-gray-300'}`}>
+                        {/* @ts-ignore */}
+                        {comment.profiles?.username || comment.user_email?.split('@')[0]}
+                      </span>
                       <span className="text-xs text-gray-600">{new Date(comment.created_at).toLocaleDateString()}</span>
                     </div>
                     <p className="text-sm text-gray-400">{comment.content}</p>
@@ -421,7 +430,6 @@ export default function VideoDetail({ params }: { params: Promise<{ id: string }
           </div>
         </div>
 
-        {/* 右侧推荐栏 (保持不变) */}
         <div className="h-fit space-y-6">
           <div className="bg-white/5 rounded-xl border border-white/5 p-6 backdrop-blur-sm">
             <h3 className="text-lg font-bold mb-4 text-gray-200 flex items-center gap-2"><Lightbulb size={18} className="text-gray-400" /> 猜你喜欢</h3>
