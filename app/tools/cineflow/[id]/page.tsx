@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation' 
 import { createClient } from '@/utils/supabase/client'
-import { generateShotImage } from '@/app/actions/generate' // ✅ 引入真实 AI 生成服务
-import { ArrowLeft, Plus, Image as ImageIcon, Wand2, Trash2, Video, Loader2 } from 'lucide-react'
+import { generateShotImage } from '@/app/actions/generate' 
+import { ArrowLeft, Plus, Image as ImageIcon, Wand2, Trash2, Video, Loader2, Save, Play } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 import Link from 'next/link'
 
-// 定义类型
+// ... (类型定义保持不变)
 type Shot = {
   id: string
   description: string
@@ -16,41 +16,55 @@ type Shot = {
   image_url: string | null
   shot_type: string
   sort_order: number
+  status?: string // 新增状态字段
 }
 
 type Project = {
   id: string
   title: string
   description: string
+  user_id: string // 确保类型里有 user_id
 }
 
 export default function ProjectEditor() {
-  // ✅ 使用 useParams 安全获取 ID
   const params = useParams()
   const projectId = Array.isArray(params?.id) ? params?.id[0] : params?.id
-
   const router = useRouter()
   const supabase = createClient()
   
   const [project, setProject] = useState<Project | null>(null)
   const [shots, setShots] = useState<Shot[]>([])
   const [loading, setLoading] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null) // 新增 UserID 状态
   
   // 临时状态
   const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false) // 批量生成状态
 
   // 1. 初始化加载
   useEffect(() => {
-    if (projectId) {
-      fetchProjectData()
-    }
-  }, [projectId])
+    const init = async () => {
+        // 获取当前用户
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            setUserId(user.id);
+        } else {
+            // 如果没登录，可能需要重定向
+            // router.push('/login'); 
+            toast.error('未检测到登录用户');
+        }
+
+        if (projectId) {
+            await fetchProjectData();
+        }
+    };
+    init();
+  }, [projectId]);
 
   const fetchProjectData = async () => {
     if (!projectId) return
 
     try {
-      // 获取项目信息
       const { data: pData, error: pError } = await supabase
         .from('projects')
         .select('*')
@@ -60,7 +74,6 @@ export default function ProjectEditor() {
       if (pError) throw pError
       setProject(pData)
 
-      // 获取镜头列表
       const { data: sData, error: sError } = await supabase
         .from('shots')
         .select('*')
@@ -72,7 +85,7 @@ export default function ProjectEditor() {
 
     } catch (error) {
       console.error(error)
-      toast.error('加载项目失败，ID可能无效')
+      toast.error('加载项目失败')
     } finally {
       setLoading(false)
     }
@@ -80,24 +93,18 @@ export default function ProjectEditor() {
 
   // 2. 添加新镜头
   const handleAddShot = async () => {
-    if (!project || !projectId) {
-        toast.error('项目未加载完成，请稍后再试');
+    if (!project || !projectId || !userId) {
+        toast.error('请稍后重试 (用户未同步)');
         return;
     }
 
     try {
-      // =========================================================
-      // ✅ 自动填充你的 User UUID
-      // =========================================================
-      const userId = 'cec386b5-e80a-4105-aa80-d8d5b8b0a9bf'; 
-      // =========================================================
-      
       const newOrder = shots.length + 1
       const { data, error } = await supabase
         .from('shots')
         .insert({
           project_id: projectId,
-          user_id: userId,
+          user_id: userId, // ✅ 使用动态 UserID
           sort_order: newOrder,
           description: '',
           shot_type: '中景 (Medium Shot)'
@@ -110,17 +117,17 @@ export default function ProjectEditor() {
       toast.success('镜头已添加')
     } catch (error: any) {
       console.error(error)
-      toast.error('添加失败: ' + (error.message || '未知错误'))
+      toast.error('添加失败: ' + error.message)
     }
   }
 
-  // 3. 更新镜头内容
+  // ... (Update 和 Delete 函数保持不变，直接复制即可)
   const handleUpdateShot = async (id: string, field: string, value: string) => {
     setShots(prev => prev.map(s => s.id === id ? { ...s, [field]: value } : s))
+    // 建议加防抖 (Debounce)，否则输入一个字请求一次数据库压力太大。这里暂时保留原样。
     await supabase.from('shots').update({ [field]: value }).eq('id', id)
   }
 
-  // 4. 删除镜头
   const handleDeleteShot = async (id: string) => {
     if(!confirm('确定删除此镜头？')) return
     try {
@@ -132,43 +139,59 @@ export default function ProjectEditor() {
     }
   }
 
-  // 5. 真实 AI 生成 (调试模式：显示具体错误)
+  // 5. 单个生成
   const handleGenerate = async (shot: Shot) => {
     if (!shot.image_prompt) {
       toast.error('请先填写提示词 (Prompt)')
       return
     }
-    
-    // 如果没有项目ID，无法整理文件夹
     if (!projectId) return;
 
     setGeneratingId(shot.id)
-    toast.info('正在请求 AI 绘图 (Gemini)...')
+    toast.info('正在请求 AI 绘图...')
 
     try {
-        // 调用 Server Action (后端生成 + 上传)
         const res = await generateShotImage(shot.id, shot.image_prompt, projectId);
 
         if (res.success && res.url) {
-            // 更新本地视图
             setShots(prev => prev.map(s => s.id === shot.id ? { 
                 ...s, 
                 image_url: res.url,
                 status: 'completed' 
             } : s));
-            toast.success('画面生成完成！');
+            toast.success('生成完成');
         } else {
-            // ❌ 这里是服务器明确返回的错误 (比如 API Key 无效)
-            console.error("Server Error:", res.message);
-            toast.error('服务器报错: ' + res.message);
+            toast.error('生成失败: ' + res.message);
         }
     } catch (error: any) {
-        // ❌ 这里是网络或系统级崩溃 (比如 500 错误)
-        console.error("Client Catch:", error);
-        toast.error('请求崩溃: ' + (error.message || JSON.stringify(error)));
+        toast.error('请求错误');
     } finally {
         setGeneratingId(null);
     }
+  }
+
+  // 🔥 6. 新增：批量生成所有未生成的镜头
+  const handleBatchGenerate = async () => {
+      const pendingShots = shots.filter(s => !s.image_url && s.image_prompt);
+      if (pendingShots.length === 0) return toast.info('没有待生成的镜头');
+
+      if (!confirm(`确定要批量生成 ${pendingShots.length} 个镜头吗？这可能需要一些时间。`)) return;
+
+      setIsBatchGenerating(true);
+      toast.info('开始批量生成...');
+
+      // 为了不炸 API，限制并发数或者串行，这里简单用并行 Promise.all 
+      // (如果你接的是 Gemini 免费版，建议用 for...of 串行，否则会 429 Too Many Requests)
+      
+      // === 串行模式 (推荐) ===
+      for (const shot of pendingShots) {
+          await handleGenerate(shot);
+          // 稍微停顿一下防止超限
+          await new Promise(r => setTimeout(r, 1000));
+      }
+
+      setIsBatchGenerating(false);
+      toast.success('批量任务结束');
   }
 
   if (loading) return (
@@ -182,7 +205,7 @@ export default function ProjectEditor() {
       <Toaster position="top-center" richColors />
 
       {/* 顶部导航 */}
-      <div className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-[#111]">
+      <div className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-[#111] sticky top-0 z-50">
         <div className="flex items-center gap-4">
           <Link href="/tools/cineflow" className="text-gray-400 hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
@@ -192,7 +215,11 @@ export default function ProjectEditor() {
             <input 
               value={project?.title || ''} 
               onChange={(e) => {
-                if(project) setProject({...project, title: e.target.value})
+                  setProject(prev => prev ? {...prev, title: e.target.value} : null);
+                  // 应该加个 onBlur 保存标题到数据库
+              }}
+              onBlur={async (e) => {
+                  if(projectId) await supabase.from('projects').update({ title: e.target.value }).eq('id', projectId);
               }}
               className="bg-transparent font-bold text-lg focus:outline-none text-white w-64 placeholder-gray-600"
               placeholder="未命名项目..."
@@ -200,7 +227,17 @@ export default function ProjectEditor() {
           </div>
         </div>
         <div className="flex gap-2">
-           <button className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all">
+           {/* 批量生成按钮 */}
+           <button 
+             onClick={handleBatchGenerate}
+             disabled={isBatchGenerating}
+             className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all border border-white/10"
+           >
+             {isBatchGenerating ? <Loader2 className="animate-spin w-4 h-4"/> : <Play className="w-4 h-4" />} 
+             {isBatchGenerating ? '生成中...' : '生成全部'}
+           </button>
+
+           <button className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-purple-900/20">
              <Video className="w-4 h-4" /> 导出视频
            </button>
         </div>
@@ -210,6 +247,7 @@ export default function ProjectEditor() {
       <div className="flex-1 overflow-y-auto p-6 max-w-5xl mx-auto w-full space-y-8 pb-32">
         
         {shots.length === 0 && (
+          // ... (空状态保持不变)
           <div className="text-center py-20 border border-dashed border-white/10 rounded-xl bg-white/5 mt-10">
              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
                 <ImageIcon className="w-8 h-8 text-gray-500" />
@@ -224,6 +262,7 @@ export default function ProjectEditor() {
 
         {shots.map((shot, index) => (
           <div key={shot.id} className="flex flex-col md:flex-row gap-6 bg-[#151515] p-6 rounded-xl border border-white/5 hover:border-purple-500/30 transition-all group relative">
+            {/* ... (这里是镜头卡片的 UI，直接用原来的即可，逻辑不需要大改) ... */}
             
             {/* 左侧：序号与操作 */}
             <div className="flex md:flex-col justify-between items-center md:items-start gap-4 md:w-12 border-b md:border-b-0 md:border-r border-white/5 pb-4 md:pb-0 md:pr-4">
@@ -251,7 +290,7 @@ export default function ProjectEditor() {
                 </label>
                 <textarea 
                   className="w-full bg-purple-900/10 border border-purple-500/20 rounded-lg p-3 text-sm focus:border-purple-500 focus:outline-none transition-colors min-h-[80px] font-mono text-purple-200 placeholder-purple-900/50 resize-y"
-                  placeholder="Cinematic shot, cyberpunk city, rain, neon lights, medium shot..."
+                  placeholder="Cinematic shot..."
                   value={shot.image_prompt || ''}
                   onChange={(e) => handleUpdateShot(shot.id, 'image_prompt', e.target.value)}
                 />
@@ -288,7 +327,7 @@ export default function ProjectEditor() {
                  <div className="absolute bottom-4 right-4 z-10">
                    <button 
                      onClick={() => handleGenerate(shot)}
-                     disabled={generatingId === shot.id}
+                     disabled={generatingId === shot.id || isBatchGenerating}
                      className="bg-white/90 hover:bg-white text-black px-4 py-2 rounded-full text-xs font-bold shadow-xl flex items-center gap-2 transition-all disabled:opacity-50 hover:scale-105 active:scale-95"
                    >
                      {generatingId === shot.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3 text-purple-600"/>}
@@ -296,15 +335,13 @@ export default function ProjectEditor() {
                    </button>
                  </div>
                  
-                 {/* 遮罩 */}
                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none opacity-50"></div>
                </div>
             </div>
-
+            
           </div>
         ))}
 
-        {/* 底部添加按钮 */}
         {shots.length > 0 && (
             <button 
             onClick={handleAddShot}
