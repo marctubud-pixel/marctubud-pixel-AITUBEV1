@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Film, Clapperboard, Loader2, ArrowLeft, PenTool, 
-  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User 
+  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User, MapPin, Camera 
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
@@ -14,8 +14,8 @@ import { createClient } from '@/utils/supabase/client';
 // 定义分镜面板的数据结构
 type StoryboardPanel = {
   id: number;
-  description: string; // 画面描述
-  shotType: string;    // 景别 (如: MCU, CLOSE-UP)
+  description: string; // 动作描述 (Action)
+  shotType: string;    // 景别/运镜 (Camera)
   prompt: string;      // AI生成的绘画提示词
   imageUrl?: string;   // 生成的图片URL
   isLoading: boolean;  // 该单张是否正在生成
@@ -30,15 +30,31 @@ type Character = {
 
 type WorkflowStep = 'input' | 'review' | 'generating' | 'done';
 
+// 🎬 电影级运镜库
+const CINEMATIC_SHOTS = [
+  { value: "EXTREME WIDE SHOT", label: "大远景 (EWS)" },
+  { value: "WIDE SHOT", label: "全景 (Wide)" },
+  { value: "FULL SHOT", label: "全身 (Full)" },
+  { value: "MID SHOT", label: "中景 (Mid)" },
+  { value: "CLOSE-UP", label: "特写 (Close-Up)" },
+  { value: "EXTREME CLOSE-UP", label: "大特写 (ECU)" },
+  { value: "LOW ANGLE", label: "仰视/低机位" },
+  { value: "HIGH ANGLE", label: "俯视/高机位" },
+  { value: "OVERHEAD SHOT", label: "上帝视角 (Top Down)" },
+  { value: "DUTCH ANGLE", label: "荷兰倾斜 (不安感)" },
+  { value: "OVER-THE-SHOULDER SHOT", label: "过肩镜头 (对话)" },
+];
+
 export default function StoryboardPage() {
   const [script, setScript] = useState('');
+  const [sceneDescription, setSceneDescription] = useState(''); // 🔒 场景锁
   const [step, setStep] = useState<WorkflowStep>('input');
   const [panels, setPanels] = useState<StoryboardPanel[]>([]);
-  const [mode, setMode] = useState<'draft' | 'render'>('draft'); // 默认为草图模式
-  const [isAnalyzing, setIsAnalyzing] = useState(false); // 分析剧本loading
-  const [isDrawing, setIsDrawing] = useState(false);     // 绘图loading
-  const [characters, setCharacters] = useState<Character[]>([]); // 角色列表
-  const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); // 选中的角色ID
+  const [mode, setMode] = useState<'draft' | 'render'>('draft'); 
+  const [isAnalyzing, setIsAnalyzing] = useState(false); 
+  const [isDrawing, setIsDrawing] = useState(false);     
+  const [characters, setCharacters] = useState<Character[]>([]); 
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); 
   const supabase = createClient();
 
   const tempProjectId = "temp_workspace"; 
@@ -52,7 +68,6 @@ export default function StoryboardPage() {
         .order('created_at', { ascending: false });
       
       if (error) {
-        console.error('Error fetching characters:', error);
         toast.error('无法加载角色列表');
       } else {
         setCharacters(data || []);
@@ -62,7 +77,7 @@ export default function StoryboardPage() {
   }, []);
 
   // ----------------------------------------------------------------
-  // 1. 第一步：AI 导演拆解剧本 (只生成文本，不画图)
+  // 1. 第一步：AI 导演拆解剧本
   // ----------------------------------------------------------------
   const handleAnalyzeScript = async () => {
     if (!script.trim()) return;
@@ -71,7 +86,6 @@ export default function StoryboardPage() {
     setPanels([]); 
     
     try {
-      // 调用 director agent
       const breakdown = await analyzeScript(script);
       
       const initialPanels: StoryboardPanel[] = breakdown.panels.map((p: any, index: number) => ({
@@ -79,12 +93,12 @@ export default function StoryboardPage() {
         description: p.description,
         shotType: p.shotType || 'MID SHOT',
         prompt: p.visualPrompt,
-        isLoading: false, // 此时还没开始画
+        isLoading: false, 
       }));
       
       setPanels(initialPanels);
-      setStep('review'); // 进入确认阶段
-      toast.success(`成功拆解为 ${initialPanels.length} 个分镜，请确认详情`);
+      setStep('review'); 
+      toast.success(`剧本拆解完成，请配置场景与运镜`);
 
     } catch (error: any) {
       console.error(error);
@@ -95,7 +109,7 @@ export default function StoryboardPage() {
   };
 
   // ----------------------------------------------------------------
-  // 中间交互：用户手动修改分镜 (CRUD)
+  // 中间交互：CRUD
   // ----------------------------------------------------------------
   const handleUpdatePanel = (id: number, field: keyof StoryboardPanel, value: string) => {
     setPanels(current => 
@@ -111,21 +125,23 @@ export default function StoryboardPage() {
     const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 0;
     setPanels([...panels, {
         id: newId,
-        description: "新增镜头...",
-        shotType: "WIDE SHOT",
-        prompt: "A cinematic shot of...",
+        description: "动作描述...",
+        shotType: "MID SHOT",
+        prompt: "",
         isLoading: false
     }]);
   };
 
   // ----------------------------------------------------------------
-  // 2. 第二步：批量生成画面 (Turbo/Flux)
+  // 2. 第二步：批量生成画面 (Scene Lock + Character Lock)
   // ----------------------------------------------------------------
   const handleGenerateImages = async () => {
+    if (!sceneDescription.trim()) {
+      toast.warning('建议填写“场景设定”以保证背景一致性');
+    }
+
     setStep('generating');
     setIsDrawing(true);
-    
-    // 初始化所有图片为 loading 状态
     setPanels(current => current.map(p => ({ ...p, isLoading: true })));
 
     const isDraftMode = mode === 'draft';
@@ -135,17 +151,29 @@ export default function StoryboardPage() {
       try {
         const tempShotId = `storyboard_${Date.now()}_${panel.id}`;
         
-        // 重新构建 Prompt (因为用户可能修改了描述)
-        // 注意：这里简单拼接，实际项目中可能需要再次调用 LLM 优化 prompt，或者直接用描述
-        const finalPrompt = `${panel.shotType}, ${panel.description}, ${isDraftMode ? 'rough sketch, storyboard style, black and white line art' : 'cinematic lighting, photorealistic, 8k'}`;
+        // 🏗️ 商业级 Prompt 组装逻辑：
+        // 1. [角色] (后端注入)
+        // 2. [环境] (前端 sceneDescription) -> 确保背景一致
+        // 3. [运镜] (前端 panel.shotType) -> 确保角度准确
+        // 4. [动作] (前端 panel.description) -> 确保剧情对
+        // 5. [风格] (前端 mode)
+        
+        const scenePart = sceneDescription ? `(Environment: ${sceneDescription}), ` : '';
+        const shotPart = `(Camera Angle: ${panel.shotType}), `;
+        const actionPart = `${panel.description}, `;
+        const stylePart = isDraftMode 
+          ? 'rough sketch, storyboard style, black and white line art' 
+          : 'cinematic lighting, photorealistic, 8k, masterpiece';
 
-        // 调用生成函数，传入选中的角色ID (如果有)
+        // 最终发送给后端的 Prompt (后端会在最前面再拼上角色 Character)
+        const finalPrompt = `${scenePart}${shotPart}${actionPart}${stylePart}`;
+
         const res = await generateShotImage(
           tempShotId, 
           finalPrompt, 
           tempProjectId, 
           isDraftMode,
-          selectedCharacterId || undefined // 👈 [新增] 传入角色ID
+          selectedCharacterId || undefined 
         );
 
         if (res.success && res.url) {
@@ -161,19 +189,16 @@ export default function StoryboardPage() {
 
       } catch (error) {
         console.error(`Panel ${panel.id} failed`, error);
-        setPanels(current => current.map(p => p.id === panel.id ? { ...p, isLoading: false } : p)); // 停止 loading
+        setPanels(current => current.map(p => p.id === panel.id ? { ...p, isLoading: false } : p)); 
       }
     });
 
     await Promise.all(promises);
     setIsDrawing(false);
     setStep('done');
-    toast.success('所有分镜绘制完成');
+    toast.success('商业级分镜绘制完成');
   };
 
-  // ----------------------------------------------------------------
-  // UI 渲染
-  // ----------------------------------------------------------------
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white p-6 font-sans">
       <Toaster position="top-center" richColors />
@@ -184,53 +209,71 @@ export default function StoryboardPage() {
             <ArrowLeft className="w-4 h-4 mr-2" /> 返回工作台
         </Link>
         <div className="flex items-center gap-3">
-             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'input' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>1. 输入剧本</div>
+             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'input' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>1. 剧本</div>
              <div className="w-4 h-[1px] bg-zinc-800"></div>
-             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'review' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>2. 确认分镜</div>
+             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'review' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>2. 运镜</div>
              <div className="w-4 h-[1px] bg-zinc-800"></div>
-             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'generating' || step === 'done' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>3. 生成画面</div>
+             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'generating' || step === 'done' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>3. 成片</div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 min-h-[600px]">
         
-        {/* === 左侧控制区 (始终可见) === */}
+        {/* === 左侧控制区 === */}
         <div className="w-full lg:w-1/3 bg-[#111] p-6 rounded-2xl border border-white/10 flex flex-col gap-6 h-fit sticky top-6">
+          
+          {/* 1. 剧本输入 */}
           <div>
             <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
               <Clapperboard className="text-yellow-500" />
-              CineFlow 剧本输入
+              CineFlow 输入
             </h2>
             <textarea
-              className="w-full h-64 bg-black/50 border border-white/10 rounded-xl p-4 text-gray-300 focus:border-yellow-500 focus:outline-none resize-none transition-colors placeholder-gray-700 leading-relaxed"
-              placeholder="例如：一个雨夜，霓虹灯闪烁的街道。侦探（穿着风衣）站在路灯下，点燃了一支烟。镜头慢慢推近他的脸，眼神疲惫..."
+              className="w-full h-40 bg-black/50 border border-white/10 rounded-xl p-4 text-gray-300 focus:border-yellow-500 focus:outline-none resize-none transition-colors placeholder-gray-700 leading-relaxed text-sm"
+              placeholder="输入剧本..."
               value={script}
               onChange={(e) => setScript(e.target.value)}
-              disabled={step !== 'input' && step !== 'review'} // 生成时锁定
+              disabled={step !== 'input' && step !== 'review'} 
             />
           </div>
 
-          {/* 角色选择 (仅在输入和确认阶段显示) */}
+          {/* 2. 核心控制台 (仅在输入/确认阶段显示) */}
           {(step === 'input' || step === 'review') && (
-            <div>
-              <label className="text-sm font-bold text-gray-400 mb-2 flex items-center gap-2">
-                <User className="w-4 h-4 text-yellow-500" />
-                选择主角 (可选，用于保持一致性)
-              </label>
-              <select
-                value={selectedCharacterId || ''}
-                onChange={(e) => setSelectedCharacterId(e.target.value || null)}
-                className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-gray-300 focus:border-yellow-500 focus:outline-none transition-colors appearance-none"
-                disabled={step !== 'input' && step !== 'review'}
-              >
-                <option value="">-- 不指定主角 --</option>
-                {characters.map(char => (
-                  <option key={char.id} value={char.id}>{char.name}</option>
-                ))}
-              </select>
-              {characters.length === 0 && (
-                 <p className="text-xs text-zinc-500 mt-2">暂无角色，可前往 <Link href="/tools/characters" className="text-yellow-500 hover:underline">角色资产库</Link> 创建。</p>
-              )}
+            <div className="space-y-4 border-t border-white/10 pt-4">
+              
+              {/* 主角选择 (Character Lock) */}
+              <div>
+                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                  <User className="w-3 h-3 text-blue-500" />
+                  固定主角 (Character Lock)
+                </label>
+                <select
+                  value={selectedCharacterId || ''}
+                  onChange={(e) => setSelectedCharacterId(e.target.value || null)}
+                  className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">-- 不指定 --</option>
+                  {characters.map(char => (
+                    <option key={char.id} value={char.id}>{char.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 场景设定 (Scene Lock) - 新增功能 */}
+              <div>
+                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                  <MapPin className="w-3 h-3 text-green-500" />
+                  固定场景 (Scene Lock)
+                </label>
+                <input
+                  type="text"
+                  value={sceneDescription}
+                  onChange={(e) => setSceneDescription(e.target.value)}
+                  placeholder="例如：赛博朋克街道，雨夜，霓虹灯..."
+                  className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-green-500 focus:outline-none"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">填写后，所有镜头将保持在该场景中，确保背景一致。</p>
+              </div>
             </div>
           )}
 
@@ -238,120 +281,110 @@ export default function StoryboardPage() {
           <div className="bg-black/30 p-1 rounded-lg flex border border-white/5">
             <button 
                 onClick={() => setMode('draft')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition-all ${mode === 'draft' ? 'bg-yellow-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'draft' ? 'bg-yellow-500 text-black' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-                <PenTool className="w-4 h-4" /> 快速草图 (Turbo)
+                <PenTool className="w-3 h-3" /> 草图 (Turbo)
             </button>
             <button 
                 onClick={() => setMode('render')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition-all ${mode === 'render' ? 'bg-purple-600 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'render' ? 'bg-purple-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-                <ImageIcon className="w-4 h-4" /> 精细渲染 (Flux)
+                <ImageIcon className="w-3 h-3" /> 渲染 (Flux)
             </button>
           </div>
 
-          {/* 动作按钮：根据步骤变化 */}
+          {/* 按钮区域 */}
           {step === 'input' ? (
               <button
                 onClick={handleAnalyzeScript}
                 disabled={isAnalyzing || !script.trim()}
-                className="w-full py-4 font-black rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg bg-white text-black hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 font-bold rounded-xl flex items-center justify-center gap-2 bg-white text-black hover:bg-gray-200 transition-colors"
               >
-                {isAnalyzing ? <Loader2 className="animate-spin" /> : <PlayCircle />}
-                {isAnalyzing ? '正在拆解剧本...' : '第一步：分析剧本'}
+                {isAnalyzing ? <Loader2 className="animate-spin w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
+                {isAnalyzing ? '分析中...' : '拆解剧本'}
               </button>
           ) : step === 'review' ? (
               <div className="flex flex-col gap-3">
                  <button
                     onClick={handleGenerateImages}
-                    className={`w-full py-4 font-black rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg ${mode === 'draft' ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
+                    className={`w-full py-3 font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg ${mode === 'draft' ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
                   >
-                    <PenTool /> 开始绘制 ({panels.length} 张)
+                    <PenTool className="w-4 h-4" /> 开始绘制 ({panels.length} 镜头)
                   </button>
-                  <button onClick={() => setStep('input')} className="text-zinc-500 text-sm hover:text-white underline">修改剧本</button>
+                  <button onClick={() => setStep('input')} className="text-zinc-500 text-xs hover:text-white underline">返回修改</button>
               </div>
           ) : (
-             <button
-                disabled={isDrawing}
-                className="w-full py-4 font-black rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 bg-zinc-800 text-zinc-500 cursor-not-allowed"
-              >
-                {isDrawing ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
-                {isDrawing ? 'AI 正在绘图中...' : '绘制完成'}
+             <button disabled className="w-full py-3 font-bold rounded-xl bg-zinc-800 text-zinc-500 flex items-center justify-center gap-2 cursor-not-allowed">
+                {isDrawing ? <Loader2 className="animate-spin w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                {isDrawing ? '绘制中...' : '完成'}
               </button>
           )}
         </div>
 
-        {/* === 右侧展示区 (多状态切换) === */}
+        {/* === 右侧展示区 === */}
         <div className="w-full lg:w-2/3">
           
-          {/* 状态 0: 等待输入 */}
           {step === 'input' && (
             <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-[#111] rounded-2xl border border-dashed border-white/10 text-zinc-600">
               <Film className="w-20 h-20 mb-4 opacity-10" />
-              <p className="font-bold text-lg">输入剧本并点击“分析”</p>
-              <p className="text-sm opacity-50">AI 将自动拆分镜头、景别与提示词</p>
+              <p className="font-bold">输入剧本 &rarr; 配置场景 &rarr; AI 绘制</p>
             </div>
           )}
 
-          {/* 状态 1: 分镜列表确认 (Review List) */}
           {step === 'review' && (
              <div className="space-y-4">
                 <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-bold text-white">分镜拆解确认</h3>
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><Camera className="w-4 h-4 text-yellow-500"/> 运镜与动作确认</h3>
                     <button onClick={handleAddPanel} className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><Plus size={14}/> 添加镜头</button>
                 </div>
                 
                 <div className="grid gap-4">
                     {panels.map((panel, idx) => (
-                        <div key={panel.id} className="bg-[#151515] p-4 rounded-xl border border-white/10 flex gap-4 group hover:border-white/30 transition-colors">
-                            <div className="w-12 h-12 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-zinc-500 text-lg font-bold flex-shrink-0">
-                                {idx + 1}
-                            </div>
-                            <div className="flex-1 space-y-3">
-                                {/* 景别选择 */}
-                                <div className="flex gap-2">
-                                    <select 
-                                        value={panel.shotType}
-                                        onChange={(e) => handleUpdatePanel(panel.id, 'shotType', e.target.value)}
-                                        className="bg-black border border-zinc-700 text-yellow-500 text-xs font-bold px-2 py-1 rounded focus:outline-none focus:border-yellow-500"
-                                    >
-                                        <option>EXTREME WIDE SHOT</option>
-                                        <option>WIDE SHOT</option>
-                                        <option>MID SHOT</option>
-                                        <option>CLOSE-UP</option>
-                                        <option>EXTREME CLOSE-UP</option>
-                                    </select>
+                        <div key={panel.id} className="bg-[#151515] p-4 rounded-xl border border-white/10 flex flex-col md:flex-row gap-4 group hover:border-white/30 transition-colors">
+                            <div className="flex items-center gap-4 md:w-48 flex-shrink-0">
+                                <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-zinc-500 font-bold">
+                                    {idx + 1}
                                 </div>
-                                {/* 描述编辑 */}
+                                {/* 🎬 高级运镜选择 */}
+                                <select 
+                                    value={panel.shotType}
+                                    onChange={(e) => handleUpdatePanel(panel.id, 'shotType', e.target.value)}
+                                    className="w-full bg-black border border-zinc-700 text-yellow-500 text-xs font-bold px-2 py-2 rounded focus:outline-none focus:border-yellow-500"
+                                >
+                                    {CINEMATIC_SHOTS.map(shot => (
+                                      <option key={shot.value} value={shot.value}>{shot.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="flex-1">
                                 <textarea 
                                     value={panel.description}
                                     onChange={(e) => handleUpdatePanel(panel.id, 'description', e.target.value)}
                                     className="w-full bg-black/30 text-sm text-gray-300 border border-transparent hover:border-zinc-700 focus:border-yellow-500 rounded p-2 resize-none focus:outline-none"
+                                    placeholder="描述画面中的动作..."
                                     rows={2}
                                 />
                             </div>
-                            <button onClick={() => handleDeletePanel(panel.id)} className="text-zinc-600 hover:text-red-500 self-start p-2"><Trash2 size={16}/></button>
+                            <button onClick={() => handleDeletePanel(panel.id)} className="text-zinc-600 hover:text-red-500 self-center md:self-start p-2"><Trash2 size={16}/></button>
                         </div>
                     ))}
                 </div>
              </div>
           )}
 
-          {/* 状态 2: 图片生成结果 (Grid) */}
           {(step === 'generating' || step === 'done') && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {panels.map((panel, idx) => (
                 <div key={panel.id} className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-xl border border-zinc-800 group">
-                  {/* 图片显示区 */}
                   {panel.isLoading ? (
                      <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-zinc-900 text-zinc-500">
                         <Loader2 className="animate-spin w-8 h-8 text-yellow-500" />
-                        <span className="text-xs font-mono animate-pulse">正在绘制 Shot {idx + 1}...</span>
+                        <span className="text-xs font-mono animate-pulse">绘制中...</span>
                      </div>
                   ) : panel.imageUrl ? (
                     <>
                         <img src={panel.imageUrl} className={`w-full h-full object-cover transition-all duration-700 ${mode === 'draft' ? 'grayscale contrast-125' : ''}`} />
-                        {/* 悬停放大图标 */}
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                              <a href={panel.imageUrl} target="_blank" className="bg-white/10 backdrop-blur px-4 py-2 rounded-full text-xs font-bold hover:bg-white text-white hover:text-black transition-all">查看大图</a>
                         </div>
@@ -359,29 +392,25 @@ export default function StoryboardPage() {
                   ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-red-500 gap-2">
                         <span className="text-xs">生成失败</span>
-                        <button className="text-[10px] bg-zinc-800 px-2 py-1 rounded hover:bg-zinc-700">重试</button>
                     </div>
                   )}
 
-                  {/* 底部信息栏 */}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-8 text-white">
                     <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                             <span className="w-5 h-5 bg-yellow-500 text-black rounded-full flex items-center justify-center text-[10px] font-bold">{idx + 1}</span>
-                            <span className="text-[10px] font-bold bg-white/20 text-white px-1.5 rounded uppercase">{panel.shotType}</span>
+                            <span className="text-[10px] font-bold bg-white/20 text-white px-1.5 rounded uppercase max-w-[100px] truncate">{CINEMATIC_SHOTS.find(s=>s.value===panel.shotType)?.label || panel.shotType}</span>
                         </div>
-                        {mode === 'draft' && <span className="text-[10px] text-zinc-400 font-mono">DRAFT_MODE</span>}
                     </div>
-                    <p className="text-xs text-gray-300 line-clamp-1 opacity-80 group-hover:line-clamp-none transition-all">{panel.description}</p>
+                    <p className="text-xs text-gray-300 line-clamp-1 opacity-80">{panel.description}</p>
                   </div>
                 </div>
               ))}
               
-              {/* 如果已经完成，显示完成后的操作按钮 */}
               {step === 'done' && (
                   <div className="col-span-1 md:col-span-2 flex justify-center pt-8 pb-12">
                       <button onClick={() => toast.info('下载功能开发中...')} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2">
-                          <Save size={18}/> 导出分镜表 (PDF)
+                          <Save size={18}/> 导出分镜
                       </button>
                   </div>
               )}
