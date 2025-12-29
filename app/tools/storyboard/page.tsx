@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Film, Clapperboard, Loader2, ArrowLeft, PenTool, 
-  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User, MapPin, Camera, Palette, Monitor, Paperclip 
+  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User, MapPin, Camera, Palette, Monitor, Paperclip, Download, Upload, RefreshCw
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
@@ -11,11 +11,13 @@ import Image from 'next/image';
 import { analyzeScript } from '@/app/actions/director';
 import { generateShotImage } from '@/app/actions/generate';
 import { createClient } from '@/utils/supabase/client';
+import { exportStoryboardPDF } from '@/utils/export-pdf';
 
 type StoryboardPanel = {
   id: number;
   description: string; 
   shotType: string;    
+  environment?: string; // 👈 新增：单镜头环境覆盖
   prompt: string;      
   imageUrl?: string;   
   isLoading: boolean;  
@@ -70,7 +72,10 @@ const ASPECT_RATIOS = [
 
 export default function StoryboardPage() {
   const [script, setScript] = useState('');
-  const [sceneDescription, setSceneDescription] = useState('');
+  const [sceneDescription, setSceneDescription] = useState(''); // 全局场景文本
+  const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null); // 👈 全局场景图
+  const [isUploadingScene, setIsUploadingScene] = useState(false);
+
   const [step, setStep] = useState<WorkflowStep>('input');
   const [panels, setPanels] = useState<StoryboardPanel[]>([]);
   
@@ -80,11 +85,11 @@ export default function StoryboardPage() {
 
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [isDrawing, setIsDrawing] = useState(false);     
+  const [isExporting, setIsExporting] = useState(false);
   
   // 角色相关状态
   const [characters, setCharacters] = useState<Character[]>([]); 
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); 
-  // 📸 新增：参考图状态
   const [refImages, setRefImages] = useState<CharacterImage[]>([]);
   const [selectedRefImage, setSelectedRefImage] = useState<string | null>(null);
 
@@ -115,7 +120,7 @@ export default function StoryboardPage() {
         
         if (!error) {
            setRefImages(data || []);
-           setSelectedRefImage(null); // 切换角色时重置选中图
+           setSelectedRefImage(null); 
         }
       };
       fetchRefImages();
@@ -124,6 +129,35 @@ export default function StoryboardPage() {
       setSelectedRefImage(null);
     }
   }, [selectedCharacterId]);
+
+  // 🔥 场景图上传逻辑 (修正版：自动重命名解决中文报错)
+  const handleSceneUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files.length) return;
+    setIsUploadingScene(true);
+    try {
+        const file = e.target.files[0];
+        const user = (await supabase.auth.getUser()).data.user;
+        
+        // 1. 获取文件后缀 (例如 .png)
+        const fileExt = file.name.split('.').pop();
+        // 2. 生成纯英文/数字的安全文件名 (例如 scene_173556789.png)
+        // 这样就彻底避开了中文乱码和非法字符问题
+        const safeName = `scene_${Date.now()}.${fileExt}`;
+        const filePath = `scene_refs/${user?.id || 'guest'}/${safeName}`;
+
+        const { error: uploadError } = await supabase.storage.from('images').upload(filePath, file);
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath);
+        setSceneImageUrl(publicUrl);
+        toast.success("场景参考图上传成功");
+    } catch (error: any) {
+        console.error(error);
+        toast.error("上传失败: " + error.message);
+    } finally {
+        setIsUploadingScene(false);
+    }
+  };
 
   const handleAnalyzeScript = async () => {
     if (!script.trim()) return;
@@ -135,6 +169,7 @@ export default function StoryboardPage() {
         id: index,
         description: p.description,
         shotType: p.shotType || 'MID SHOT',
+        environment: '', // 默认空，表示跟随全局
         prompt: p.visualPrompt,
         isLoading: false, 
       }));
@@ -158,12 +193,12 @@ export default function StoryboardPage() {
   const handleAddPanel = () => {
     const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 0;
     setPanels([...panels, {
-        id: newId, description: "...", shotType: "MID SHOT", prompt: "", isLoading: false
+        id: newId, description: "...", shotType: "MID SHOT", environment: "", prompt: "", isLoading: false
     }]);
   };
 
   const handleGenerateImages = async () => {
-    if (!sceneDescription.trim()) toast.warning('建议填写“场景设定”');
+    if (!sceneDescription.trim() && !sceneImageUrl) toast.warning('建议填写“场景设定”或上传参考图');
 
     setStep('generating');
     setIsDrawing(true);
@@ -173,20 +208,25 @@ export default function StoryboardPage() {
       try {
         const tempShotId = `storyboard_${Date.now()}_${panel.id}`;
         
-        // 🏗️ 修正：不再在前端拼装 shotType，而是拆分参数
-        const scenePart = sceneDescription ? `(Environment: ${sceneDescription}), ` : '';
-        const actionPrompt = `${scenePart}${panel.description}`; // 只包含环境和动作
+        // 🔥 核心逻辑：环境优先级 (单镜覆盖 > 全局文字)
+        const effectiveEnv = panel.environment && panel.environment.trim() !== '' 
+            ? panel.environment 
+            : sceneDescription;
+
+        const scenePart = effectiveEnv ? `(Environment: ${effectiveEnv}), ` : '';
+        const actionPrompt = `${scenePart}${panel.description}`; 
 
         const res = await generateShotImage(
           tempShotId, 
-          actionPrompt, // 👈 参数1: 动作描述
+          actionPrompt, 
           tempProjectId, 
           mode === 'draft', 
           stylePreset,
           aspectRatio,
-          panel.shotType, // 👈 参数7: 景别 (后端会加权处理)
+          panel.shotType, 
           selectedCharacterId || undefined,
-          selectedRefImage || undefined
+          selectedRefImage || undefined,
+          sceneImageUrl || undefined // 👈 传递全局场景图
         );
 
         if (res.success && res.url) {
@@ -204,6 +244,20 @@ export default function StoryboardPage() {
     setIsDrawing(false);
     setStep('done');
     toast.success('商业级分镜绘制完成');
+  };
+
+  const handleExportPDF = async () => {
+    setIsExporting(true);
+    try {
+      toast.info('正在打包 PDF，请稍候...');
+      await exportStoryboardPDF(script || "Untitled Project", panels);
+      toast.success('PDF 导出成功！');
+    } catch (error) {
+      console.error(error);
+      toast.error('导出失败，可能是网络图片跨域问题');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const currentRatioClass = ASPECT_RATIOS.find(r => r.value === aspectRatio)?.cssClass || "aspect-video";
@@ -302,7 +356,6 @@ export default function StoryboardPage() {
                 </div>
               )}
               
-              {/* --- 角色与视觉参考核心区 --- */}
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                   <User className="w-3 h-3 text-blue-500" />
@@ -319,7 +372,6 @@ export default function StoryboardPage() {
                   ))}
                 </select>
 
-                {/* 📸 视觉参考图选择器 (新增) */}
                 {selectedCharacterId && refImages.length > 0 && (
                   <div className="mt-3 animate-in fade-in slide-in-from-top-2">
                     <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
@@ -346,7 +398,6 @@ export default function StoryboardPage() {
                         </div>
                       ))}
                     </div>
-                    <p className="text-[10px] text-zinc-500 mt-1">选中一张图作为本次生成的参考锚点。</p>
                   </div>
                 )}
                 
@@ -357,11 +408,29 @@ export default function StoryboardPage() {
                 )}
               </div>
 
+              {/* 🔥 场景设定 (大升级) */}
               <div>
-                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                  <MapPin className="w-3 h-3 text-green-500" />
-                  固定场景
-                </label>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-bold text-gray-400 flex items-center gap-2">
+                    <MapPin className="w-3 h-3 text-green-500" />
+                    固定场景 (Global Scene)
+                  </label>
+                  {/* 上传按钮 */}
+                  <label className="cursor-pointer text-[10px] bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded flex items-center gap-1 transition">
+                     {isUploadingScene ? <Loader2 className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
+                     {sceneImageUrl ? '更换场景图' : '上传参考图'}
+                     <input type="file" className="hidden" accept="image/*" onChange={handleSceneUpload} disabled={isUploadingScene}/>
+                  </label>
+                </div>
+                
+                {/* 场景图预览 */}
+                {sceneImageUrl && (
+                  <div className="mb-2 relative w-full h-24 rounded-lg overflow-hidden border border-green-500/30 group">
+                    <Image src={sceneImageUrl} alt="Scene Ref" fill className="object-cover opacity-60 group-hover:opacity-100 transition" />
+                    <button onClick={() => setSceneImageUrl(null)} className="absolute top-1 right-1 bg-black/50 hover:bg-red-500 p-1 rounded-full text-white"><Trash2 size={12}/></button>
+                  </div>
+                )}
+
                 <input
                   type="text"
                   value={sceneDescription}
@@ -420,30 +489,50 @@ export default function StoryboardPage() {
                 <div className="grid gap-4">
                     {panels.map((panel, idx) => (
                         <div key={panel.id} className="bg-[#151515] p-4 rounded-xl border border-white/10 flex flex-col md:flex-row gap-4 group hover:border-white/30 transition-colors">
-                            <div className="flex items-center gap-4 md:w-48 flex-shrink-0">
-                                <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-zinc-500 font-bold">
+                            {/* 第一行：序号 + 景别 + 删除 */}
+                            <div className="flex items-center gap-4">
+                                <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-zinc-500 font-bold flex-shrink-0">
                                     {idx + 1}
                                 </div>
                                 <select 
                                     value={panel.shotType}
                                     onChange={(e) => handleUpdatePanel(panel.id, 'shotType', e.target.value)}
-                                    className="w-full bg-black border border-zinc-700 text-yellow-500 text-xs font-bold px-2 py-2 rounded focus:outline-none focus:border-yellow-500"
+                                    className="bg-black border border-zinc-700 text-yellow-500 text-xs font-bold px-2 py-2 rounded focus:outline-none focus:border-yellow-500"
                                 >
                                     {CINEMATIC_SHOTS.map(shot => (
                                       <option key={shot.value} value={shot.value}>{shot.label}</option>
                                     ))}
                                 </select>
+                                <div className="flex-1"></div>
+                                <button onClick={() => handleDeletePanel(panel.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>
                             </div>
                             
-                            <div className="flex-1">
-                                <textarea 
-                                    value={panel.description}
-                                    onChange={(e) => handleUpdatePanel(panel.id, 'description', e.target.value)}
-                                    className="w-full bg-black/30 text-sm text-gray-300 border border-transparent hover:border-zinc-700 focus:border-yellow-500 rounded p-2 resize-none focus:outline-none"
-                                    rows={2}
-                                />
+                            {/* 第二行：动作描述 + 环境覆盖 (并排) */}
+                            <div className="flex flex-col md:flex-row gap-4">
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 mb-1 block">动作描述 (Action)</label>
+                                    <textarea 
+                                        value={panel.description}
+                                        onChange={(e) => handleUpdatePanel(panel.id, 'description', e.target.value)}
+                                        className="w-full bg-black/30 text-sm text-gray-300 border border-transparent hover:border-zinc-700 focus:border-yellow-500 rounded p-2 resize-none focus:outline-none"
+                                        rows={3}
+                                        placeholder="角色在做什么..."
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-[10px] font-bold text-zinc-500 mb-1 block flex items-center gap-1">
+                                        <MapPin size={10} className={panel.environment ? "text-green-500" : ""} />
+                                        场景/环境 (Environment Override)
+                                    </label>
+                                    <textarea 
+                                        value={panel.environment || ''}
+                                        onChange={(e) => handleUpdatePanel(panel.id, 'environment', e.target.value)}
+                                        className={`w-full bg-black/30 text-sm text-gray-300 border rounded p-2 resize-none focus:outline-none ${panel.environment ? 'border-green-500/50 bg-green-500/5' : 'border-transparent hover:border-zinc-700 focus:border-green-500'}`}
+                                        rows={3}
+                                        placeholder={sceneDescription ? `默认：${sceneDescription}` : "例如：突然切换到街道..."}
+                                    />
+                                </div>
                             </div>
-                            <button onClick={() => handleDeletePanel(panel.id)} className="text-zinc-600 hover:text-red-500 self-center md:self-start p-2"><Trash2 size={16}/></button>
                         </div>
                     ))}
                 </div>
@@ -478,6 +567,8 @@ export default function StoryboardPage() {
                             <span className="w-5 h-5 bg-yellow-500 text-black rounded-full flex items-center justify-center text-[10px] font-bold">{idx + 1}</span>
                             <span className="text-[10px] font-bold bg-white/20 text-white px-1.5 rounded uppercase max-w-[100px] truncate">{CINEMATIC_SHOTS.find(s=>s.value===panel.shotType)?.label || panel.shotType}</span>
                         </div>
+                        {/* 如果有环境覆盖，显示小图标 */}
+                        {panel.environment && <span className="text-[10px] bg-green-900/50 text-green-400 px-1.5 rounded flex items-center gap-1"><MapPin size={8}/> 场景切换</span>}
                     </div>
                     <p className="text-xs text-gray-300 line-clamp-1 opacity-80">{panel.description}</p>
                   </div>
@@ -486,8 +577,13 @@ export default function StoryboardPage() {
               
               {step === 'done' && (
                   <div className={`flex justify-center pt-8 pb-12 ${aspectRatio === '9:16' ? 'col-span-2 md:col-span-3' : 'col-span-1 md:col-span-2'}`}>
-                      <button onClick={() => toast.info('下载功能开发中...')} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2">
-                          <Save size={18}/> 导出分镜
+                      <button 
+                        onClick={handleExportPDF} 
+                        disabled={isExporting}
+                        className="bg-white hover:bg-gray-200 text-black px-8 py-4 rounded-xl font-bold flex items-center gap-3 shadow-2xl transition-all hover:scale-105"
+                      >
+                          {isExporting ? <Loader2 className="animate-spin w-5 h-5"/> : <Download size={20}/>}
+                          {isExporting ? '正在打包...' : '导出商业分镜 PDF'}
                       </button>
                   </div>
               )}
