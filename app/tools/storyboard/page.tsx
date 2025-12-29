@@ -17,7 +17,7 @@ type StoryboardPanel = {
   id: number;
   description: string; 
   shotType: string;    
-  environment?: string; // 👈 新增：单镜头环境覆盖
+  environment?: string; 
   prompt: string;      
   imageUrl?: string;   
   isLoading: boolean;  
@@ -72,8 +72,8 @@ const ASPECT_RATIOS = [
 
 export default function StoryboardPage() {
   const [script, setScript] = useState('');
-  const [sceneDescription, setSceneDescription] = useState(''); // 全局场景文本
-  const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null); // 👈 全局场景图
+  const [sceneDescription, setSceneDescription] = useState(''); 
+  const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null); 
   const [isUploadingScene, setIsUploadingScene] = useState(false);
 
   const [step, setStep] = useState<WorkflowStep>('input');
@@ -87,7 +87,6 @@ export default function StoryboardPage() {
   const [isDrawing, setIsDrawing] = useState(false);     
   const [isExporting, setIsExporting] = useState(false);
   
-  // 角色相关状态
   const [characters, setCharacters] = useState<Character[]>([]); 
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); 
   const [refImages, setRefImages] = useState<CharacterImage[]>([]);
@@ -96,7 +95,6 @@ export default function StoryboardPage() {
   const supabase = createClient();
   const tempProjectId = "temp_workspace"; 
 
-  // 1. 加载角色列表
   useEffect(() => {
     const fetchCharacters = async () => {
       const { data, error } = await supabase
@@ -108,7 +106,6 @@ export default function StoryboardPage() {
     fetchCharacters();
   }, []);
 
-  // 2. 监听角色选择 -> 加载参考图
   useEffect(() => {
     if (selectedCharacterId) {
       const fetchRefImages = async () => {
@@ -130,18 +127,14 @@ export default function StoryboardPage() {
     }
   }, [selectedCharacterId]);
 
-  // 🔥 场景图上传逻辑 (修正版：自动重命名解决中文报错)
   const handleSceneUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files.length) return;
     setIsUploadingScene(true);
     try {
         const file = e.target.files[0];
-        const user = (await supabase.auth.getUser()).data.user;
+        const { data: { user } } = await supabase.auth.getUser();
         
-        // 1. 获取文件后缀 (例如 .png)
         const fileExt = file.name.split('.').pop();
-        // 2. 生成纯英文/数字的安全文件名 (例如 scene_173556789.png)
-        // 这样就彻底避开了中文乱码和非法字符问题
         const safeName = `scene_${Date.now()}.${fileExt}`;
         const filePath = `scene_refs/${user?.id || 'guest'}/${safeName}`;
 
@@ -169,7 +162,7 @@ export default function StoryboardPage() {
         id: index,
         description: p.description,
         shotType: p.shotType || 'MID SHOT',
-        environment: '', // 默认空，表示跟随全局
+        environment: '', 
         prompt: p.visualPrompt,
         isLoading: false, 
       }));
@@ -207,8 +200,6 @@ export default function StoryboardPage() {
     const promises = panels.map(async (panel) => {
       try {
         const tempShotId = `storyboard_${Date.now()}_${panel.id}`;
-        
-        // 🔥 核心逻辑：环境优先级 (单镜覆盖 > 全局文字)
         const effectiveEnv = panel.environment && panel.environment.trim() !== '' 
             ? panel.environment 
             : sceneDescription;
@@ -226,15 +217,18 @@ export default function StoryboardPage() {
           panel.shotType, 
           selectedCharacterId || undefined,
           selectedRefImage || undefined,
-          sceneImageUrl || undefined // 👈 传递全局场景图
+          sceneImageUrl || undefined 
         );
 
-        if (res.success && res.url) {
-          setPanels(current => current.map(p => p.id === panel.id ? { ...p, imageUrl: res.url, isLoading: false } : p));
+        // ✅ 这里是修复后的逻辑：明确处理成功与失败分支
+        if (res.success) {
+          const successRes = res as { success: true; url: string };
+          setPanels(current => current.map(p => p.id === panel.id ? { ...p, imageUrl: successRes.url, isLoading: false } : p));
         } else {
-           throw new Error(res.message || '生成失败');
+          const errorRes = res as { success: false; message: string };
+          throw new Error(errorRes.message || '生成失败');
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Panel ${panel.id} failed`, error);
         setPanels(current => current.map(p => p.id === panel.id ? { ...p, isLoading: false } : p)); 
       }
@@ -281,7 +275,6 @@ export default function StoryboardPage() {
 
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 min-h-[600px]">
         
-        {/* === 左侧控制区 === */}
         <div className="w-full lg:w-1/3 bg-[#111] p-6 rounded-2xl border border-white/10 flex flex-col gap-6 h-fit sticky top-6">
           
           <div>
@@ -299,239 +292,109 @@ export default function StoryboardPage() {
           </div>
 
           <div className="bg-black/30 p-1 rounded-lg flex border border-white/5">
-            <button 
-                onClick={() => setMode('draft')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'draft' ? 'bg-yellow-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-                <PenTool className="w-3 h-3" /> 草图 (Turbo)
-            </button>
-            <button 
-                onClick={() => setMode('render')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'render' ? 'bg-purple-600 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-                <ImageIcon className="w-3 h-3" /> 渲染 (Flux)
-            </button>
+            <button onClick={() => setMode('draft')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'draft' ? 'bg-yellow-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}><PenTool className="w-3 h-3" /> 草图</button>
+            <button onClick={() => setMode('render')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'render' ? 'bg-purple-600 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}><ImageIcon className="w-3 h-3" /> 渲染</button>
           </div>
 
           {(step === 'input' || step === 'review') && (
             <div className="space-y-4 border-t border-white/10 pt-4 animate-in fade-in slide-in-from-top-2 duration-300">
-              
               <div>
-                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                  <Monitor className="w-3 h-3 text-orange-500" />
-                  画幅比例 (Aspect Ratio)
-                </label>
+                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2"><Monitor className="w-3 h-3 text-orange-500" />画幅比例</label>
                 <div className="grid grid-cols-2 gap-2">
                   {ASPECT_RATIOS.map(ratio => (
-                    <button
-                      key={ratio.value}
-                      onClick={() => setAspectRatio(ratio.value)}
-                      className={`text-[10px] py-2 px-1 rounded-lg border transition-all ${
-                        aspectRatio === ratio.value 
-                        ? 'bg-orange-500/20 border-orange-500 text-orange-500 font-bold' 
-                        : 'bg-black/30 border-white/5 text-zinc-500 hover:border-white/20'
-                      }`}
-                    >
-                      {ratio.label}
-                    </button>
+                    <button key={ratio.value} onClick={() => setAspectRatio(ratio.value)} className={`text-[10px] py-2 px-1 rounded-lg border transition-all ${aspectRatio === ratio.value ? 'bg-orange-500/20 border-orange-500 text-orange-500 font-bold' : 'bg-black/30 border-white/5 text-zinc-500 hover:border-white/20'}`}>{ratio.label}</button>
                   ))}
                 </div>
               </div>
 
               {mode === 'render' && (
                 <div className="animate-in zoom-in-95 duration-200">
-                  <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                    <Palette className="w-3 h-3 text-purple-500" />
-                    渲染风格 (Art Style)
-                  </label>
-                  <select
-                    value={stylePreset}
-                    onChange={(e) => setStylePreset(e.target.value)}
-                    className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-purple-500 focus:outline-none appearance-none"
-                  >
-                    {STYLE_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
+                  <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2"><Palette className="w-3 h-3 text-purple-500" />渲染风格</label>
+                  <select value={stylePreset} onChange={(e) => setStylePreset(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-purple-500 focus:outline-none appearance-none">
+                    {STYLE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </div>
               )}
               
               <div>
-                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                  <User className="w-3 h-3 text-blue-500" />
-                  固定主角 (Character)
-                </label>
-                <select
-                  value={selectedCharacterId || ''}
-                  onChange={(e) => setSelectedCharacterId(e.target.value || null)}
-                  className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none appearance-none"
-                >
+                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2"><User className="w-3 h-3 text-blue-500" />固定主角</label>
+                <select value={selectedCharacterId || ''} onChange={(e) => setSelectedCharacterId(e.target.value || null)} className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none appearance-none">
                   <option value="">-- 不指定 --</option>
-                  {characters.map(char => (
-                    <option key={char.id} value={char.id}>{char.name}</option>
-                  ))}
+                  {characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}
                 </select>
 
                 {selectedCharacterId && refImages.length > 0 && (
                   <div className="mt-3 animate-in fade-in slide-in-from-top-2">
-                    <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
-                      <Paperclip className="w-3 h-3 text-blue-400" />
-                      视觉参考 (Visual Anchor)
-                    </label>
+                    <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2"><Paperclip className="w-3 h-3 text-blue-400" />视觉参考</label>
                     <div className="grid grid-cols-4 gap-2">
                       {refImages.map(img => (
-                        <div 
-                          key={img.id}
-                          onClick={() => setSelectedRefImage(selectedRefImage === img.image_url ? null : img.image_url)}
-                          className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
-                            selectedRefImage === img.image_url 
-                            ? 'border-blue-500 ring-2 ring-blue-500/50' 
-                            : 'border-transparent hover:border-white/30 opacity-70 hover:opacity-100'
-                          }`}
-                        >
+                        <div key={img.id} onClick={() => setSelectedRefImage(selectedRefImage === img.image_url ? null : img.image_url)} className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${selectedRefImage === img.image_url ? 'border-blue-500 ring-2 ring-blue-500/50' : 'border-transparent hover:border-white/30 opacity-70 hover:opacity-100'}`}>
                           <Image src={img.image_url} alt="Ref" fill className="object-cover" />
-                          {selectedRefImage === img.image_url && (
-                             <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
-                                <CheckCircle2 className="w-4 h-4 text-white drop-shadow-md" />
-                             </div>
-                          )}
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-                
-                {selectedCharacterId && refImages.length === 0 && (
-                   <div className="mt-2 text-[10px] text-zinc-600 flex items-center gap-1">
-                      该角色暂无参考图，<Link href="/tools/characters" className="text-blue-500 underline">去上传</Link>
-                   </div>
-                )}
               </div>
 
-              {/* 🔥 场景设定 (大升级) */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="text-xs font-bold text-gray-400 flex items-center gap-2">
-                    <MapPin className="w-3 h-3 text-green-500" />
-                    固定场景 (Global Scene)
-                  </label>
-                  {/* 上传按钮 */}
+                  <label className="text-xs font-bold text-gray-400 flex items-center gap-2"><MapPin className="w-3 h-3 text-green-500" />固定场景</label>
                   <label className="cursor-pointer text-[10px] bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded flex items-center gap-1 transition">
                      {isUploadingScene ? <Loader2 className="w-3 h-3 animate-spin"/> : <Upload className="w-3 h-3"/>}
                      {sceneImageUrl ? '更换场景图' : '上传参考图'}
                      <input type="file" className="hidden" accept="image/*" onChange={handleSceneUpload} disabled={isUploadingScene}/>
                   </label>
                 </div>
-                
-                {/* 场景图预览 */}
                 {sceneImageUrl && (
                   <div className="mb-2 relative w-full h-24 rounded-lg overflow-hidden border border-green-500/30 group">
-                    <Image src={sceneImageUrl} alt="Scene Ref" fill className="object-cover opacity-60 group-hover:opacity-100 transition" />
+                    <Image src={sceneImageUrl} alt="Scene Ref" fill className="object-cover" />
                     <button onClick={() => setSceneImageUrl(null)} className="absolute top-1 right-1 bg-black/50 hover:bg-red-500 p-1 rounded-full text-white"><Trash2 size={12}/></button>
                   </div>
                 )}
-
-                <input
-                  type="text"
-                  value={sceneDescription}
-                  onChange={(e) => setSceneDescription(e.target.value)}
-                  placeholder="例如：赛博朋克街道，雨夜..."
-                  className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-green-500 focus:outline-none"
-                />
+                <input type="text" value={sceneDescription} onChange={(e) => setSceneDescription(e.target.value)} placeholder="场景设定..." className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-green-500 focus:outline-none" />
               </div>
             </div>
           )}
 
           {step === 'input' ? (
-              <button
-                onClick={handleAnalyzeScript}
-                disabled={isAnalyzing || !script.trim()}
-                className="w-full py-3 font-bold rounded-xl flex items-center justify-center gap-2 bg-white text-black hover:bg-gray-200 transition-colors"
-              >
-                {isAnalyzing ? <Loader2 className="animate-spin w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}
-                {isAnalyzing ? '分析中...' : '拆解剧本'}
-              </button>
+              <button onClick={handleAnalyzeScript} disabled={isAnalyzing || !script.trim()} className="w-full py-3 font-bold rounded-xl flex items-center justify-center gap-2 bg-white text-black hover:bg-gray-200 transition-colors">{isAnalyzing ? <Loader2 className="animate-spin w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}剧本分析</button>
           ) : step === 'review' ? (
               <div className="flex flex-col gap-3">
-                 <button
-                    onClick={handleGenerateImages}
-                    className={`w-full py-3 font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg ${mode === 'draft' ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
-                  >
-                    <PenTool className="w-4 h-4" /> 开始绘制 ({panels.length} 镜头)
-                  </button>
-                  <button onClick={() => setStep('input')} className="text-zinc-500 text-xs hover:text-white underline">返回修改</button>
+                 <button onClick={handleGenerateImages} className={`w-full py-3 font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg ${mode === 'draft' ? 'bg-yellow-500 hover:bg-yellow-400 text-black' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}>绘制镜头</button>
+                 <button onClick={() => setStep('input')} className="text-zinc-500 text-xs hover:text-white underline">返回修改</button>
               </div>
           ) : (
-             <button disabled className="w-full py-3 font-bold rounded-xl bg-zinc-800 text-zinc-500 flex items-center justify-center gap-2 cursor-not-allowed">
-                {isDrawing ? <Loader2 className="animate-spin w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                {isDrawing ? '绘制中...' : '完成'}
-              </button>
+             <button disabled className="w-full py-3 font-bold rounded-xl bg-zinc-800 text-zinc-500 flex items-center justify-center gap-2 cursor-not-allowed"><CheckCircle2 className="w-4 h-4" />完成</button>
           )}
         </div>
 
-        {/* === 右侧展示区 (保持动态布局) === */}
         <div className="w-full lg:w-2/3">
-          
           {step === 'input' && (
             <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-[#111] rounded-2xl border border-dashed border-white/10 text-zinc-600">
               <Film className="w-20 h-20 mb-4 opacity-10" />
-              <p className="font-bold">输入剧本 &rarr; 配置 &rarr; AI 绘制</p>
+              <p className="font-bold">上传剧本开始创作</p>
             </div>
           )}
 
           {step === 'review' && (
              <div className="space-y-4">
                 <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><Camera className="w-4 h-4 text-yellow-500"/> 运镜与动作确认</h3>
-                    <button onClick={handleAddPanel} className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><Plus size={14}/> 添加镜头</button>
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><Camera className="w-4 h-4 text-yellow-500"/> 镜头表</h3>
+                    <button onClick={handleAddPanel} className="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><Plus size={14}/> 添加</button>
                 </div>
-                
                 <div className="grid gap-4">
                     {panels.map((panel, idx) => (
-                        <div key={panel.id} className="bg-[#151515] p-4 rounded-xl border border-white/10 flex flex-col md:flex-row gap-4 group hover:border-white/30 transition-colors">
-                            {/* 第一行：序号 + 景别 + 删除 */}
+                        <div key={panel.id} className="bg-[#151515] p-4 rounded-xl border border-white/10 flex flex-col md:flex-row gap-4 group">
                             <div className="flex items-center gap-4">
-                                <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-zinc-500 font-bold flex-shrink-0">
-                                    {idx + 1}
-                                </div>
-                                <select 
-                                    value={panel.shotType}
-                                    onChange={(e) => handleUpdatePanel(panel.id, 'shotType', e.target.value)}
-                                    className="bg-black border border-zinc-700 text-yellow-500 text-xs font-bold px-2 py-2 rounded focus:outline-none focus:border-yellow-500"
-                                >
-                                    {CINEMATIC_SHOTS.map(shot => (
-                                      <option key={shot.value} value={shot.value}>{shot.label}</option>
-                                    ))}
+                                <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-zinc-500 font-bold">{idx + 1}</div>
+                                <select value={panel.shotType} onChange={(e) => handleUpdatePanel(panel.id, 'shotType', e.target.value)} className="bg-black border border-zinc-700 text-yellow-500 text-xs font-bold px-2 py-2 rounded">
+                                    {CINEMATIC_SHOTS.map(shot => <option key={shot.value} value={shot.value}>{shot.label}</option>)}
                                 </select>
-                                <div className="flex-1"></div>
                                 <button onClick={() => handleDeletePanel(panel.id)} className="text-zinc-600 hover:text-red-500 p-2"><Trash2 size={16}/></button>
                             </div>
-                            
-                            {/* 第二行：动作描述 + 环境覆盖 (并排) */}
-                            <div className="flex flex-col md:flex-row gap-4">
-                                <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 mb-1 block">动作描述 (Action)</label>
-                                    <textarea 
-                                        value={panel.description}
-                                        onChange={(e) => handleUpdatePanel(panel.id, 'description', e.target.value)}
-                                        className="w-full bg-black/30 text-sm text-gray-300 border border-transparent hover:border-zinc-700 focus:border-yellow-500 rounded p-2 resize-none focus:outline-none"
-                                        rows={3}
-                                        placeholder="角色在做什么..."
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <label className="text-[10px] font-bold text-zinc-500 mb-1 block flex items-center gap-1">
-                                        <MapPin size={10} className={panel.environment ? "text-green-500" : ""} />
-                                        场景/环境 (Environment Override)
-                                    </label>
-                                    <textarea 
-                                        value={panel.environment || ''}
-                                        onChange={(e) => handleUpdatePanel(panel.id, 'environment', e.target.value)}
-                                        className={`w-full bg-black/30 text-sm text-gray-300 border rounded p-2 resize-none focus:outline-none ${panel.environment ? 'border-green-500/50 bg-green-500/5' : 'border-transparent hover:border-zinc-700 focus:border-green-500'}`}
-                                        rows={3}
-                                        placeholder={sceneDescription ? `默认：${sceneDescription}` : "例如：突然切换到街道..."}
-                                    />
-                                </div>
+                            <div className="flex flex-col md:flex-row gap-4 flex-1">
+                                <textarea value={panel.description} onChange={(e) => handleUpdatePanel(panel.id, 'description', e.target.value)} className="w-full bg-black/30 text-sm text-gray-300 border border-transparent rounded p-2 focus:outline-none" rows={2} />
                             </div>
                         </div>
                     ))}
@@ -542,49 +405,23 @@ export default function StoryboardPage() {
           {(step === 'generating' || step === 'done') && (
             <div className={`grid gap-6 ${aspectRatio === '9:16' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
               {panels.map((panel, idx) => (
-                <div key={panel.id} className={`relative bg-black rounded-xl overflow-hidden shadow-xl border border-zinc-800 group ${currentRatioClass}`}>
+                <div key={panel.id} className={`relative bg-black rounded-xl overflow-hidden shadow-xl border border-zinc-800 ${currentRatioClass}`}>
                   {panel.isLoading ? (
-                     <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-zinc-900 text-zinc-500">
+                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900 text-zinc-500">
                         <Loader2 className="animate-spin w-8 h-8 text-yellow-500" />
-                        <span className="text-xs font-mono animate-pulse">绘制中...</span>
                      </div>
                   ) : panel.imageUrl ? (
-                    <>
-                        <img src={panel.imageUrl} className={`w-full h-full object-cover transition-all duration-700 ${mode === 'draft' ? 'grayscale contrast-125' : ''}`} />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                             <a href={panel.imageUrl} target="_blank" className="bg-white/10 backdrop-blur px-4 py-2 rounded-full text-xs font-bold hover:bg-white text-white hover:text-black transition-all">查看大图</a>
-                        </div>
-                    </>
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-red-500 gap-2">
-                        <span className="text-xs">生成失败</span>
-                    </div>
-                  )}
-
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-8 text-white">
-                    <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 bg-yellow-500 text-black rounded-full flex items-center justify-center text-[10px] font-bold">{idx + 1}</span>
-                            <span className="text-[10px] font-bold bg-white/20 text-white px-1.5 rounded uppercase max-w-[100px] truncate">{CINEMATIC_SHOTS.find(s=>s.value===panel.shotType)?.label || panel.shotType}</span>
-                        </div>
-                        {/* 如果有环境覆盖，显示小图标 */}
-                        {panel.environment && <span className="text-[10px] bg-green-900/50 text-green-400 px-1.5 rounded flex items-center gap-1"><MapPin size={8}/> 场景切换</span>}
-                    </div>
-                    <p className="text-xs text-gray-300 line-clamp-1 opacity-80">{panel.description}</p>
+                    <img src={panel.imageUrl} className="w-full h-full object-cover" />
+                  ) : null}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black p-4 text-white">
+                    <span className="text-[10px] font-bold bg-yellow-500 text-black px-1.5 rounded mr-2">{idx + 1}</span>
+                    <span className="text-xs opacity-80">{panel.description}</span>
                   </div>
                 </div>
               ))}
-              
               {step === 'done' && (
-                  <div className={`flex justify-center pt-8 pb-12 ${aspectRatio === '9:16' ? 'col-span-2 md:col-span-3' : 'col-span-1 md:col-span-2'}`}>
-                      <button 
-                        onClick={handleExportPDF} 
-                        disabled={isExporting}
-                        className="bg-white hover:bg-gray-200 text-black px-8 py-4 rounded-xl font-bold flex items-center gap-3 shadow-2xl transition-all hover:scale-105"
-                      >
-                          {isExporting ? <Loader2 className="animate-spin w-5 h-5"/> : <Download size={20}/>}
-                          {isExporting ? '正在打包...' : '导出商业分镜 PDF'}
-                      </button>
+                  <div className="col-span-full flex justify-center py-8">
+                      <button onClick={handleExportPDF} className="bg-white text-black px-8 py-3 rounded-xl font-bold flex items-center gap-2"><Download size={20}/> 导出 PDF</button>
                   </div>
               )}
             </div>
