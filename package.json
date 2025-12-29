@@ -11,7 +11,7 @@
   "dependencies": {
     "@google/genai": "^1.34.0",
     "@google/generative-ai": "^0.24.1",
-    "@supabase/ssr": "^0.4.0",
+    "@supabase/ssr": "^0.4.1",
     "@supabase/supabase-js": "^2.87.3",
     "@tailwindcss/typography": "^0.5.15",
     "https-proxy-agent": "^7.0.6",
