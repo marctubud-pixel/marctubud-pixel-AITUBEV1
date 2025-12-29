@@ -3,7 +3,7 @@
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_TEXT_ENDPOINT_ID = process.env.VOLC_TEXT_ENDPOINT_ID;
 // 火山引擎方舟的文字对话接口
-const ARK_CHAT_URL = "[https://ark.cn-beijing.volces.com/api/v3/chat/completions](https://ark.cn-beijing.volces.com/api/v3/chat/completions)";
+const ARK_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
 export async function analyzeScript(scriptText: string) {
   // 1. 打印基础日志（用于 Vercel 调试）
