@@ -3,10 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Film, Clapperboard, Loader2, ArrowLeft, PenTool, 
-  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User, MapPin, Camera, Palette, Monitor 
+  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User, MapPin, Camera, Palette, Monitor, Paperclip 
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
+import Image from 'next/image';
 import { analyzeScript } from '@/app/actions/director';
 import { generateShotImage } from '@/app/actions/generate';
 import { createClient } from '@/utils/supabase/client';
@@ -24,6 +25,12 @@ type Character = {
   id: string;
   name: string;
   avatar_url: string | null;
+}
+
+type CharacterImage = {
+  id: string;
+  image_url: string;
+  description: string | null;
 }
 
 type WorkflowStep = 'input' | 'review' | 'generating' | 'done';
@@ -53,7 +60,6 @@ const STYLE_OPTIONS = [
   { value: "ink", label: "🖌️ 中国水墨 (Ink)" },
 ];
 
-// 📐 画幅比例配置
 const ASPECT_RATIOS = [
   { value: "16:9", label: "🖥️ 横屏电影 (16:9)", cssClass: "aspect-video" },
   { value: "9:16", label: "📱 竖屏短剧 (9:16)", cssClass: "aspect-[9/16]" },
@@ -70,18 +76,22 @@ export default function StoryboardPage() {
   
   const [mode, setMode] = useState<'draft' | 'render'>('draft'); 
   const [stylePreset, setStylePreset] = useState<string>('realistic');
-  
-  // 📐 新增：比例控制
   const [aspectRatio, setAspectRatio] = useState<string>('16:9');
 
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [isDrawing, setIsDrawing] = useState(false);     
+  
+  // 角色相关状态
   const [characters, setCharacters] = useState<Character[]>([]); 
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); 
-  const supabase = createClient();
+  // 📸 新增：参考图状态
+  const [refImages, setRefImages] = useState<CharacterImage[]>([]);
+  const [selectedRefImage, setSelectedRefImage] = useState<string | null>(null);
 
+  const supabase = createClient();
   const tempProjectId = "temp_workspace"; 
 
+  // 1. 加载角色列表
   useEffect(() => {
     const fetchCharacters = async () => {
       const { data, error } = await supabase
@@ -92,6 +102,28 @@ export default function StoryboardPage() {
     };
     fetchCharacters();
   }, []);
+
+  // 2. 监听角色选择 -> 加载参考图
+  useEffect(() => {
+    if (selectedCharacterId) {
+      const fetchRefImages = async () => {
+        const { data, error } = await supabase
+          .from('character_images')
+          .select('id, image_url, description')
+          .eq('character_id', selectedCharacterId)
+          .order('created_at', { ascending: false });
+        
+        if (!error) {
+           setRefImages(data || []);
+           setSelectedRefImage(null); // 切换角色时重置选中图
+        }
+      };
+      fetchRefImages();
+    } else {
+      setRefImages([]);
+      setSelectedRefImage(null);
+    }
+  }, [selectedCharacterId]);
 
   const handleAnalyzeScript = async () => {
     if (!script.trim()) return;
@@ -144,7 +176,6 @@ export default function StoryboardPage() {
         const scenePart = sceneDescription ? `(Environment: ${sceneDescription}), ` : '';
         const shotPart = `(Camera Angle: ${panel.shotType}), `;
         const actionPart = `${panel.description}`;
-        
         const finalPrompt = `${scenePart}${shotPart}${actionPart}`;
 
         const res = await generateShotImage(
@@ -153,8 +184,9 @@ export default function StoryboardPage() {
           tempProjectId, 
           mode === 'draft', 
           stylePreset,
-          aspectRatio, // 👈 传递比例
-          selectedCharacterId || undefined 
+          aspectRatio,
+          selectedCharacterId || undefined,
+          selectedRefImage || undefined // 👈 传递选中的参考图
         );
 
         if (res.success && res.url) {
@@ -174,7 +206,6 @@ export default function StoryboardPage() {
     toast.success('商业级分镜绘制完成');
   };
 
-  // 获取当前比例对应的 Tailwind CSS 类 (用于修复裁剪 Bug)
   const currentRatioClass = ASPECT_RATIOS.find(r => r.value === aspectRatio)?.cssClass || "aspect-video";
 
   return (
@@ -213,7 +244,6 @@ export default function StoryboardPage() {
             />
           </div>
 
-          {/* 模式选择按钮 */}
           <div className="bg-black/30 p-1 rounded-lg flex border border-white/5">
             <button 
                 onClick={() => setMode('draft')}
@@ -232,7 +262,6 @@ export default function StoryboardPage() {
           {(step === 'input' || step === 'review') && (
             <div className="space-y-4 border-t border-white/10 pt-4 animate-in fade-in slide-in-from-top-2 duration-300">
               
-              {/* 1. 画幅比例 (始终显示) */}
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                   <Monitor className="w-3 h-3 text-orange-500" />
@@ -255,12 +284,11 @@ export default function StoryboardPage() {
                 </div>
               </div>
 
-              {/* 2. 风格选择 (render) */}
               {mode === 'render' && (
                 <div className="animate-in zoom-in-95 duration-200">
                   <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                     <Palette className="w-3 h-3 text-purple-500" />
-                    美术风格
+                    渲染风格 (Art Style)
                   </label>
                   <select
                     value={stylePreset}
@@ -274,11 +302,11 @@ export default function StoryboardPage() {
                 </div>
               )}
               
-              {/* 3. 角色选择 */}
+              {/* --- 角色与视觉参考核心区 --- */}
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                   <User className="w-3 h-3 text-blue-500" />
-                  固定主角
+                  固定主角 (Character)
                 </label>
                 <select
                   value={selectedCharacterId || ''}
@@ -290,9 +318,45 @@ export default function StoryboardPage() {
                     <option key={char.id} value={char.id}>{char.name}</option>
                   ))}
                 </select>
+
+                {/* 📸 视觉参考图选择器 (新增) */}
+                {selectedCharacterId && refImages.length > 0 && (
+                  <div className="mt-3 animate-in fade-in slide-in-from-top-2">
+                    <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                      <Paperclip className="w-3 h-3 text-blue-400" />
+                      视觉参考 (Visual Anchor)
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {refImages.map(img => (
+                        <div 
+                          key={img.id}
+                          onClick={() => setSelectedRefImage(selectedRefImage === img.image_url ? null : img.image_url)}
+                          className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                            selectedRefImage === img.image_url 
+                            ? 'border-blue-500 ring-2 ring-blue-500/50' 
+                            : 'border-transparent hover:border-white/30 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <Image src={img.image_url} alt="Ref" fill className="object-cover" />
+                          {selectedRefImage === img.image_url && (
+                             <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center">
+                                <CheckCircle2 className="w-4 h-4 text-white drop-shadow-md" />
+                             </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-1">选中一张图作为本次生成的参考锚点。</p>
+                  </div>
+                )}
+                
+                {selectedCharacterId && refImages.length === 0 && (
+                   <div className="mt-2 text-[10px] text-zinc-600 flex items-center gap-1">
+                      该角色暂无参考图，<Link href="/tools/characters" className="text-blue-500 underline">去上传</Link>
+                   </div>
+                )}
               </div>
 
-              {/* 4. 场景设定 */}
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                   <MapPin className="w-3 h-3 text-green-500" />
@@ -336,7 +400,7 @@ export default function StoryboardPage() {
           )}
         </div>
 
-        {/* === 右侧展示区 === */}
+        {/* === 右侧展示区 (保持动态布局) === */}
         <div className="w-full lg:w-2/3">
           
           {step === 'input' && (
@@ -387,7 +451,6 @@ export default function StoryboardPage() {
           )}
 
           {(step === 'generating' || step === 'done') && (
-            // 🐛 修复核心：根据选择的比例，动态调整 grid 列数和 卡片比例
             <div className={`grid gap-6 ${aspectRatio === '9:16' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
               {panels.map((panel, idx) => (
                 <div key={panel.id} className={`relative bg-black rounded-xl overflow-hidden shadow-xl border border-zinc-800 group ${currentRatioClass}`}>
