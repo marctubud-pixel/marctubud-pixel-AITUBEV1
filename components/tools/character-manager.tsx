@@ -46,18 +46,21 @@ export default function CharacterManager() {
     fetchCharacters()
   }, [])
 
-  // 2. 处理图片上传 (修复 RLS 权限问题的增强版)
+  // 2. 处理图片上传 (修复版：使用 getSession 提高容错率)
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploading(true)
 
-      // [关键修复] 1. 获取并检查当前登录用户
-      const { data: { user } } = await supabase.auth.getUser()
+      // [核心修复] 使用 getSession 代替 getUser
+      // getUser 会强制去服务器验证 Cookie，容易失败
+      // getSession 会优先读取浏览器本地缓存的 Session，非常稳定
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user
       
       if (!user) {
-        throw new Error('系统检测到您未登录，请先登录后再操作！')
+        throw new Error('系统检测到您未登录，请尝试刷新页面或重新登录！')
       }
-      console.log("Current User ID:", user.id)
+      console.log("Current User ID (Session):", user.id)
 
       if (!event.target.files || event.target.files.length === 0) {
         throw new Error('请选择一张图片')
@@ -66,8 +69,7 @@ export default function CharacterManager() {
       const file = event.target.files[0]
       const fileExt = file.name.split('.').pop()
       
-      // [关键修复] 2. 使用 "用户ID/随机名" 的路径结构
-      // 这样符合 owner-based RLS 策略，也更好管理文件
+      // 使用 "用户ID/随机名" 路径
       const fileName = `${user.id}/${Math.random()}.${fileExt}`
       
       console.log("Uploading to:", fileName)
@@ -76,7 +78,7 @@ export default function CharacterManager() {
       const { error: uploadError } = await supabase.storage
         .from('characters') 
         .upload(fileName, file, {
-          upsert: true // [优化] 允许覆盖
+          upsert: true
         })
 
       if (uploadError) {
@@ -103,8 +105,10 @@ export default function CharacterManager() {
     try {
       setLoading(true)
       
-      // 获取当前用户
-      const { data: { user } } = await supabase.auth.getUser()
+      // [核心修复] 同样使用 getSession
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user
+
       if (!user) throw new Error('未登录')
 
       const { error } = await supabase.from('characters').insert({

@@ -2,12 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
+  // 1. 创建初始响应
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
 
+  // 2. 初始化 Supabase 客户端
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -16,16 +18,20 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        // 注意：这里我加了类型兼容处理，防止 TypeScript 报错
+        // 🛠️ 关键修复：在这里加上 : any 类型注解
         setAll(cookiesToSet: any) {
+          // 🛠️ 关键修复：在这里也加上 : any
           cookiesToSet.forEach(({ name, value, options }: any) =>
             request.cookies.set(name, value)
           )
+          
           response = NextResponse.next({
             request: {
               headers: request.headers,
             },
           })
+          
+          // 🛠️ 关键修复：还有这里
           cookiesToSet.forEach(({ name, value, options }: any) =>
             response.cookies.set(name, value, options)
           )
@@ -34,7 +40,7 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // 这一步至关重要：刷新用户 Session，确保 Server Action 能读到它
+  // 3. 刷新 User Session
   await supabase.auth.getUser()
 
   return response

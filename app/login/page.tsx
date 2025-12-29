@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabaseClient'; // 引用我们之前的工具
+// 🛑 关键修改 1：必须从我们刚才修复的 utils 目录导入！
+// 不要用 ../lib/supabaseClient，那个不带 Cookie 功能
+import { createClient } from '@/utils/supabase/client'; 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -12,10 +14,15 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
+  // 🛑 关键修改 2：在组件内部初始化客户端
+  // 这个 createClient 会自动读取/写入浏览器 Cookie
+  const supabase = createClient();
+
   // 登录逻辑
   const handleLogin = async () => {
     setLoading(true);
     setMessage('');
+    
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -25,9 +32,11 @@ export default function LoginPage() {
       setMessage('登录失败: ' + error.message);
       setLoading(false);
     } else {
-      // 登录成功，跳转回首页
+      setMessage('登录成功！正在跳转...');
+      // 登录成功后，Cookie 会被自动写入
+      // 强制刷新页面以确保 Middleware 能读到新 Cookie
+      router.refresh(); 
       router.push('/');
-      router.refresh(); // 刷新页面状态
     }
   };
 
@@ -35,6 +44,7 @@ export default function LoginPage() {
   const handleSignUp = async () => {
     setLoading(true);
     setMessage('');
+    
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -44,10 +54,11 @@ export default function LoginPage() {
       setMessage('注册失败: ' + error.message);
     } else {
       setMessage('注册成功！系统已为您自动登录，正在跳转...');
-      // 延迟一点点再跳转，让用户看清提示
+      
+      // 同样需要刷新路由
+      router.refresh();
       setTimeout(() => {
         router.push('/');
-        router.refresh();
       }, 1500);
     }
     setLoading(false);
