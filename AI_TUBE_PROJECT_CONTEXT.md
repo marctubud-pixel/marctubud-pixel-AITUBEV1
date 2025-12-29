@@ -78,47 +78,41 @@ comments: content, video_id, user_id。
 
 变现模型：VIP 订阅、积分充值、商单抽佣。
 
-🚀 六、 开发进度追踪 (Current Progress) - [2025-12-29 22:45 更新]
-🔭 当前阶段：Phase 2.4 - 核心资产与一致性 (Core Assets & Consistency)
+🚀 六、 开发进度追踪 (Current Progress) - [2025-12-29 23:10 更新]
+🔭 当前阶段：Phase 3.0 - 智能一致性与深度编辑 (Smart Consistency & Deep Editing)
 
-核心目标：建立用户专属的角色库，为 CineFlow 引擎实现“角色一致性”生成提供数据源。
+核心目标：从“能画图”进化为“画得准”，解决 AI 视频创作中最大的痛点——角色与场景的不连续性。
 
-✅ 已完成 (Completed) [2025-12-29 晚间战果 - 角色库与鉴权基建里程碑]
+✅ 已完成 (Completed) [2025-12-29 深夜战果 - 角色一致性核心 (Character Consistency Core)]
 
-[架构修正] 鉴权与中间件重构 (Critical Fixes)：
+[CineFlow 后端大脑改造]：
 
-[x] Middleware 重写：分离 root/middleware.ts (入口) 与 utils/supabase/middleware.ts (逻辑)，彻底解决 Cookie 无法写入导致的鉴权失败。
+[x] 升级 generateShotImage Server Action，新增 characterId 参数支持。
 
-[x] Login 逻辑升级：重构 login/page.tsx，摒弃纯 JS Client，改用 ssr Client 以支持 Cookie 自动管理。
+[x] 实现 Prompt Injection (提示词注入) 逻辑：自动查表获取角色 description，并将其权重置于 Prompt 首位，强制 AI 锁定角色特征。
 
-[x] 安全配置：配置 next.config.ts 中的 remotePatterns，添加 Supabase 域名白名单，解决跨域图片加载拦截。
+[x] 预埋 avatar_url 逻辑，为未来升级 Image-to-Image (图生图) 做好数据准备。
 
-[功能模块] 角色资产库 (Character Assets)：
+[CineFlow 前端交互升级]：
 
-[x] Database：创建 characters 表，配置 RLS (Row Level Security) 策略，确保用户只能操作自己的数据。
+[x] 实现 StoryboardPage 动态加载 Supabase 角色列表。
 
-[x] Storage：创建 characters 存储桶，实现基于 User ID 的文件路径隔离 (userId/filename)。
+[x] 新增“主角选择”下拉菜单，实现前后端数据流打通。
 
-[x] Frontend：上线 /tools/characters 页面，实现图片上传、预览、删除及元数据管理。
+[2025-12-29 晚间战果 - 角色资产库]
 
-[x] 诊断工具：在开发过程中构建了 Session 诊断组件，验证了鉴权链路的稳定性。
-
-[2025-12-29 凌晨战果 - CineFlow 核心引擎交付]
-
-[x] 全链路跑通：用户输入剧本 -> AI 拆解分镜 -> 火山引擎/即梦生成图片 -> 入库。
-
-[x] 双模引擎切换：Volcengine (豆包 + Seedream) 集成。
-
-[x] 前端交互：StoryboardPage (向导) + ProjectEditor (编辑器) 分离。
+[x] 角色库 CRUD、鉴权修复、存储桶隔离、图片域名白名单 (已归档)。
 
 ☀️ 下一步行动指南 (Next Action Plan)
 
-核心任务：[Backend] CineFlow 引擎集成角色一致性 (Role Consistency)
+核心任务 A：[CineFlow] 场景锁 (Scene Lock / Background Consistency)
 
-背景：角色库已就位，现在需要让分镜生成引擎“学会”读取并使用这些角色。
+痛点：现在角色长得一样了，但第一张图在“赛博城市”，第二张图可能突然跑到“森林”里去了，因为 AI 对环境的想象太发散。
 
-任务拆解：
+方案：允许用户先生成一张“空镜”或“概念图”作为基准，后续所有镜头强制参考这张图的色调和结构 (使用 Image-to-Image 或 Style Reference)。
 
-Prompt 工程升级：修改 route.ts 中的 Prompt 组装逻辑，将用户选中的 Character 的 description 和 avatar_url (作为 Reference) 注入到绘画 Prompt 中。
+核心任务 B：[Editor] 单镜重绘与微调 (Regenerate & Refine)
 
-API 联调：测试火山引擎的 Image-to-Image (图生图) 或 ControlNet 接口，以实现角色面部固定。
+痛点：目前是“一锤子买卖”，如果 10 张图里有 1 张画崩了（比如多只手），用户无法只重画这一张。
+
+方案：点击生成后的图片 -> 弹出编辑框 -> 修改 Prompt -> 点击“单张重绘”。

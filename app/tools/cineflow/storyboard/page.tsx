@@ -1,14 +1,15 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Film, Clapperboard, Loader2, ArrowLeft, PenTool, 
-  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2 
+  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User 
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
 import { analyzeScript } from '@/app/actions/director';
 import { generateShotImage } from '@/app/actions/generate';
+import { createClient } from '@/utils/supabase/client';
 
 // 定义分镜面板的数据结构
 type StoryboardPanel = {
@@ -20,6 +21,13 @@ type StoryboardPanel = {
   isLoading: boolean;  // 该单张是否正在生成
 }
 
+// 定义角色数据结构
+type Character = {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+}
+
 type WorkflowStep = 'input' | 'review' | 'generating' | 'done';
 
 export default function StoryboardPage() {
@@ -29,8 +37,29 @@ export default function StoryboardPage() {
   const [mode, setMode] = useState<'draft' | 'render'>('draft'); // 默认为草图模式
   const [isAnalyzing, setIsAnalyzing] = useState(false); // 分析剧本loading
   const [isDrawing, setIsDrawing] = useState(false);     // 绘图loading
+  const [characters, setCharacters] = useState<Character[]>([]); // 角色列表
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); // 选中的角色ID
+  const supabase = createClient();
 
   const tempProjectId = "temp_workspace"; 
+
+  // 加载角色列表
+  useEffect(() => {
+    const fetchCharacters = async () => {
+      const { data, error } = await supabase
+        .from('characters')
+        .select('id, name, avatar_url')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching characters:', error);
+        toast.error('无法加载角色列表');
+      } else {
+        setCharacters(data || []);
+      }
+    };
+    fetchCharacters();
+  }, []);
 
   // ----------------------------------------------------------------
   // 1. 第一步：AI 导演拆解剧本 (只生成文本，不画图)
@@ -110,7 +139,14 @@ export default function StoryboardPage() {
         // 注意：这里简单拼接，实际项目中可能需要再次调用 LLM 优化 prompt，或者直接用描述
         const finalPrompt = `${panel.shotType}, ${panel.description}, ${isDraftMode ? 'rough sketch, storyboard style, black and white line art' : 'cinematic lighting, photorealistic, 8k'}`;
 
-        const res = await generateShotImage(tempShotId, finalPrompt, tempProjectId, isDraftMode);
+        // 调用生成函数，传入选中的角色ID (如果有)
+        const res = await generateShotImage(
+          tempShotId, 
+          finalPrompt, 
+          tempProjectId, 
+          isDraftMode,
+          selectedCharacterId || undefined // 👈 [新增] 传入角色ID
+        );
 
         if (res.success && res.url) {
           setPanels(current => 
@@ -174,6 +210,30 @@ export default function StoryboardPage() {
             />
           </div>
 
+          {/* 角色选择 (仅在输入和确认阶段显示) */}
+          {(step === 'input' || step === 'review') && (
+            <div>
+              <label className="text-sm font-bold text-gray-400 mb-2 flex items-center gap-2">
+                <User className="w-4 h-4 text-yellow-500" />
+                选择主角 (可选，用于保持一致性)
+              </label>
+              <select
+                value={selectedCharacterId || ''}
+                onChange={(e) => setSelectedCharacterId(e.target.value || null)}
+                className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-gray-300 focus:border-yellow-500 focus:outline-none transition-colors appearance-none"
+                disabled={step !== 'input' && step !== 'review'}
+              >
+                <option value="">-- 不指定主角 --</option>
+                {characters.map(char => (
+                  <option key={char.id} value={char.id}>{char.name}</option>
+                ))}
+              </select>
+              {characters.length === 0 && (
+                 <p className="text-xs text-zinc-500 mt-2">暂无角色，可前往 <Link href="/tools/characters" className="text-yellow-500 hover:underline">角色资产库</Link> 创建。</p>
+              )}
+            </div>
+          )}
+
           {/* 模式选择 */}
           <div className="bg-black/30 p-1 rounded-lg flex border border-white/5">
             <button 
@@ -195,7 +255,7 @@ export default function StoryboardPage() {
               <button
                 onClick={handleAnalyzeScript}
                 disabled={isAnalyzing || !script.trim()}
-                className="w-full py-4 font-black rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg bg-white text-black hover:bg-gray-200"
+                className="w-full py-4 font-black rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg bg-white text-black hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isAnalyzing ? <Loader2 className="animate-spin" /> : <PlayCircle />}
                 {isAnalyzing ? '正在拆解剧本...' : '第一步：分析剧本'}
