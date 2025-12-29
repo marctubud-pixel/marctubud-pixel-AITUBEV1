@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Film, Clapperboard, Loader2, ArrowLeft, PenTool, 
-  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User, MapPin, Camera 
+  Image as ImageIcon, Trash2, Plus, PlayCircle, Save, CheckCircle2, User, MapPin, Camera, Palette, Monitor 
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
@@ -11,17 +11,15 @@ import { analyzeScript } from '@/app/actions/director';
 import { generateShotImage } from '@/app/actions/generate';
 import { createClient } from '@/utils/supabase/client';
 
-// 定义分镜面板的数据结构
 type StoryboardPanel = {
   id: number;
-  description: string; // 动作描述 (Action)
-  shotType: string;    // 景别/运镜 (Camera)
-  prompt: string;      // AI生成的绘画提示词
-  imageUrl?: string;   // 生成的图片URL
-  isLoading: boolean;  // 该单张是否正在生成
+  description: string; 
+  shotType: string;    
+  prompt: string;      
+  imageUrl?: string;   
+  isLoading: boolean;  
 }
 
-// 定义角色数据结构
 type Character = {
   id: string;
   name: string;
@@ -30,7 +28,6 @@ type Character = {
 
 type WorkflowStep = 'input' | 'review' | 'generating' | 'done';
 
-// 🎬 电影级运镜库
 const CINEMATIC_SHOTS = [
   { value: "EXTREME WIDE SHOT", label: "大远景 (EWS)" },
   { value: "WIDE SHOT", label: "全景 (Wide)" },
@@ -42,15 +39,41 @@ const CINEMATIC_SHOTS = [
   { value: "HIGH ANGLE", label: "俯视/高机位" },
   { value: "OVERHEAD SHOT", label: "上帝视角 (Top Down)" },
   { value: "DUTCH ANGLE", label: "荷兰倾斜 (不安感)" },
-  { value: "OVER-THE-SHOULDER SHOT", label: "过肩镜头 (对话)" },
+  { value: "OVER-THE-SHOULDER SHOT", label: "过肩镜头" },
+];
+
+const STYLE_OPTIONS = [
+  { value: "realistic", label: "🎥 电影实拍 (Realistic)" },
+  { value: "anime_jp", label: "🇯🇵 日本动画 (Anime)" },
+  { value: "anime_us", label: "🇺🇸 美漫风格 (Comics)" },
+  { value: "cyberpunk", label: "🤖 赛博朋克 (Cyberpunk)" },
+  { value: "noir", label: "🕵️‍♂️ 黑色电影 (Noir)" },
+  { value: "pixar", label: "🧸 皮克斯 3D (Pixar)" },
+  { value: "watercolor", label: "🎨 水彩手绘 (Watercolor)" },
+  { value: "ink", label: "🖌️ 中国水墨 (Ink)" },
+];
+
+// 📐 画幅比例配置
+const ASPECT_RATIOS = [
+  { value: "16:9", label: "🖥️ 横屏电影 (16:9)", cssClass: "aspect-video" },
+  { value: "9:16", label: "📱 竖屏短剧 (9:16)", cssClass: "aspect-[9/16]" },
+  { value: "1:1", label: "🔲 正方形 (1:1)", cssClass: "aspect-square" },
+  { value: "2.39:1", label: "🎬 宽银幕 (2.39:1)", cssClass: "aspect-[2.39/1]" },
+  { value: "4:3", label: "📺 复古电视 (4:3)", cssClass: "aspect-[4/3]" },
 ];
 
 export default function StoryboardPage() {
   const [script, setScript] = useState('');
-  const [sceneDescription, setSceneDescription] = useState(''); // 🔒 场景锁
+  const [sceneDescription, setSceneDescription] = useState('');
   const [step, setStep] = useState<WorkflowStep>('input');
   const [panels, setPanels] = useState<StoryboardPanel[]>([]);
+  
   const [mode, setMode] = useState<'draft' | 'render'>('draft'); 
+  const [stylePreset, setStylePreset] = useState<string>('realistic');
+  
+  // 📐 新增：比例控制
+  const [aspectRatio, setAspectRatio] = useState<string>('16:9');
+
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [isDrawing, setIsDrawing] = useState(false);     
   const [characters, setCharacters] = useState<Character[]>([]); 
@@ -59,35 +82,23 @@ export default function StoryboardPage() {
 
   const tempProjectId = "temp_workspace"; 
 
-  // 加载角色列表
   useEffect(() => {
     const fetchCharacters = async () => {
       const { data, error } = await supabase
         .from('characters')
         .select('id, name, avatar_url')
         .order('created_at', { ascending: false });
-      
-      if (error) {
-        toast.error('无法加载角色列表');
-      } else {
-        setCharacters(data || []);
-      }
+      if (!error) setCharacters(data || []);
     };
     fetchCharacters();
   }, []);
 
-  // ----------------------------------------------------------------
-  // 1. 第一步：AI 导演拆解剧本
-  // ----------------------------------------------------------------
   const handleAnalyzeScript = async () => {
     if (!script.trim()) return;
-    
     setIsAnalyzing(true);
     setPanels([]); 
-    
     try {
       const breakdown = await analyzeScript(script);
-      
       const initialPanels: StoryboardPanel[] = breakdown.panels.map((p: any, index: number) => ({
         id: index,
         description: p.description,
@@ -95,98 +106,62 @@ export default function StoryboardPage() {
         prompt: p.visualPrompt,
         isLoading: false, 
       }));
-      
       setPanels(initialPanels);
       setStep('review'); 
-      toast.success(`剧本拆解完成，请配置场景与运镜`);
-
+      toast.success(`剧本拆解完成`);
     } catch (error: any) {
       console.error(error);
-      toast.error('剧本拆解失败: ' + error.message);
+      toast.error('拆解失败: ' + error.message);
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  // ----------------------------------------------------------------
-  // 中间交互：CRUD
-  // ----------------------------------------------------------------
   const handleUpdatePanel = (id: number, field: keyof StoryboardPanel, value: string) => {
-    setPanels(current => 
-      current.map(p => p.id === id ? { ...p, [field]: value } : p)
-    );
+    setPanels(current => current.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
-
   const handleDeletePanel = (id: number) => {
     setPanels(current => current.filter(p => p.id !== id));
   };
-
   const handleAddPanel = () => {
     const newId = panels.length > 0 ? Math.max(...panels.map(p => p.id)) + 1 : 0;
     setPanels([...panels, {
-        id: newId,
-        description: "动作描述...",
-        shotType: "MID SHOT",
-        prompt: "",
-        isLoading: false
+        id: newId, description: "...", shotType: "MID SHOT", prompt: "", isLoading: false
     }]);
   };
 
-  // ----------------------------------------------------------------
-  // 2. 第二步：批量生成画面 (Scene Lock + Character Lock)
-  // ----------------------------------------------------------------
   const handleGenerateImages = async () => {
-    if (!sceneDescription.trim()) {
-      toast.warning('建议填写“场景设定”以保证背景一致性');
-    }
+    if (!sceneDescription.trim()) toast.warning('建议填写“场景设定”');
 
     setStep('generating');
     setIsDrawing(true);
     setPanels(current => current.map(p => ({ ...p, isLoading: true })));
 
-    const isDraftMode = mode === 'draft';
-
-    // 并行请求
     const promises = panels.map(async (panel) => {
       try {
         const tempShotId = `storyboard_${Date.now()}_${panel.id}`;
         
-        // 🏗️ 商业级 Prompt 组装逻辑：
-        // 1. [角色] (后端注入)
-        // 2. [环境] (前端 sceneDescription) -> 确保背景一致
-        // 3. [运镜] (前端 panel.shotType) -> 确保角度准确
-        // 4. [动作] (前端 panel.description) -> 确保剧情对
-        // 5. [风格] (前端 mode)
-        
         const scenePart = sceneDescription ? `(Environment: ${sceneDescription}), ` : '';
         const shotPart = `(Camera Angle: ${panel.shotType}), `;
-        const actionPart = `${panel.description}, `;
-        const stylePart = isDraftMode 
-          ? 'rough sketch, storyboard style, black and white line art' 
-          : 'cinematic lighting, photorealistic, 8k, masterpiece';
-
-        // 最终发送给后端的 Prompt (后端会在最前面再拼上角色 Character)
-        const finalPrompt = `${scenePart}${shotPart}${actionPart}${stylePart}`;
+        const actionPart = `${panel.description}`;
+        
+        const finalPrompt = `${scenePart}${shotPart}${actionPart}`;
 
         const res = await generateShotImage(
           tempShotId, 
           finalPrompt, 
           tempProjectId, 
-          isDraftMode,
+          mode === 'draft', 
+          stylePreset,
+          aspectRatio, // 👈 传递比例
           selectedCharacterId || undefined 
         );
 
         if (res.success && res.url) {
-          setPanels(current => 
-            current.map(p => p.id === panel.id 
-              ? { ...p, imageUrl: res.url, isLoading: false } 
-              : p
-            )
-          );
+          setPanels(current => current.map(p => p.id === panel.id ? { ...p, imageUrl: res.url, isLoading: false } : p));
         } else {
            throw new Error(res.message || '生成失败');
         }
-
       } catch (error) {
         console.error(`Panel ${panel.id} failed`, error);
         setPanels(current => current.map(p => p.id === panel.id ? { ...p, isLoading: false } : p)); 
@@ -199,19 +174,21 @@ export default function StoryboardPage() {
     toast.success('商业级分镜绘制完成');
   };
 
+  // 获取当前比例对应的 Tailwind CSS 类 (用于修复裁剪 Bug)
+  const currentRatioClass = ASPECT_RATIOS.find(r => r.value === aspectRatio)?.cssClass || "aspect-video";
+
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white p-6 font-sans">
       <Toaster position="top-center" richColors />
       
-      {/* 顶部导航 */}
       <div className="max-w-7xl mx-auto mb-8 flex items-center justify-between">
-        <Link href="/tools/cineflow" className="inline-flex items-center text-zinc-500 hover:text-white transition-colors">
+        <Link href="/tools" className="inline-flex items-center text-zinc-500 hover:text-white transition-colors">
             <ArrowLeft className="w-4 h-4 mr-2" /> 返回工作台
         </Link>
         <div className="flex items-center gap-3">
              <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'input' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>1. 剧本</div>
              <div className="w-4 h-[1px] bg-zinc-800"></div>
-             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'review' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>2. 运镜</div>
+             <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'review' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>2. 设置</div>
              <div className="w-4 h-[1px] bg-zinc-800"></div>
              <div className={`px-3 py-1 rounded-full text-xs font-bold ${step === 'generating' || step === 'done' ? 'bg-yellow-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}>3. 成片</div>
         </div>
@@ -222,7 +199,6 @@ export default function StoryboardPage() {
         {/* === 左侧控制区 === */}
         <div className="w-full lg:w-1/3 bg-[#111] p-6 rounded-2xl border border-white/10 flex flex-col gap-6 h-fit sticky top-6">
           
-          {/* 1. 剧本输入 */}
           <div>
             <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
               <Clapperboard className="text-yellow-500" />
@@ -237,20 +213,77 @@ export default function StoryboardPage() {
             />
           </div>
 
-          {/* 2. 核心控制台 (仅在输入/确认阶段显示) */}
+          {/* 模式选择按钮 */}
+          <div className="bg-black/30 p-1 rounded-lg flex border border-white/5">
+            <button 
+                onClick={() => setMode('draft')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'draft' ? 'bg-yellow-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+                <PenTool className="w-3 h-3" /> 草图 (Turbo)
+            </button>
+            <button 
+                onClick={() => setMode('render')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'render' ? 'bg-purple-600 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+            >
+                <ImageIcon className="w-3 h-3" /> 渲染 (Flux)
+            </button>
+          </div>
+
           {(step === 'input' || step === 'review') && (
-            <div className="space-y-4 border-t border-white/10 pt-4">
+            <div className="space-y-4 border-t border-white/10 pt-4 animate-in fade-in slide-in-from-top-2 duration-300">
               
-              {/* 主角选择 (Character Lock) */}
+              {/* 1. 画幅比例 (始终显示) */}
+              <div>
+                <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                  <Monitor className="w-3 h-3 text-orange-500" />
+                  画幅比例 (Aspect Ratio)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {ASPECT_RATIOS.map(ratio => (
+                    <button
+                      key={ratio.value}
+                      onClick={() => setAspectRatio(ratio.value)}
+                      className={`text-[10px] py-2 px-1 rounded-lg border transition-all ${
+                        aspectRatio === ratio.value 
+                        ? 'bg-orange-500/20 border-orange-500 text-orange-500 font-bold' 
+                        : 'bg-black/30 border-white/5 text-zinc-500 hover:border-white/20'
+                      }`}
+                    >
+                      {ratio.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. 风格选择 (render) */}
+              {mode === 'render' && (
+                <div className="animate-in zoom-in-95 duration-200">
+                  <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
+                    <Palette className="w-3 h-3 text-purple-500" />
+                    美术风格
+                  </label>
+                  <select
+                    value={stylePreset}
+                    onChange={(e) => setStylePreset(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-purple-500 focus:outline-none appearance-none"
+                  >
+                    {STYLE_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
+              {/* 3. 角色选择 */}
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                   <User className="w-3 h-3 text-blue-500" />
-                  固定主角 (Character Lock)
+                  固定主角
                 </label>
                 <select
                   value={selectedCharacterId || ''}
                   onChange={(e) => setSelectedCharacterId(e.target.value || null)}
-                  className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
+                  className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none appearance-none"
                 >
                   <option value="">-- 不指定 --</option>
                   {characters.map(char => (
@@ -259,41 +292,23 @@ export default function StoryboardPage() {
                 </select>
               </div>
 
-              {/* 场景设定 (Scene Lock) - 新增功能 */}
+              {/* 4. 场景设定 */}
               <div>
                 <label className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-2">
                   <MapPin className="w-3 h-3 text-green-500" />
-                  固定场景 (Scene Lock)
+                  固定场景
                 </label>
                 <input
                   type="text"
                   value={sceneDescription}
                   onChange={(e) => setSceneDescription(e.target.value)}
-                  placeholder="例如：赛博朋克街道，雨夜，霓虹灯..."
+                  placeholder="例如：赛博朋克街道，雨夜..."
                   className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-gray-300 focus:border-green-500 focus:outline-none"
                 />
-                <p className="text-[10px] text-zinc-500 mt-1">填写后，所有镜头将保持在该场景中，确保背景一致。</p>
               </div>
             </div>
           )}
 
-          {/* 模式选择 */}
-          <div className="bg-black/30 p-1 rounded-lg flex border border-white/5">
-            <button 
-                onClick={() => setMode('draft')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'draft' ? 'bg-yellow-500 text-black' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-                <PenTool className="w-3 h-3" /> 草图 (Turbo)
-            </button>
-            <button 
-                onClick={() => setMode('render')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'render' ? 'bg-purple-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-            >
-                <ImageIcon className="w-3 h-3" /> 渲染 (Flux)
-            </button>
-          </div>
-
-          {/* 按钮区域 */}
           {step === 'input' ? (
               <button
                 onClick={handleAnalyzeScript}
@@ -327,7 +342,7 @@ export default function StoryboardPage() {
           {step === 'input' && (
             <div className="h-full min-h-[500px] flex flex-col items-center justify-center bg-[#111] rounded-2xl border border-dashed border-white/10 text-zinc-600">
               <Film className="w-20 h-20 mb-4 opacity-10" />
-              <p className="font-bold">输入剧本 &rarr; 配置场景 &rarr; AI 绘制</p>
+              <p className="font-bold">输入剧本 &rarr; 配置 &rarr; AI 绘制</p>
             </div>
           )}
 
@@ -345,7 +360,6 @@ export default function StoryboardPage() {
                                 <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-zinc-500 font-bold">
                                     {idx + 1}
                                 </div>
-                                {/* 🎬 高级运镜选择 */}
                                 <select 
                                     value={panel.shotType}
                                     onChange={(e) => handleUpdatePanel(panel.id, 'shotType', e.target.value)}
@@ -362,7 +376,6 @@ export default function StoryboardPage() {
                                     value={panel.description}
                                     onChange={(e) => handleUpdatePanel(panel.id, 'description', e.target.value)}
                                     className="w-full bg-black/30 text-sm text-gray-300 border border-transparent hover:border-zinc-700 focus:border-yellow-500 rounded p-2 resize-none focus:outline-none"
-                                    placeholder="描述画面中的动作..."
                                     rows={2}
                                 />
                             </div>
@@ -374,9 +387,10 @@ export default function StoryboardPage() {
           )}
 
           {(step === 'generating' || step === 'done') && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            // 🐛 修复核心：根据选择的比例，动态调整 grid 列数和 卡片比例
+            <div className={`grid gap-6 ${aspectRatio === '9:16' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'}`}>
               {panels.map((panel, idx) => (
-                <div key={panel.id} className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-xl border border-zinc-800 group">
+                <div key={panel.id} className={`relative bg-black rounded-xl overflow-hidden shadow-xl border border-zinc-800 group ${currentRatioClass}`}>
                   {panel.isLoading ? (
                      <div className="absolute inset-0 flex flex-col gap-2 items-center justify-center bg-zinc-900 text-zinc-500">
                         <Loader2 className="animate-spin w-8 h-8 text-yellow-500" />
@@ -408,7 +422,7 @@ export default function StoryboardPage() {
               ))}
               
               {step === 'done' && (
-                  <div className="col-span-1 md:col-span-2 flex justify-center pt-8 pb-12">
+                  <div className={`flex justify-center pt-8 pb-12 ${aspectRatio === '9:16' ? 'col-span-2 md:col-span-3' : 'col-span-1 md:col-span-2'}`}>
                       <button onClick={() => toast.info('下载功能开发中...')} className="bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2">
                           <Save size={18}/> 导出分镜
                       </button>

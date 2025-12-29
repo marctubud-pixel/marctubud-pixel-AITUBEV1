@@ -78,41 +78,41 @@ comments: content, video_id, user_id。
 
 变现模型：VIP 订阅、积分充值、商单抽佣。
 
-🚀 六、 开发进度追踪 (Current Progress) - [2025-12-29 23:10 更新]
-🔭 当前阶段：Phase 3.0 - 智能一致性与深度编辑 (Smart Consistency & Deep Editing)
+🚀 六、 开发进度追踪 (Current Progress)
+🔭 当前阶段：Phase 3.1 - 商业级分镜物理 (Commercial Physics)
 
-核心目标：从“能画图”进化为“画得准”，解决 AI 视频创作中最大的痛点——角色与场景的不连续性。
+核心目标：确保分镜生成的“物理属性”（比例、画风、连续性）符合影视行业标准。
 
-✅ 已完成 (Completed) [2025-12-29 深夜战果 - 角色一致性核心 (Character Consistency Core)]
+✅ 已完成 (Completed) [2025-12-29 深夜战果 - 商业化核心升级]
 
-[CineFlow 后端大脑改造]：
+[CineFlow 画幅与构图]：
 
-[x] 升级 generateShotImage Server Action，新增 characterId 参数支持。
+[x] 动态分辨率引擎：后端不再硬编码 1024x1024，支持 16:9, 9:16, 2.39:1 (宽银幕) 等多种映射。
 
-[x] 实现 Prompt Injection (提示词注入) 逻辑：自动查表获取角色 description，并将其权重置于 Prompt 首位，强制 AI 锁定角色特征。
+[x] UI 自适应布局：分镜卡片根据选择的比例自动调整 CSS (aspect-video, grid-cols), 彻底修复预览裁剪问题。
 
-[x] 预埋 avatar_url 逻辑，为未来升级 Image-to-Image (图生图) 做好数据准备。
+[CineFlow 风格与模式]：
 
-[CineFlow 前端交互升级]：
+[x] 双层渲染架构：实现 Turbo (草图) 与 Flux (渲染) 分离。仅在渲染模式下加载风格选项。
 
-[x] 实现 StoryboardPage 动态加载 Supabase 角色列表。
+[x] 风格预设库：集成 8 种主流商用风格 (Cyberpunk, Anime, Realistic, Noir 等)。
 
-[x] 新增“主角选择”下拉菜单，实现前后端数据流打通。
+[CineFlow 场记系统]：
 
-[2025-12-29 晚间战果 - 角色资产库]
+[x] 场景锁 (Scene Lock)：新增环境描述字段，强制统一所有分镜的背景设定。
 
-[x] 角色库 CRUD、鉴权修复、存储桶隔离、图片域名白名单 (已归档)。
+[x] 电影级运镜：扩充 10+ 种专业镜头语言 (Dutch Angle, Overhead, etc.)。
 
 ☀️ 下一步行动指南 (Next Action Plan)
 
-核心任务 A：[CineFlow] 场景锁 (Scene Lock / Background Consistency)
+核心任务：[Assets] 角色资产 2.0 - 多图/三视图管理 (Multi-Image Assets)
 
-痛点：现在角色长得一样了，但第一张图在“赛博城市”，第二张图可能突然跑到“森林”里去了，因为 AI 对环境的想象太发散。
+用户痛点：“单张图片太单一，无法商用。需要三视图、表情、动作等多维资产。”
 
-方案：允许用户先生成一张“空镜”或“概念图”作为基准，后续所有镜头强制参考这张图的色调和结构 (使用 Image-to-Image 或 Style Reference)。
+任务拆解：
 
-核心任务 B：[Editor] 单镜重绘与微调 (Regenerate & Refine)
+数据库升级：新建 character_images 表 (一对多关系)，关联 characters 主表。
 
-痛点：目前是“一锤子买卖”，如果 10 张图里有 1 张画崩了（比如多只手），用户无法只重画这一张。
+前端改造：在 /tools/characters 详情页，允许用户上传多张参考图（侧面、背面、表情包）。
 
-方案：点击生成后的图片 -> 弹出编辑框 -> 修改 Prompt -> 点击“单张重绘”。
+生成逻辑升级：在生成分镜时，允许用户指定“引用哪一张图”作为 Reference（为后续图生图做准备）。
