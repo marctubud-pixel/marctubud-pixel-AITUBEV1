@@ -1,4 +1,5 @@
-🛰️ AI.Tube 项目 Master 开发规划与真理文档 (2025-12-29 22:45 更新版)
+🛰️ AI.Tube 项目 Master 开发规划与真理文档 (2025-12-30 00:30 更新版)
+
 🛠️ 一、 协作铁律 (The Iron Rules) - 永不动摇
 单文件修改：必须由用户发送完整代码 -> AI 确认后回复修改后的完整代码。
 
@@ -79,40 +80,48 @@ comments: content, video_id, user_id。
 变现模型：VIP 订阅、积分充值、商单抽佣。
 
 🚀 六、 开发进度追踪 (Current Progress)
-🔭 当前阶段：Phase 3.1 - 商业级分镜物理 (Commercial Physics)
+🔭 当前阶段：Phase 3.3 - 视觉闭环与导出交付 (Visual Loop & Delivery)
 
-核心目标：确保分镜生成的“物理属性”（比例、画风、连续性）符合影视行业标准。
+核心目标：从“数据打通”迈向“算法打通”，让 AI 真正参考图片绘图；同时实现分镜的商业交付（PDF 导出）。
 
-✅ 已完成 (Completed) [2025-12-29 深夜战果 - 商业化核心升级]
+✅ 已完成 (Completed) [2025-12-30 凌晨战果 - 视觉锚点集成]
 
-[CineFlow 画幅与构图]：
+[CineFlow 前端交互]：
 
-[x] 动态分辨率引擎：后端不再硬编码 1024x1024，支持 16:9, 9:16, 2.39:1 (宽银幕) 等多种映射。
+[x] 参考图选择器：在 Storyboard 页面实现了基于角色的参考图加载与点选交互。
 
-[x] UI 自适应布局：分镜卡片根据选择的比例自动调整 CSS (aspect-video, grid-cols), 彻底修复预览裁剪问题。
+[x] 视觉反馈：选中图片高亮，支持“无参考”与“有参考”状态切换。
 
-[CineFlow 风格与模式]：
+[CineFlow 后端逻辑]：
 
-[x] 双层渲染架构：实现 Turbo (草图) 与 Flux (渲染) 分离。仅在渲染模式下加载风格选项。
+[x] API 升级：generateShotImage 函数增加 referenceImageUrl 参数。
 
-[x] 风格预设库：集成 8 种主流商用风格 (Cyberpunk, Anime, Realistic, Noir 等)。
+[x] 数据流打通：成功将前端选中的图片 URL 传递至后端（目前用于日志/Prompt 辅助）。
 
-[CineFlow 场记系统]：
+[角色资产库 2.0]：
 
-[x] 场景锁 (Scene Lock)：新增环境描述字段，强制统一所有分镜的背景设定。
-
-[x] 电影级运镜：扩充 10+ 种专业镜头语言 (Dutch Angle, Overhead, etc.)。
+[x] 多图管理：支持上传三视图、表情包等多维参考图。
 
 ☀️ 下一步行动指南 (Next Action Plan)
 
-核心任务：[Assets] 角色资产 2.0 - 多图/三视图管理 (Multi-Image Assets)
+核心任务 A：[Engine] 真·图生图 (True Image-to-Image) [🔥 攻坚重点]
 
-用户痛点：“单张图片太单一，无法商用。需要三视图、表情、动作等多维资产。”
+痛点：目前参考图仅作为 Prompt 的心理暗示，AI 并没有真正读取像素。导致服装细节不一致。
 
-任务拆解：
+方案：
 
-数据库升级：新建 character_images 表 (一对多关系)，关联 characters 主表。
+调研火山引擎接口：寻找支持 image_url 输入的 img2img 或 controlnet 端点。
 
-前端改造：在 /tools/characters 详情页，允许用户上传多张参考图（侧面、背面、表情包）。
+后端改造：如果 API 变化，需要重写 generateShotImage 的 payload 组装逻辑。
 
-生成逻辑升级：在生成分镜时，允许用户指定“引用哪一张图”作为 Reference（为后续图生图做准备）。
+强度控制：前端增加“参考强度 (Strength)”滑杆（0.1 ~ 1.0），控制 AI 听话的程度。
+
+核心任务 B：[Export] 商业级 PDF 导出 (Deliverable)
+
+痛点：分镜画好了，用户无法拿去给剧组或客户看。
+
+方案：
+
+PDF 生成：使用 jspdf 或 react-pdf。
+
+排版布局：生成标准的影视分镜表（左图右文，包含景别、运镜、时长）。

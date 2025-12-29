@@ -173,20 +173,20 @@ export default function StoryboardPage() {
       try {
         const tempShotId = `storyboard_${Date.now()}_${panel.id}`;
         
+        // 🏗️ 修正：不再在前端拼装 shotType，而是拆分参数
         const scenePart = sceneDescription ? `(Environment: ${sceneDescription}), ` : '';
-        const shotPart = `(Camera Angle: ${panel.shotType}), `;
-        const actionPart = `${panel.description}`;
-        const finalPrompt = `${scenePart}${shotPart}${actionPart}`;
+        const actionPrompt = `${scenePart}${panel.description}`; // 只包含环境和动作
 
         const res = await generateShotImage(
           tempShotId, 
-          finalPrompt, 
+          actionPrompt, // 👈 参数1: 动作描述
           tempProjectId, 
           mode === 'draft', 
           stylePreset,
           aspectRatio,
+          panel.shotType, // 👈 参数7: 景别 (后端会加权处理)
           selectedCharacterId || undefined,
-          selectedRefImage || undefined // 👈 传递选中的参考图
+          selectedRefImage || undefined
         );
 
         if (res.success && res.url) {
