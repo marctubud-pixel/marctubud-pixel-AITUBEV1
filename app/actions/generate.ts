@@ -37,7 +37,7 @@ const RATIO_MAP: Record<string, string> = {
  * 💡 语义检查：判断提示词是否描述的是非面部局部细节
  */
 function isNonFaceDetail(prompt: string): boolean {
-    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'eye', 'typing', 'holding', 'tool', 'object', 'close-up of'];
+    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'eye', 'typing', 'holding', 'tool', 'object', 'ground', 'sand'];
     const lower = prompt.toLowerCase();
     return keywords.some(k => lower.includes(k));
 }
@@ -50,9 +50,9 @@ function getNegativePrompt(shotType: string, stylePreset: string, actionPrompt: 
         baseNegative += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting, digital art";
     }
 
-    // 🔥 细节特写模式下，极度强化负面屏蔽词
+    // 🔥 细节特写模式下，极度强化负面屏蔽词，防止模型脑补人物
     if (isNonFaceDetail(actionPrompt)) {
-        baseNegative += ", (face:2.0), (head:2.0), (eyes:1.8), (lips:1.8), (nose:1.8), (hair:1.8), portrait, woman, girl, man, boy, person, human silhouette, look at camera";
+        baseNegative += ", (face:2.0), (head:2.0), (eyes:2.0), (lips:1.8), (nose:1.8), (hair:1.8), portrait, woman, girl, man, boy, person, human, character, face focus, looking at camera";
     }
     
     if (upper.includes("CLOSE") || upper.includes("FACE") || upper.includes("HEAD")) {
@@ -110,10 +110,12 @@ export async function generateShotImage(
   try {
     if (!ARK_API_KEY || !ARK_ENDPOINT_ID) throw new Error("API Key Missing");
 
+    // 🚨 关键检测：是否是局部细节镜头
     const isDetailShot = isNonFaceDetail(actionPrompt);
     const isCloseUp = shotType.toUpperCase().includes("CLOSE");
 
-    console.log(`[Server] Gen Start | Mode: ${isDetailShot ? 'DETACHED DETAIL' : 'CHARACTER SHOT'}`);
+    console.log(`[Server Action] 正在生成分镜: ${shotId}`);
+    console.log(`[Logic] 细节模式: ${isDetailShot} | 目标景别: ${shotType}`);
 
     // 1. 启动深度视觉感知
     let visionAnalysis: VisionAnalysis | null = null;
@@ -125,9 +127,9 @@ export async function generateShotImage(
             visionAnalysis = await analyzeRefImage(referenceImageUrl);
             if (visionAnalysis) {
                 visualDescription = visionAnalysis.description;
-                // 如果是局部特写，完全过滤掉面部描述词
+                // 如果是局部特写，过滤掉所有面部/身份特征，仅保留环境颜色/材质
                 keyFeaturesPrompt = visionAnalysis.key_features
-                    ?.filter(f => !isDetailShot || !['eye', 'lip', 'nose', 'face', 'hair'].some(k => f.includes(k.toLowerCase())))
+                    ?.filter(f => !isDetailShot || !['eye', 'lip', 'nose', 'face', 'hair', 'person', 'woman'].some(k => f.includes(k.toLowerCase())))
                     .map(f => `(${f}:1.1)`).join(", ") || "";
             }
         } catch (e) { console.warn("[Vision] 分析跳过", e); }
@@ -141,20 +143,21 @@ export async function generateShotImage(
     let finalPrompt = "";
     let characterPart = "";
 
-    // 获取角色描述（如果不是细节分镜，则全量获取）
-    if (characterId) {
+    // 🚨 逻辑修正：如果识别为局部特写，即便传入了 characterId 也强制忽略人像描述
+    if (characterId && !isDetailShot) {
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
-      if (char && !isDetailShot) {
+      if (char) {
           characterPart = `(Character: ${char.description}), `;
-      } else if (char && isDetailShot) {
-          // 细节模式下只保留肤色和服装色，绝对不提人脸
-          characterPart = `(skin and texture focus:1.2), `;
       }
+    } else if (isDetailShot) {
+      // 局部特写模式：只允许环境和材质描述进入 Prompt
+      console.log("[Logic] 局部特写：已强制封禁角色描述词注入");
+      characterPart = ""; 
     }
 
     if (isDetailShot) {
-        // 🔥 熔断逻辑：细节分镜完全重新拼写 Prompt，强制物体优先
-        finalPrompt = `((${actionPrompt}:2.5)), ${characterPart} ${keyFeaturesPrompt}, (extreme close-up view:1.4), (macro photography style:1.3), (strictly no people:1.5), (no face:1.5), ${stylePart}`;
+        // 🔥 极端重构：细节分镜采用“非人化”提示词结构
+        finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (extreme close-up view:1.4), (macro photography:1.4), (detailed texture:1.3), (strictly no people:1.8), (no face:1.8), (environment focus:1.2), ${stylePart}`;
     } else {
         // 正常人像分镜
         const shotPart = isCloseUp 
@@ -170,7 +173,7 @@ export async function generateShotImage(
       negative_prompt: getNegativePrompt(shotType, stylePreset, actionPrompt), 
       size: RATIO_MAP[aspectRatio] || "2560x1440", 
       n: 1,
-      guidance_scale: 7.5 // 保持适中的引导强度
+      guidance_scale: 8.0 // 略微调高引导强度，增强指令遵循度
     };
 
     // 4. 参考图处理
@@ -179,13 +182,18 @@ export async function generateShotImage(
         const base64Image = await processImageRef(targetRefImage, visionAnalysis, shotType);
         if (base64Image) {
             payload.image_url = base64Image;
-            // 细节特写如果带参考图，需要极高的强度来摆脱原有的“人”的构图
-            payload.strength = isDetailShot ? 0.88 : 0.65;
-            payload.ref_strength = isDetailShot ? 0.88 : 0.65;
+            // 细节特写如果带参考图（哪怕参考图有人），使用最高强度重绘以彻底抹除人体轮廓
+            payload.strength = isDetailShot ? 0.92 : 0.65;
+            payload.ref_strength = isDetailShot ? 0.92 : 0.65;
         }
     }
 
-    console.log(`[Final Prompt] ${finalPrompt.substring(0, 100)}...`);
+    // 🚨 终极日志：打印发送给火山 API 的真实 Payload
+    console.log("--- [DEBUG: VOLCANO API PAYLOAD] ---");
+    console.log("PROMPT:", payload.prompt);
+    console.log("NEG_PROMPT:", payload.negative_prompt);
+    console.log("STRENGTH:", payload.strength);
+    console.log("-------------------------------------");
 
     // 5. 请求发送
     const response = await fetch(ARK_API_URL, {
