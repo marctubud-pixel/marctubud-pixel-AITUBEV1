@@ -33,28 +33,35 @@ const RATIO_MAP: Record<string, string> = {
   "2.39:1": "3072x1280" 
 };
 
-function getNegativePrompt(shotType: string, stylePreset: string): string {
+/**
+ * 💡 语义检查：判断提示词是否描述的是非面部局部细节
+ */
+function isNonFaceDetail(prompt: string): boolean {
+    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'eye', 'typing', 'holding', 'tool', 'object', 'close-up of'];
+    const lower = prompt.toLowerCase();
+    return keywords.some(k => lower.includes(k));
+}
+
+function getNegativePrompt(shotType: string, stylePreset: string, actionPrompt: string): string {
     const upper = shotType.toUpperCase();
     let baseNegative = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
     
     if (stylePreset === 'realistic' || stylePreset === 'noir') {
         baseNegative += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting, digital art";
     }
-    
-    if (upper.includes("CLOSE") || upper.includes("FACE") || upper.includes("HEAD")) {
-        return `${baseNegative}, legs, feet, shoes, lower body, full body, wide shot, distant view, standing, walking, running, body out of frame`;
+
+    // 🔥 细节特写模式下，极度强化负面屏蔽词
+    if (isNonFaceDetail(actionPrompt)) {
+        baseNegative += ", (face:2.0), (head:2.0), (eyes:1.8), (lips:1.8), (nose:1.8), (hair:1.8), portrait, woman, girl, man, boy, person, human silhouette, look at camera";
     }
     
-    if (upper.includes("FULL") || upper.includes("WIDE")) {
-        return `${baseNegative}, close up, face shot, headshot, cropped head`;
+    if (upper.includes("CLOSE") || upper.includes("FACE") || upper.includes("HEAD")) {
+        return `${baseNegative}, legs, feet, shoes, lower body, full body, wide shot, distant view`;
     }
     
     return baseNegative;
 }
 
-/**
- * 核心逻辑：物理裁剪预处理器 (修复版)
- */
 async function processImageRef(
   url: string, 
   vision: VisionAnalysis | null, 
@@ -62,38 +69,25 @@ async function processImageRef(
 ): Promise<string | null> {
   try {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch failed: ${res.statusText}`);
+    if (!res.ok) throw new Error(`Fetch failed`);
     const buffer = Buffer.from(await res.arrayBuffer());
 
     let finalBuffer: Buffer = buffer; 
-    const isTargetClose = targetShot.toUpperCase().includes("CLOSE") || targetShot.toUpperCase().includes("FACE");
+    const isTargetClose = targetShot.toUpperCase().includes("CLOSE");
 
-    // 🔥 物理裁剪触发判断
     if (vision?.shot_type.includes("Full") && isTargetClose && vision.subject_composition?.head_y_range) {
-      console.log("[Sharp] 启动物理裁剪流程...");
-      
       const metadata = await sharp(buffer).metadata();
-      
       if (metadata.width && metadata.height) {
         const [startY, endY] = vision.subject_composition.head_y_range;
         const top = Math.max(0, Math.floor(startY * metadata.height * 0.7)); 
         const cropHeight = Math.min(metadata.height - top, Math.floor((endY - startY + 0.3) * metadata.height));
         
-        // 修正链式调用语法
         finalBuffer = await sharp(buffer)
-          .extract({ 
-            left: 0, 
-            top: top, 
-            width: metadata.width, 
-            height: cropHeight 
-          })
+          .extract({ left: 0, top: top, width: metadata.width, height: cropHeight })
           .resize(metadata.width, metadata.height, { fit: 'cover' })
           .toBuffer();
-          
-        console.log("[Sharp] 裁剪完成");
       }
     }
-
     return `data:image/jpeg;base64,${finalBuffer.toString('base64')}`;
   } catch (error) {
     console.error("[Sharp] 图像处理失败:", error);
@@ -116,8 +110,12 @@ export async function generateShotImage(
   try {
     if (!ARK_API_KEY || !ARK_ENDPOINT_ID) throw new Error("API Key Missing");
 
-    console.log(`[Server] Gen Start | Target Shot: ${shotType}`);
+    const isDetailShot = isNonFaceDetail(actionPrompt);
+    const isCloseUp = shotType.toUpperCase().includes("CLOSE");
 
+    console.log(`[Server] Gen Start | Mode: ${isDetailShot ? 'DETACHED DETAIL' : 'CHARACTER SHOT'}`);
+
+    // 1. 启动深度视觉感知
     let visionAnalysis: VisionAnalysis | null = null;
     let visualDescription = "";
     let keyFeaturesPrompt = "";
@@ -127,98 +125,77 @@ export async function generateShotImage(
             visionAnalysis = await analyzeRefImage(referenceImageUrl);
             if (visionAnalysis) {
                 visualDescription = visionAnalysis.description;
-                keyFeaturesPrompt = visionAnalysis.key_features?.map(f => `(${f}:1.2)`).join(", ") || "";
+                // 如果是局部特写，完全过滤掉面部描述词
+                keyFeaturesPrompt = visionAnalysis.key_features
+                    ?.filter(f => !isDetailShot || !['eye', 'lip', 'nose', 'face', 'hair'].some(k => f.includes(k.toLowerCase())))
+                    .map(f => `(${f}:1.1)`).join(", ") || "";
             }
-        } catch (e) { 
-            console.warn("[Vision] 分析跳过", e); 
-        }
+        } catch (e) { console.warn("[Vision] 分析跳过", e); }
     }
 
+    // 2. 动态构建熔断式 Prompt
     const stylePart = isDraftMode 
       ? "rough storyboard sketch, black and white line art, minimal detail"
       : (STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']);
     
-    const isCloseUp = shotType.toUpperCase().includes("CLOSE") || shotType.toUpperCase().includes("FACE");
-    
-    let shotPart = isCloseUp 
-        ? `(((${shotType} shot)):2.0), (head and shoulders focus:1.8), (highly detailed face:1.5)` 
-        : `(${shotType} shot:1.5)`; 
-
+    let finalPrompt = "";
     let characterPart = "";
+
+    // 获取角色描述（如果不是细节分镜，则全量获取）
     if (characterId) {
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
-      if (char) characterPart = `(Character: ${char.description})`; 
+      if (char && !isDetailShot) {
+          characterPart = `(Character: ${char.description}), `;
+      } else if (char && isDetailShot) {
+          // 细节模式下只保留肤色和服装色，绝对不提人脸
+          characterPart = `(skin and texture focus:1.2), `;
+      }
     }
 
-    if (keyFeaturesPrompt) characterPart += `, ${keyFeaturesPrompt}`;
+    if (isDetailShot) {
+        // 🔥 熔断逻辑：细节分镜完全重新拼写 Prompt，强制物体优先
+        finalPrompt = `((${actionPrompt}:2.5)), ${characterPart} ${keyFeaturesPrompt}, (extreme close-up view:1.4), (macro photography style:1.3), (strictly no people:1.5), (no face:1.5), ${stylePart}`;
+    } else {
+        // 正常人像分镜
+        const shotPart = isCloseUp 
+            ? `(((${shotType} shot)):2.0), (head and shoulders focus:1.8), (highly detailed face:1.5)`
+            : `(${shotType} shot:1.5)`;
+        finalPrompt = `${shotPart}, ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt}, (${stylePart}:1.4)`;
+    }
 
-    let finalPrompt = `${shotPart}, ${actionPrompt}, ${characterPart}`;
-    finalPrompt += `, (${stylePart}:1.4)`;
-
-    const imageSize = RATIO_MAP[aspectRatio] || "2560x1440";
-    const negativePrompt = getNegativePrompt(shotType, stylePreset);
-
+    // 3. Payload 构造
     const payload: any = {
       model: ARK_ENDPOINT_ID, 
       prompt: finalPrompt, 
-      negative_prompt: negativePrompt, 
-      size: imageSize, 
-      n: 1
+      negative_prompt: getNegativePrompt(shotType, stylePreset, actionPrompt), 
+      size: RATIO_MAP[aspectRatio] || "2560x1440", 
+      n: 1,
+      guidance_scale: 7.5 // 保持适中的引导强度
     };
 
+    // 4. 参考图处理
     const targetRefImage = referenceImageUrl || sceneImageUrl;
-
     if (targetRefImage) {
         const base64Image = await processImageRef(targetRefImage, visionAnalysis, shotType);
-        
         if (base64Image) {
             payload.image_url = base64Image;
-            let strength = 0.65; 
-
-            if (visionAnalysis) {
-                const refShot = visionAnalysis.shot_type; 
-                const targetShot = shotType.toUpperCase();             
-                
-                if (refShot.includes("Full") && isCloseUp) {
-                    strength = 0.82; 
-                    payload.prompt += ", (zoomed in portrait:1.5), (ignore reference background:1.2)";
-                } else if (refShot.includes("Close") && targetShot.includes("FULL")) {
-                    strength = 0.92;
-                } else if (refShot.replace(" ","").toUpperCase() === targetShot.replace(" ","")) {
-                    strength = 0.45; 
-                }
-            }
-
-            console.log(`[Server] Final Strength: ${strength}`);
-            payload.strength = strength;
-            payload.ref_strength = strength;
+            // 细节特写如果带参考图，需要极高的强度来摆脱原有的“人”的构图
+            payload.strength = isDetailShot ? 0.88 : 0.65;
+            payload.ref_strength = isDetailShot ? 0.88 : 0.65;
         }
     }
 
+    console.log(`[Final Prompt] ${finalPrompt.substring(0, 100)}...`);
+
+    // 5. 请求发送
     const response = await fetch(ARK_API_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${ARK_API_KEY}`
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ARK_API_KEY}` },
       body: JSON.stringify(payload)
     });
     
     const data = await response.json();
-    
-    if (!response.ok) {
-        if (data.error?.code === 'invalid_parameter') {
-             delete payload.image_url;
-             delete payload.strength;
-             const retryRes = await fetch(ARK_API_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ARK_API_KEY}` },
-                body: JSON.stringify(payload)
-            });
-            return processResponse(await retryRes.json(), shotId, projectId);
-        }
-        throw new Error(data.error?.message || "Generation Failed");
-    }
+    if (!response.ok) throw new Error(data.error?.message || "Generation Failed");
 
     return processResponse(data, shotId, projectId);
 
