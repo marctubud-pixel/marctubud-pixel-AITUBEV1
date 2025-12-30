@@ -34,54 +34,75 @@ const RATIO_MAP: Record<string, string> = {
 };
 
 /**
- * 💡 语义检查：判断提示词是否描述的是非面部局部细节
+ * 💡 语义检查 1：非面部肢体/物体细节 (开启 No Face 模式)
+ * ❌ 移除了 'eye', '眼', 'mouth', 'lip'
  */
 function isNonFaceDetail(prompt: string): boolean {
-    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'eye', 'typing', 'holding', 'tool', 'object', 'ground', 'sand'];
-    const lower = prompt.toLowerCase();
-    return keywords.some(k => lower.includes(k));
+    const keywords = [
+      'hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand',
+      '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿'
+    ];
+    return keywords.some(k => prompt.toLowerCase().includes(k));
 }
 
-function getNegativePrompt(shotType: string, stylePreset: string, actionPrompt: string): string {
-    const upper = shotType.toUpperCase();
-    let baseNegative = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
-    
-    if (stylePreset === 'realistic' || stylePreset === 'noir') {
-        baseNegative += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting, digital art";
-    }
-
-    // 🔥 细节特写模式下，极度强化负面屏蔽词，防止模型脑补人物
-    if (isNonFaceDetail(actionPrompt)) {
-        baseNegative += ", (face:2.0), (head:2.0), (eyes:2.0), (lips:1.8), (nose:1.8), (hair:1.8), portrait, woman, girl, man, boy, person, human, character, face focus, looking at camera";
-    }
-    
-    if (upper.includes("CLOSE") || upper.includes("FACE") || upper.includes("HEAD")) {
-        return `${baseNegative}, legs, feet, shoes, lower body, full body, wide shot, distant view`;
-    }
-    
-    return baseNegative;
+/**
+ * 💡 语义检查 2：面部微距特写 (开启 Face 模式，但过滤衣服)
+ */
+function isFaceMacro(prompt: string): boolean {
+    const keywords = ['eye', 'lip', 'mouth', 'nose', 'lash', '眼', '嘴', '唇', '鼻', '睫毛', 'pupil', 'iris'];
+    return keywords.some(k => prompt.toLowerCase().includes(k));
 }
 
-async function processImageRef(
-  url: string, 
-  vision: VisionAnalysis | null, 
-  targetShot: string
-): Promise<string | null> {
+/**
+ * 🧹 特征清洗器：如果是特写，过滤掉下半身衣物
+ */
+function cleanVisualFeatures(features: string[], isCloseUp: boolean): string[] {
+    if (!isCloseUp) return features;
+    
+    // 垃圾词库：特写时不应该出现的词
+    const banList = [
+        'skirt', 'dress', 'pants', 'jeans', 'trousers', 'shoe', 'boot', 'sock', 'leg', 'knee', 'thigh', 'waist', 
+        'standing', 'walking', 'full body', 'pleated', 'uniform', 'bag'
+    ];
+    
+    return features.filter(f => !banList.some(ban => f.toLowerCase().includes(ban)));
+}
+
+function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset: string): string {
+    let base = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
+    
+    if (stylePreset === 'realistic') {
+        base += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting";
+    }
+
+    if (isNonFace) {
+        // 肢体/物体特写：封杀人脸
+        return `${base}, face, head, eyes, portrait, person, woman, girl, man, human silhouette, look at camera`;
+    } else {
+        // 人像/眼部特写：允许脸，但禁止下半身干扰
+        return shotType.toUpperCase().includes("CLOSE") 
+            ? `${base}, legs, feet, shoes, socks, pants, skirt, lower body, full body` 
+            : base;
+    }
+}
+
+async function processImageRef(url: string, vision: VisionAnalysis | null, targetShot: string): Promise<string | null> {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fetch failed`);
     const buffer = Buffer.from(await res.arrayBuffer());
-
     let finalBuffer: Buffer = buffer; 
+    
+    // 只有在全景转非面部特写时才裁剪
     const isTargetClose = targetShot.toUpperCase().includes("CLOSE");
+    const isFaceStart = vision?.shot_type.includes("Full");
 
-    if (vision?.shot_type.includes("Full") && isTargetClose && vision.subject_composition?.head_y_range) {
+    if (isFaceStart && isTargetClose && vision?.subject_composition?.head_y_range) {
       const metadata = await sharp(buffer).metadata();
       if (metadata.width && metadata.height) {
         const [startY, endY] = vision.subject_composition.head_y_range;
         const top = Math.max(0, Math.floor(startY * metadata.height * 0.7)); 
         const cropHeight = Math.min(metadata.height - top, Math.floor((endY - startY + 0.3) * metadata.height));
-        
         finalBuffer = await sharp(buffer)
           .extract({ left: 0, top: top, width: metadata.width, height: cropHeight })
           .resize(metadata.width, metadata.height, { fit: 'cover' })
@@ -110,92 +131,97 @@ export async function generateShotImage(
   try {
     if (!ARK_API_KEY || !ARK_ENDPOINT_ID) throw new Error("API Key Missing");
 
-    // 🚨 关键检测：是否是局部细节镜头
-    const isDetailShot = isNonFaceDetail(actionPrompt);
-    const isCloseUp = shotType.toUpperCase().includes("CLOSE");
+    // 🚨 模式判定
+    const isNonFace = isNonFaceDetail(actionPrompt); // 拍手、脚 -> No Face
+    const isFaceMacroShot = isFaceMacro(actionPrompt); // 拍眼、嘴 -> Face OK, No Body
+    const isCloseUp = shotType.toUpperCase().includes("CLOSE") || isFaceMacroShot;
 
-    console.log(`[Server Action] 正在生成分镜: ${shotId}`);
-    console.log(`[Logic] 细节模式: ${isDetailShot} | 目标景别: ${shotType}`);
+    console.log(`[Server] 生成模式: ${isNonFace ? '肢体/物体' : (isFaceMacroShot ? '面部微距' : '常规人像')}`);
 
-    // 1. 启动深度视觉感知
+    // 1. 视觉分析与清洗
     let visionAnalysis: VisionAnalysis | null = null;
-    let visualDescription = "";
     let keyFeaturesPrompt = "";
-
     if (referenceImageUrl) {
         try {
             visionAnalysis = await analyzeRefImage(referenceImageUrl);
-            if (visionAnalysis) {
-                visualDescription = visionAnalysis.description;
-                // 如果是局部特写，过滤掉所有面部/身份特征，仅保留环境颜色/材质
-                keyFeaturesPrompt = visionAnalysis.key_features
-                    ?.filter(f => !isDetailShot || !['eye', 'lip', 'nose', 'face', 'hair', 'person', 'woman'].some(k => f.includes(k.toLowerCase())))
-                    .map(f => `(${f}:1.1)`).join(", ") || "";
+            if (visionAnalysis && visionAnalysis.key_features) {
+                // 🔥 核心修复：如果是特写，强制过滤掉 skirt, socks 等干扰词
+                const cleanedFeatures = cleanVisualFeatures(visionAnalysis.key_features, isCloseUp);
+                
+                // 如果是 No Face 模式，进一步过滤五官
+                const finalFeatures = cleanedFeatures.filter(f => 
+                    !isNonFace || !['eye', 'lip', 'nose', 'face', 'hair'].some(k => f.includes(k.toLowerCase()))
+                );
+
+                keyFeaturesPrompt = finalFeatures.map(f => `(${f}:1.1)`).join(", ");
+                console.log(`[Features] 原始: ${visionAnalysis.key_features.length} -> 清洗后: ${finalFeatures.length} (${finalFeatures.join(',')})`);
             }
-        } catch (e) { console.warn("[Vision] 分析跳过", e); }
+        } catch (e) { console.warn("[Vision] 跳过", e); }
     }
 
-    // 2. 动态构建熔断式 Prompt
-    const stylePart = isDraftMode 
-      ? "rough storyboard sketch, black and white line art, minimal detail"
-      : (STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']);
-    
+    // 2. Prompt 组装
+    const stylePart = isDraftMode ? "sketch" : (STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']);
     let finalPrompt = "";
     let characterPart = "";
 
-    // 🚨 逻辑修正：如果识别为局部特写，即便传入了 characterId 也强制忽略人像描述
-    if (characterId && !isDetailShot) {
+    // 角色描述注入
+    if (characterId) {
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
       if (char) {
-          characterPart = `(Character: ${char.description}), `;
+          if (isNonFace) {
+             characterPart = ""; // 拍脚时不带人设
+          } else if (isFaceMacroShot) {
+             // 拍眼时，只保留人设的前半部分（通常是发色瞳色），截断衣服描述
+             characterPart = `(Character features: ${char.description.substring(0, 50)}), `;
+          } else {
+             characterPart = `(Character: ${char.description}), `;
+          }
       }
-    } else if (isDetailShot) {
-      // 局部特写模式：只允许环境和材质描述进入 Prompt
-      console.log("[Logic] 局部特写：已强制封禁角色描述词注入");
-      characterPart = ""; 
     }
 
-    if (isDetailShot) {
-        // 🔥 极端重构：细节分镜采用“非人化”提示词结构
-        finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (extreme close-up view:1.4), (macro photography:1.4), (detailed texture:1.3), (strictly no people:1.8), (no face:1.8), (environment focus:1.2), ${stylePart}`;
+    if (isNonFace) {
+        // 🦵 肢体模式：脚、手
+        finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:1.8), (no face:1.8), ${stylePart}`;
+    } else if (isFaceMacroShot) {
+        // 👁️ 面部微距：眼、嘴 (允许 Character，但在 Vision 阶段已过滤掉衣服)
+        finalPrompt = `((${actionPrompt}:2.5)), (macro photography:1.5), (extreme detail:1.4), (focus on face:1.2), ${characterPart} ${keyFeaturesPrompt}, ${stylePart}`;
     } else {
-        // 正常人像分镜
+        // 👤 常规模式
         const shotPart = isCloseUp 
             ? `(((${shotType} shot)):2.0), (head and shoulders focus:1.8), (highly detailed face:1.5)`
             : `(${shotType} shot:1.5)`;
         finalPrompt = `${shotPart}, ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt}, (${stylePart}:1.4)`;
     }
 
-    // 3. Payload 构造
+    // 3. Payload
     const payload: any = {
       model: ARK_ENDPOINT_ID, 
       prompt: finalPrompt, 
-      negative_prompt: getNegativePrompt(shotType, stylePreset, actionPrompt), 
+      negative_prompt: getStrictNegative(shotType, isNonFace, stylePreset), 
       size: RATIO_MAP[aspectRatio] || "2560x1440", 
       n: 1,
-      guidance_scale: 8.0 // 略微调高引导强度，增强指令遵循度
+      guidance_scale: 8.0 
     };
 
-    // 4. 参考图处理
+    // 4. Img2Img
     const targetRefImage = referenceImageUrl || sceneImageUrl;
     if (targetRefImage) {
         const base64Image = await processImageRef(targetRefImage, visionAnalysis, shotType);
         if (base64Image) {
             payload.image_url = base64Image;
-            // 细节特写如果带参考图（哪怕参考图有人），使用最高强度重绘以彻底抹除人体轮廓
-            payload.strength = isDetailShot ? 0.92 : 0.65;
-            payload.ref_strength = isDetailShot ? 0.92 : 0.65;
+            // 眼部微距也需要较高强度来摆脱原图构图
+            const highStrength = isNonFace || isFaceMacroShot;
+            payload.strength = highStrength ? 0.92 : 0.65;
+            payload.ref_strength = highStrength ? 0.92 : 0.65;
         }
     }
 
-    // 🚨 终极日志：打印发送给火山 API 的真实 Payload
-    console.log("--- [DEBUG: VOLCANO API PAYLOAD] ---");
+    // Log
+    console.log("--- [DEBUG: API PAYLOAD] ---");
     console.log("PROMPT:", payload.prompt);
-    console.log("NEG_PROMPT:", payload.negative_prompt);
-    console.log("STRENGTH:", payload.strength);
-    console.log("-------------------------------------");
+    console.log("NEG:", payload.negative_prompt);
+    console.log("----------------------------");
 
-    // 5. 请求发送
     const response = await fetch(ARK_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ARK_API_KEY}` },
