@@ -4,24 +4,30 @@ const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_TEXT_ENDPOINT_ID = process.env.VOLC_TEXT_ENDPOINT_ID;
 const ARK_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
-// 🔨 强制规则函数：代码级修正 (Code-Level Override)
+// 🔨 强制规则函数：代码级修正 (极度防御版)
 function enforceCinematicRules(panels: any[]) {
+  if (!Array.isArray(panels)) return [];
+
   return panels.map((panel, index) => {
-    const desc = (panel.description || "").trim();
-    
+    // 🛡️ 防御措施 1：强制转为字符串，防止 AI 返回 null/undefined/number 导致崩溃
+    const desc = String(panel.description || "").trim();
+    let rawShotType = String(panel.shotType || "MID SHOT"); // 👈 关键修复：强制 String()
+    let prompt = String(panel.visualPrompt || "").toLowerCase();
+
     // 1. 标准化 ShotType
-    let shotType = (panel.shotType || "MID SHOT").toUpperCase()
+    let shotType = rawShotType.toUpperCase()
       .replace("SHOT", " SHOT")
       .replace("  ", " ")
       .replace("-", " ")
       .trim();
 
+    // 容错映射
     if (shotType === "CLOSE UP") shotType = "CLOSE-UP";
     if (shotType === "EXTREME CLOSE UP") shotType = "EXTREME CLOSE-UP";
     if (shotType === "LONG SHOT") shotType = "LONG SHOT";
     if (shotType === "LONGSHOT") shotType = "LONG SHOT";
 
-    console.log(`[Director Logic] Panel ${index + 1} 分析: "${desc}" -> 原景别: ${shotType}`);
+    console.log(`[Director Logic] Panel ${index + 1} | Desc: "${desc.substring(0, 10)}..." | Shot: ${shotType}`);
 
     // 🔍 语义检测
     const isStopping = desc.includes("停下") || desc.includes("止步") || desc.includes("刹车") || desc.includes("停止") || desc.includes("不动了") || desc.includes("站定");
@@ -30,11 +36,10 @@ function enforceCinematicRules(panels: any[]) {
     const isEye = desc.includes("眼") || desc.includes("视") || desc.includes("盯") || desc.includes("看") || desc.includes("瞳");
     const isFoot = desc.includes("脚") || desc.includes("鞋") || desc.includes("迈") || desc.includes("走");
 
-    // 🔴 场景 1：车辆/轮胎停止 -> 强制轮胎特写 (覆盖 Prompt)
+    // 🔴 场景 1：车辆/轮胎停止 -> 强制轮胎特写
     if (isStopping && isVehicle) {
-      console.log(`⚡️ [Override] 检测到车辆停止 -> 强制轮胎特写 (覆盖 Prompt)`);
+      console.log(`⚡️ [Override] 检测到车辆停止 -> 强制轮胎特写`);
       shotType = "CLOSE-UP";
-      // 🔥 核心修复：完全覆盖 prompt，防止 AI 依然保留"man/person"的描述
       panel.visualPrompt = `extreme close-up of car tires, spinning wheels stopping on asphalt, friction, motion blur, low angle view, detailed texture of rubber and road, cinematic lighting.`;
     }
 
@@ -59,7 +64,9 @@ function enforceCinematicRules(panels: any[]) {
       panel.visualPrompt = `close-up of feet coming to a stop on the ground, focus on shoes and lower legs, low angle view, ground level perspective.`;
     }
 
+    // 将修正后的值写回
     panel.shotType = shotType;
+    // 这里的 panel.visualPrompt 已经在上面直接修改了，无需再次赋值
     return panel;
   });
 }
@@ -83,6 +90,8 @@ export async function analyzeScript(scriptText: string) {
          - 脚部动作/局部动作 -> 必须用 "CLOSE-UP"。
          - 宏大场景 -> "EXTREME LONG SHOT"。
          - 全身动作 -> "FULL SHOT"。
+      
+      返回格式: {"panels": [{"description": "...", "visualPrompt": "...", "shotType": "..."}]}
     `;
 
     const response = await fetch(ARK_CHAT_URL, {
@@ -107,18 +116,35 @@ export async function analyzeScript(scriptText: string) {
     if (!response.ok) throw new Error(resJson.error?.message || `HTTP Error ${response.status}`);
 
     let content = resJson.choices?.[0]?.message?.content || "";
+    // 清洗 Markdown
     content = content.replace(/```json\n?/, "").replace(/```\n?/, "").trim();
     
+    // 🛡️ 防御措施 2：JSON 解析兜底
     let data;
     try {
         data = JSON.parse(content);
     } catch (e) {
-        if (content.trim().endsWith("}")) throw new Error("AI 返回格式不正确");
-        else throw new Error("AI 返回内容截断");
+        console.error("[Director JSON Error]", content);
+        // 如果只是结尾少了括号，尝试抢救一下
+        if (content.trim().lastIndexOf("}") !== content.trim().length - 1) {
+            try {
+                data = JSON.parse(content + "}]}"); // 极其简陋的修复尝试
+            } catch(e2) {
+                throw new Error("AI 返回数据格式错误，请重试");
+            }
+        } else {
+            throw new Error("AI 返回数据无法解析");
+        }
     }
 
     const panels = Array.isArray(data) ? data : data.panels;
-    if (!panels || !Array.isArray(panels)) throw new Error("数据格式错误");
+    
+    // 🛡️ 防御措施 3：确保 panels 必须是数组
+    if (!panels || !Array.isArray(panels)) {
+        console.error("[Director Data Error] Missing panels array", data);
+        // 如果 AI 返回了奇怪的结构，甚至可以尝试返回一个空数组或者报错
+        throw new Error("AI 返回数据结构缺失 panels");
+    }
 
     // 🔥 执行强制修正
     const finalPanels = enforceCinematicRules(panels);
@@ -127,6 +153,7 @@ export async function analyzeScript(scriptText: string) {
 
   } catch (error: any) {
     console.error("[Director Runtime Error]", error);
+    // 抛出普通 Error，Next.js 会在客户端捕获
     throw new Error(error.message || "剧本分析服务暂时不可用");
   }
 }
