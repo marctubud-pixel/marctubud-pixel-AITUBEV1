@@ -190,6 +190,51 @@ export default function StoryboardPage() {
     }]);
   };
 
+  // 🔥 核心功能：单张重绘
+  const handleGenerateSingleImage = async (panelId: number) => {
+    const panel = panels.find(p => p.id === panelId);
+    if (!panel) return;
+
+    // 设置单张 loading
+    setPanels(current => current.map(p => p.id === panelId ? { ...p, isLoading: true } : p));
+
+    try {
+        const tempShotId = `storyboard_${Date.now()}_${panel.id}`;
+        const effectiveEnv = panel.environment && panel.environment.trim() !== '' 
+            ? panel.environment 
+            : sceneDescription;
+
+        const scenePart = effectiveEnv ? `(Environment: ${effectiveEnv}), ` : '';
+        const actionPrompt = `${scenePart}${panel.description}`; 
+
+        const res = await generateShotImage(
+            tempShotId, 
+            actionPrompt, 
+            tempProjectId, 
+            mode === 'draft', 
+            stylePreset,
+            aspectRatio,
+            panel.shotType, 
+            selectedCharacterId || undefined,
+            selectedRefImage || undefined,
+            sceneImageUrl || undefined 
+        );
+
+        if (res.success) {
+            const successRes = res as { success: true; url: string };
+            setPanels(current => current.map(p => p.id === panelId ? { ...p, imageUrl: successRes.url, isLoading: false } : p));
+            toast.success('镜头已重绘');
+        } else {
+            const errorRes = res as { success: false; message: string };
+            throw new Error(errorRes.message || '生成失败');
+        }
+    } catch (error: any) {
+        console.error(error);
+        toast.error('重绘失败: ' + error.message);
+        setPanels(current => current.map(p => p.id === panelId ? { ...p, isLoading: false } : p));
+    }
+  };
+
   const handleGenerateImages = async () => {
     if (!sceneDescription.trim() && !sceneImageUrl) toast.warning('建议填写“场景设定”或上传参考图');
 
@@ -220,7 +265,6 @@ export default function StoryboardPage() {
           sceneImageUrl || undefined 
         );
 
-        // ✅ 这里是修复后的逻辑：明确处理成功与失败分支
         if (res.success) {
           const successRes = res as { success: true; url: string };
           setPanels(current => current.map(p => p.id === panel.id ? { ...p, imageUrl: successRes.url, isLoading: false } : p));
@@ -407,21 +451,38 @@ export default function StoryboardPage() {
               {panels.map((panel, idx) => (
                 <div key={panel.id} className={`relative bg-black rounded-xl overflow-hidden shadow-xl border border-zinc-800 ${currentRatioClass}`}>
                   {panel.isLoading ? (
-                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900 text-zinc-500">
+                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900 text-zinc-500 z-10">
                         <Loader2 className="animate-spin w-8 h-8 text-yellow-500" />
                      </div>
                   ) : panel.imageUrl ? (
                     <img src={panel.imageUrl} className="w-full h-full object-cover" />
                   ) : null}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black p-4 text-white">
+
+                  {/* 🟢 修复：显示景别 Badge */}
+                  <div className="absolute top-2 left-2 z-20 bg-black/70 backdrop-blur-sm border border-white/10 text-white text-[10px] font-bold px-2 py-1 rounded">
+                     {CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label || panel.shotType}
+                  </div>
+
+                  {/* 🟢 修复：重绘按钮 */}
+                  {!panel.isLoading && (
+                    <button 
+                        onClick={() => handleGenerateSingleImage(panel.id)}
+                        className="absolute top-2 right-2 z-20 p-1.5 bg-black/60 hover:bg-yellow-500 text-white hover:text-black rounded-full transition-all border border-white/10"
+                        title="重新生成此镜头"
+                    >
+                        <RefreshCw size={14} />
+                    </button>
+                  )}
+
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 text-white z-20">
                     <span className="text-[10px] font-bold bg-yellow-500 text-black px-1.5 rounded mr-2">{idx + 1}</span>
-                    <span className="text-xs opacity-80">{panel.description}</span>
+                    <span className="text-xs opacity-90 text-shadow-sm">{panel.description}</span>
                   </div>
                 </div>
               ))}
               {step === 'done' && (
                   <div className="col-span-full flex justify-center py-8">
-                      <button onClick={handleExportPDF} className="bg-white text-black px-8 py-3 rounded-xl font-bold flex items-center gap-2"><Download size={20}/> 导出 PDF</button>
+                      <button onClick={handleExportPDF} className="bg-white text-black px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-200 transition-colors"><Download size={20}/> 导出 PDF</button>
                   </div>
               )}
             </div>
