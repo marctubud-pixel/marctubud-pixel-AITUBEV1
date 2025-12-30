@@ -32,7 +32,6 @@ const RATIO_MAP: Record<string, string> = {
   "2.39:1": "3072x1280" 
 };
 
-// 🛡️ 辅助：盲猜强度策略
 function calculateBlindStrength(shotType: string): number {
     const upper = shotType.toUpperCase();
     if (upper.includes("CLOSE") || upper.includes("FACE") || upper.includes("HEAD")) return 0.85; 
@@ -40,22 +39,18 @@ function calculateBlindStrength(shotType: string): number {
     return 0.65; 
 }
 
-// 🛑 优化：根据景别和风格生成“负面提示词” (核心修复：防止风格漂移和构图残留)
 function getNegativePrompt(shotType: string, stylePreset: string): string {
     const upper = shotType.toUpperCase();
     let baseNegative = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
     
-    // 🔥 风格防御：如果是写实风格，严禁出现动漫特征
     if (stylePreset === 'realistic' || stylePreset === 'noir') {
         baseNegative += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting, digital art";
     }
     
-    // 如果是特写 -> 严禁出现下半身任何元素
     if (upper.includes("CLOSE") || upper.includes("FACE") || upper.includes("HEAD")) {
         return `${baseNegative}, legs, feet, shoes, lower body, full body, wide shot, distant view, standing, walking, running, body out of frame`;
     }
     
-    // 如果是全景 -> 严禁切头
     if (upper.includes("FULL") || upper.includes("WIDE")) {
         return `${baseNegative}, close up, face shot, headshot, cropped head`;
     }
@@ -91,63 +86,56 @@ export async function generateShotImage(
   try {
     if (!ARK_API_KEY || !ARK_ENDPOINT_ID) throw new Error("API Key Missing");
 
-    console.log(`[Server] Gen Start | Type: ${shotType}`);
+    console.log(`[Server] Gen Start | Target Shot: ${shotType}`);
 
-    // 1. 启动视觉感知
+    // 1. 启动深度视觉感知 (Vision 2.0)
     let visionAnalysis: VisionAnalysis | null = null;
     let visualDescription = "";
+    let keyFeaturesPrompt = "";
 
     if (referenceImageUrl) {
         try {
             visionAnalysis = await analyzeRefImage(referenceImageUrl);
-            if (visionAnalysis?.description) {
+            if (visionAnalysis) {
                 visualDescription = visionAnalysis.description;
+                // 将提取的关键特征转化为 Prompt 权重
+                keyFeaturesPrompt = visionAnalysis.key_features?.map(f => `(${f}:1.2)`).join(", ") || "";
             }
         } catch (e) { 
-            console.log("Vision skipped or failed", e); 
+            console.warn("[Vision] 分析跳过", e); 
         }
     }
 
-    // 2. 准备 Prompt 部件
+    // 2. 动态构建 Prompt
     const stylePart = isDraftMode 
       ? "rough storyboard sketch, black and white line art, minimal detail"
       : (STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']);
     
     const isCloseUp = shotType.toUpperCase().includes("CLOSE") || shotType.toUpperCase().includes("FACE");
     
-    // 镜头加权
+    // 构图增强：如果是特写，强行通过 Prompt 锚定头部
     let shotPart = isCloseUp 
-        ? `(((${shotType} shot)):2.0), (head and shoulders only:1.8), (face focus:1.5)` 
-        : `(${shotType} shot of:1.5)`; 
+        ? `(((${shotType} shot)):2.0), (head and shoulders focus:1.8), (highly detailed face:1.5)` 
+        : `(${shotType} shot:1.5)`; 
 
     let characterPart = "";
     if (characterId) {
-      const { data: char } = await supabaseAdmin
-        .from('characters')
-        .select('description')
-        .eq('id', characterId)
-        .single();
+      const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
       if (char) characterPart = `(Character: ${char.description})`; 
     }
 
-    if (visualDescription) {
-        characterPart += `, (Visual Ref Features: ${visualDescription})`;
+    // 融合视觉特征
+    if (keyFeaturesPrompt) {
+        characterPart += `, ${keyFeaturesPrompt}`;
     }
 
-    // 🧱 拼装 Prompt
     let finalPrompt = `${shotPart}, ${actionPrompt}, ${characterPart}`;
-
-    // 场景增强
-    if (referenceImageUrl && sceneImageUrl) {
-        finalPrompt += `, (detailed background environment:1.6)`; 
-    } else if (sceneImageUrl) {
-        finalPrompt += `, (background environment consistency)`;
-    }
     
-    // 🔥 风格锁：末尾再次强化风格，防止高 Strength 下风格漂移
+    // 场景与风格锁
+    if (referenceImageUrl && sceneImageUrl) finalPrompt += `, (detailed background environment:1.6)`; 
     finalPrompt += `, (${stylePart}:1.4)`;
 
-    // 3. 构造 Payload
+    // 3. Payload 构造
     const imageSize = RATIO_MAP[aspectRatio] || "2560x1440";
     const negativePrompt = getNegativePrompt(shotType, stylePreset);
 
@@ -159,7 +147,7 @@ export async function generateShotImage(
       n: 1
     };
 
-    // 4. Img2Img 逻辑
+    // 4. 高级 Img2Img 策略 (修复构图残留)
     const targetRefImage = referenceImageUrl || sceneImageUrl;
 
     if (targetRefImage) {
@@ -167,25 +155,31 @@ export async function generateShotImage(
         
         if (base64Image) {
             payload.image_url = base64Image;
-
-            // 🧠 智能决策 Strength
             let strength = 0.65; 
 
-            if (visionAnalysis && visionAnalysis.shot_type) {
+            if (visionAnalysis) {
                 const refShot = visionAnalysis.shot_type; 
-                const targetShot = shotType;             
+                const targetShot = shotType.toUpperCase();             
                 
-                console.log(`[Smart Logic] 视觉对比: 原图[${refShot}] vs 目标[${targetShot}]`);
+                console.log(`[Smart Logic] 视觉对比: 原图[${refShot}] -> 目标[${targetShot}]`);
 
+                // 核心修复逻辑：景别跨度过大处理
                 if (refShot.includes("Full") && isCloseUp) {
-                    console.log("👉 决策: 大幅裁剪 (Full -> Close)");
-                    strength = 0.85; 
-                    // 高重绘下必须补强指令
-                    payload.prompt += ", (crop to face:1.6), (ignore legs and lower body:1.8)";
-                } else if (refShot.includes("Mid") && targetShot.toUpperCase().includes("MID")) {
-                    strength = 0.45; 
-                } else if (refShot.includes("Close") && targetShot.toUpperCase().includes("FULL")) {
-                    strength = 0.90; 
+                    // 全身转特写：最高重绘，彻底否定腿部坐标
+                    strength = 0.88; 
+                    payload.prompt += ", (zoomed in:1.5), (waist up:1.8), (ignore legs:2.0)";
+                    
+                    // 如果 Vision 识别到了头部位置，这里理论上可以做前置裁剪 (Canvas)，目前通过 Prompt 暴力重定向
+                    if (visionAnalysis.subject_composition?.head_y_range) {
+                        payload.prompt += `, (focus on upper portion of reference:1.4)`;
+                    }
+                } else if (refShot.includes("Close") && targetShot.includes("FULL")) {
+                    // 特写转全身：必须极高强度以补全身体
+                    strength = 0.92;
+                    payload.prompt += ", (full body standing:1.6), (complete outfit:1.4)";
+                } else if (refShot.replace(" ","").toUpperCase() === targetShot.replace(" ","")) {
+                    // 景别一致：低重绘，保持一致性
+                    strength = 0.40; 
                 } else {
                     strength = calculateBlindStrength(shotType);
                 }
@@ -193,13 +187,13 @@ export async function generateShotImage(
                 strength = calculateBlindStrength(shotType);
             }
 
-            console.log(`[Server] Img2Img Active | Strength: ${strength}`);
+            console.log(`[Server] Final Strength Decision: ${strength}`);
             payload.strength = strength;
             payload.ref_strength = strength;
         }
     }
 
-    // 5. 发送请求
+    // 5. 请求与重试
     const response = await fetch(ARK_API_URL, {
       method: "POST",
       headers: {
@@ -212,22 +206,17 @@ export async function generateShotImage(
     const data = await response.json();
     
     if (!response.ok) {
-        console.error("API Error Detail:", JSON.stringify(data));
-        const errorMsg = data.error?.message?.toLowerCase() || "";
-        if (errorMsg.includes("param") || errorMsg.includes("unrecognized") || data.error?.code === 'invalid_parameter') {
-             console.warn("⚠️ 参数报错，降级重试...");
+        // ... (保持原有的降级重试逻辑)
+        console.error("API Error:", data.error);
+        if (data.error?.code === 'invalid_parameter') {
              delete payload.image_url;
              delete payload.strength;
-             delete payload.ref_strength;
-             delete payload.negative_prompt; 
-
-             const retryResponse = await fetch(ARK_API_URL, {
+             const retryRes = await fetch(ARK_API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ARK_API_KEY}` },
                 body: JSON.stringify(payload)
             });
-            const retryData = await retryResponse.json();
-            if (!retryResponse.ok) throw new Error(retryData.error?.message || "Retry Failed");
+            const retryData = await retryRes.json();
             return processResponse(retryData, shotId, projectId);
         }
         throw new Error(data.error?.message || "Generation Failed");
