@@ -163,7 +163,7 @@ export default function StoryboardPage() {
         description: p.description,
         shotType: p.shotType || 'MID SHOT',
         environment: '', 
-        prompt: p.visualPrompt,
+        prompt: p.visualPrompt, // 这里接收的就是后端清洗过的英文 prompt
         isLoading: false, 
       }));
       setPanels(initialPanels);
@@ -205,7 +205,13 @@ export default function StoryboardPage() {
             : sceneDescription;
 
         const scenePart = effectiveEnv ? `(Environment: ${effectiveEnv}), ` : '';
-        const actionPrompt = `${scenePart}${panel.description}`; 
+        
+        // 🔥 关键修正：优先使用 AI 生成并清洗过的英文 Prompt
+        // 如果 panel.prompt (visualPrompt) 存在，就直接用它，因为它最准确且干净
+        // 只有当它不存在时，才回退到拼接中文描述
+        const actionPrompt = panel.prompt && panel.prompt.length > 10 
+            ? panel.prompt 
+            : `${scenePart}${panel.description}`;
 
         const res = await generateShotImage(
             tempShotId, 
@@ -250,7 +256,11 @@ export default function StoryboardPage() {
             : sceneDescription;
 
         const scenePart = effectiveEnv ? `(Environment: ${effectiveEnv}), ` : '';
-        const actionPrompt = `${scenePart}${panel.description}`; 
+        
+        // 🔥 关键修正：优先使用 AI 生成并清洗过的英文 Prompt
+        const actionPrompt = panel.prompt && panel.prompt.length > 10 
+            ? panel.prompt 
+            : `${scenePart}${panel.description}`;
 
         const res = await generateShotImage(
           tempShotId, 
