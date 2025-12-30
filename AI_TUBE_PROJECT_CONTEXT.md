@@ -9,6 +9,8 @@
 
 Git 指令跟进：AI 必须在回复末尾附上 Git 同步指令。
 
+Git 指令跟进 (中文化标准)：AI 必须在回复末尾附上 Git 同步指令，并根据实际分支名（如 main）提供中文注释说明。
+
 验收归档闭环：
 
 Step 1: AI 提供代码 -> 用户实测通过。
@@ -80,48 +82,38 @@ comments: content, video_id, user_id。
 变现模型：VIP 订阅、积分充值、商单抽佣。
 
 🚀 六、 开发进度追踪 (Current Progress)
-🔭 当前阶段：Phase 3.3 - 视觉闭环与导出交付 (Visual Loop & Delivery)
+✅ 今日完成工作 (Milestones)
+存储与权限优化 (Storage & RLS)：
 
-核心目标：从“数据打通”迈向“算法打通”，让 AI 真正参考图片绘图；同时实现分镜的商业交付（PDF 导出）。
+通过 SQL 策略修复了 images 存储桶的 Row-Level Security (RLS) 拦截问题，实现了公开上传与访问。
 
-✅ 已完成 (Completed) [2025-12-30 凌晨战果 - 视觉锚点集成]
+重构了上传逻辑，引入 时间戳+纯英文命名策略，彻底解决了中文路径导致的 Invalid Key 上传失败问题。
 
-[CineFlow 前端交互]：
+即梦 (Jimeng) Img2Img 深度集成：
 
-[x] 参考图选择器：在 Storyboard 页面实现了基于角色的参考图加载与点选交互。
+接入 Doubao-Seedream-3.0-t2i 绘图模型，通过服务器端 Base64 转换 实现了稳定的参考图传输。
 
-[x] 视觉反馈：选中图片高亮，支持“无参考”与“有参考”状态切换。
+针对高清 Pro 级模型，将全局分辨率映射（RATIO_MAP）升级至 2K 标准 (2560x1440)，解决了像素点不足导致的 API 报错。
 
-[CineFlow 后端逻辑]：
+多模态智能工作流 (Smart Workflow)：
 
-[x] API 升级：generateShotImage 函数增加 referenceImageUrl 参数。
+引入 Doubao-Seedream-4.5 视觉大模型，实现了“先分析参考图、后决定生图策略”的感知逻辑。
 
-[x] 数据流打通：成功将前端选中的图片 URL 传递至后端（目前用于日志/Prompt 辅助）。
+构建了 动态重绘强度 (Strength) 引擎：自动根据“参考图景别”与“目标分镜景别”的差异调整重绘幅度（如 Full Shot 转 Close-up 时自动提升至 0.85）。
 
-[角色资产库 2.0]：
+分镜控制补丁 (Storyboard Patches)：
 
-[x] 多图管理：支持上传三视图、表情包等多维参考图。
+新增 动态负面提示词 (Negative Prompt) 注入，针对特写镜头强制屏蔽 legs, lower body 等构图元素。
 
-☀️ 下一步行动指南 (Next Action Plan)
+引入 风格锁 (Style Lock) 机制，通过正面权重加持 (photorealistic:1.4) 确保高强度重绘下写实风格不向动漫偏移。
 
-核心任务 A：[Engine] 真·图生图 (True Image-to-Image) [🔥 攻坚重点]
+🚩 待解决与后续计划 (To-Dos)
+[明日重点] 构图固化问题深挖：
 
-痛点：目前参考图仅作为 Prompt 的心理暗示，AI 并没有真正读取像素。导致服装细节不一致。
+目前在“全身参考图 -> 特写镜头”时，AI 仍有保留原图腿部结构的倾向。
 
-方案：
+计划：尝试在 vision.ts 中提取更细致的“人体比例坐标”，或者研究通过 ControlNet (Depth/Canny) 进行构图引导（如果 API 支持）。
 
-调研火山引擎接口：寻找支持 image_url 输入的 img2img 或 controlnet 端点。
+一致性优化：
 
-后端改造：如果 API 变化，需要重写 generateShotImage 的 payload 组装逻辑。
-
-强度控制：前端增加“参考强度 (Strength)”滑杆（0.1 ~ 1.0），控制 AI 听话的程度。
-
-核心任务 B：[Export] 商业级 PDF 导出 (Deliverable)
-
-痛点：分镜画好了，用户无法拿去给剧组或客户看。
-
-方案：
-
-PDF 生成：使用 jspdf 或 react-pdf。
-
-排版布局：生成标准的影视分镜表（左图右文，包含景别、运镜、时长）。
+进一步调优角色特征在 Prompt 中的权重比例，平衡参考图与文字描述的竞争关系。
