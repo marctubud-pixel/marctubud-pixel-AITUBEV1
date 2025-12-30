@@ -9,9 +9,28 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ARK_API_KEY = process.env.VOLC_ARK_API_KEY
-const ARK_ENDPOINT_ID = process.env.VOLC_IMAGE_ENDPOINT_ID
-const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
+const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
+const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+
+// 🟢 配置：双模型路由
+// 生产环境用 Pro 模型 (8K, 高细节)
+const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
+// 草图环境用 Turbo/Lite 模型 (快速, 便宜)，未配置则回退到 Pro
+const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
+
+// 🟢 配置：景别权重图 (解决景别不明显问题)
+const SHOT_PROMPTS: Record<string, string> = {
+    "EXTREME LONG SHOT": "(tiny figure in distance:1.6), (massive environment:2.0), (wide angle lens:1.5), aerial view, <subject> only occupies 10% of frame",
+    "LONG SHOT": "(full body visible:1.5), (feet visible:1.5), (surrounding environment visible:1.3), distance shot, wide angle",
+    "FULL SHOT": "(full body from head to toe:1.8), (feet visible:1.5), standing pose, environment visible",
+    "MID SHOT": "(waist up:1.5), (head and torso focus:1.5), portrait composition",
+    "CLOSE-UP": "(face focus:1.8), (head and shoulders:1.5), (background blurred:1.2), depth of field",
+    "EXTREME CLOSE-UP": "(macro photography:2.0), (extreme detail:1.5), (focus on single part:2.0), crop to detail"
+};
+
+// 🟢 配置：草图模式专用风格
+const DRAFT_PROMPT_PREFIX = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0)";
+const DRAFT_NEGATIVE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient";
 
 const STYLE_PRESETS: Record<string, string> = {
   "realistic": "cinematic lighting, photorealistic, 8k, masterpiece, movie still, arri alexa, high detail, real photo",
@@ -35,7 +54,6 @@ const RATIO_MAP: Record<string, string> = {
 
 /**
  * 💡 语义检查 1：非面部肢体/物体细节 (开启 No Face 模式)
- * ❌ 移除了 'eye', '眼', 'mouth', 'lip'
  */
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = [
@@ -93,7 +111,6 @@ async function processImageRef(url: string, vision: VisionAnalysis | null, targe
     const buffer = Buffer.from(await res.arrayBuffer());
     let finalBuffer: Buffer = buffer; 
     
-    // 只有在全景转非面部特写时才裁剪
     const isTargetClose = targetShot.toUpperCase().includes("CLOSE");
     const isFaceStart = vision?.shot_type.includes("Full");
 
@@ -129,98 +146,109 @@ export async function generateShotImage(
   sceneImageUrl?: string      
 ) {
   try {
-    if (!ARK_API_KEY || !ARK_ENDPOINT_ID) throw new Error("API Key Missing");
+    if (!ARK_API_KEY) throw new Error("API Key Missing");
 
     // 🚨 模式判定
-    const isNonFace = isNonFaceDetail(actionPrompt); // 拍手、脚 -> No Face
-    const isFaceMacroShot = isFaceMacro(actionPrompt); // 拍眼、嘴 -> Face OK, No Body
+    const isNonFace = isNonFaceDetail(actionPrompt); 
+    const isFaceMacroShot = isFaceMacro(actionPrompt);
     const isCloseUp = shotType.toUpperCase().includes("CLOSE") || isFaceMacroShot;
 
-    console.log(`[Server] 生成模式: ${isNonFace ? '肢体/物体' : (isFaceMacroShot ? '面部微距' : '常规人像')}`);
+    console.log(`[Server] 生成开始 | 模式: ${isDraftMode ? '草图(Draft)' : '精绘(Pro)'} | 语义: ${isNonFace ? '肢体' : (isFaceMacroShot ? '微距' : '常规')} | 景别: ${shotType}`);
 
-    // 1. 视觉分析与清洗
+    // 1. 视觉分析与清洗 (仅 Pro 模式或有参考图时执行)
     let visionAnalysis: VisionAnalysis | null = null;
     let keyFeaturesPrompt = "";
-    if (referenceImageUrl) {
+    
+    if (referenceImageUrl && !isDraftMode) {
         try {
             visionAnalysis = await analyzeRefImage(referenceImageUrl);
             if (visionAnalysis && visionAnalysis.key_features) {
-                // 🔥 核心修复：如果是特写，强制过滤掉 skirt, socks 等干扰词
                 const cleanedFeatures = cleanVisualFeatures(visionAnalysis.key_features, isCloseUp);
-                
-                // 如果是 No Face 模式，进一步过滤五官
                 const finalFeatures = cleanedFeatures.filter(f => 
                     !isNonFace || !['eye', 'lip', 'nose', 'face', 'hair'].some(k => f.includes(k.toLowerCase()))
                 );
-
                 keyFeaturesPrompt = finalFeatures.map(f => `(${f}:1.1)`).join(", ");
-                console.log(`[Features] 原始: ${visionAnalysis.key_features.length} -> 清洗后: ${finalFeatures.length} (${finalFeatures.join(',')})`);
             }
-        } catch (e) { console.warn("[Vision] 跳过", e); }
+        } catch (e) { console.warn("[Vision] 分析跳过", e); }
     }
 
-    // 2. Prompt 组装
-    const stylePart = isDraftMode ? "sketch" : (STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']);
+    // 2. 场景/记忆污染隔离 (Scene Isolation)
+    // 如果 Prompt 包含环境词，或者有场景参考图，强制压制角色原有的背景
+    const hasEnvironmentPrompt = ['beach', 'sea', 'city', 'room', 'forest', 'sand', 'sky', 'outdoor', 'indoor', 'street'].some(k => actionPrompt.toLowerCase().includes(k));
+    let sceneControlPrompt = "";
+    
+    if (sceneImageUrl) {
+        sceneControlPrompt = `(background consistency:1.5)`; 
+    } else if (hasEnvironmentPrompt) {
+        sceneControlPrompt = `(ignore character background:1.5), (focus on environment description:1.4)`;
+    }
+
+    // 3. Prompt 组装
     let finalPrompt = "";
     let characterPart = "";
 
-    // 角色描述注入
+    // 角色描述处理
     if (characterId) {
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
       if (char) {
           if (isNonFace) {
              characterPart = ""; // 拍脚时不带人设
           } else if (isFaceMacroShot) {
-             // 拍眼时，只保留人设的前半部分（通常是发色瞳色），截断衣服描述
              characterPart = `(Character features: ${char.description.substring(0, 50)}), `;
           } else {
+             // 如果当前在强调新环境，弱化角色描述中的背景信息(通过 LLM 清洗更好，这里先用权重控制)
              characterPart = `(Character: ${char.description}), `;
           }
       }
     }
 
-    if (isNonFace) {
-        // 🦵 肢体模式：脚、手
-        finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:1.8), (no face:1.8), ${stylePart}`;
+    // 获取景别强化词
+    const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
+
+    if (isDraftMode) {
+        // 🟢 草图模式：强制黑白、线条、忽略颜色
+        finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ${actionPrompt}, ${characterPart} storyboard sketch`;
+    } else if (isNonFace) {
+        // 🦵 肢体特写：熔断逻辑
+        finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:1.8), (no face:1.8), ${stylePreset}`;
     } else if (isFaceMacroShot) {
-        // 👁️ 面部微距：眼、嘴 (允许 Character，但在 Vision 阶段已过滤掉衣服)
-        finalPrompt = `((${actionPrompt}:2.5)), (macro photography:1.5), (extreme detail:1.4), (focus on face:1.2), ${characterPart} ${keyFeaturesPrompt}, ${stylePart}`;
+        // 👁️ 面部微距：特征清洗
+        finalPrompt = `((${actionPrompt}:2.5)), (macro photography:1.5), (extreme detail:1.4), (focus on face:1.2), ${characterPart} ${keyFeaturesPrompt}, ${stylePreset}`;
     } else {
-        // 👤 常规模式
-        const shotPart = isCloseUp 
-            ? `(((${shotType} shot)):2.0), (head and shoulders focus:1.8), (highly detailed face:1.5)`
-            : `(${shotType} shot:1.5)`;
-        finalPrompt = `${shotPart}, ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt}, (${stylePart}:1.4)`;
+        // 👤 常规模式：标准组合 + 场景隔离 + 景别强化
+        finalPrompt = `${shotWeightPrompt}, ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} ${sceneControlPrompt}, (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`;
     }
 
-    // 3. Payload
+    // 4. Payload 构造
+    // 根据模式选择模型
+    const currentModel = isDraftMode ? MODEL_DRAFT : MODEL_PRO;
+    
     const payload: any = {
-      model: ARK_ENDPOINT_ID, 
+      model: currentModel, 
       prompt: finalPrompt, 
-      negative_prompt: getStrictNegative(shotType, isNonFace, stylePreset), 
+      negative_prompt: isDraftMode ? DRAFT_NEGATIVE : getStrictNegative(shotType, isNonFace, stylePreset), 
       size: RATIO_MAP[aspectRatio] || "2560x1440", 
       n: 1,
-      guidance_scale: 8.0 
+      // 草图模式降低步数和引导，提升速度
+      steps: isDraftMode ? 25 : 40,
+      guidance_scale: isDraftMode ? 5.0 : 7.5
     };
 
-    // 4. Img2Img
+    // 5. 参考图 (Img2Img)
+    // 草图模式下，除非必要，否则不使用 Sharp 处理后的参考图，以保持最简线条
+    // 如果必须用 (比如构图参考)，可以放开
     const targetRefImage = referenceImageUrl || sceneImageUrl;
-    if (targetRefImage) {
+    if (targetRefImage && !isDraftMode) {
         const base64Image = await processImageRef(targetRefImage, visionAnalysis, shotType);
         if (base64Image) {
             payload.image_url = base64Image;
-            // 眼部微距也需要较高强度来摆脱原图构图
             const highStrength = isNonFace || isFaceMacroShot;
             payload.strength = highStrength ? 0.92 : 0.65;
             payload.ref_strength = highStrength ? 0.92 : 0.65;
         }
     }
 
-    // Log
-    console.log("--- [DEBUG: API PAYLOAD] ---");
-    console.log("PROMPT:", payload.prompt);
-    console.log("NEG:", payload.negative_prompt);
-    console.log("----------------------------");
+    console.log(`[Gen] API Req | Model: ${isDraftMode ? 'DRAFT' : 'PRO'} | Prompt: ${finalPrompt.substring(0, 80)}...`);
 
     const response = await fetch(ARK_API_URL, {
       method: "POST",

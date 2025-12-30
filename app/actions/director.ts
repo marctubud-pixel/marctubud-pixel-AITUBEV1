@@ -2,38 +2,48 @@
 
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_TEXT_ENDPOINT_ID = process.env.VOLC_TEXT_ENDPOINT_ID;
-// 火山引擎方舟的文字对话接口
 const ARK_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
 export async function analyzeScript(scriptText: string) {
-  // 1. 打印基础日志（用于 Vercel 调试）
+  // 1. 打印基础日志
   console.log("[Director] 开始分析剧本，长度:", scriptText?.length || 0);
 
   // 2. 严格检查环境变量
-  if (!ARK_API_KEY) {
-    console.error("[Director] 错误: 缺失 VOLC_ARK_API_KEY");
-    throw new Error("服务器配置错误：API Key 缺失");
-  }
-  if (!ARK_TEXT_ENDPOINT_ID) {
-    console.error("[Director] 错误: 缺失 VOLC_TEXT_ENDPOINT_ID");
-    throw new Error("服务器配置错误：模型接入点 ID 缺失");
+  if (!ARK_API_KEY || !ARK_TEXT_ENDPOINT_ID) {
+    console.error("[Director] 错误: 缺失 API Key 或 Endpoint ID");
+    throw new Error("服务器配置错误：AI 服务未连接");
   }
 
   try {
+    // 🔥 核心升级：导演智能体 System Prompt
     const systemPrompt = `
-      你是一位专业的电影分镜导演。请将剧本拆解成一系列的关键分镜镜头。
+      你是一位经验丰富的电影分镜导演。你的任务是将用户的剧本拆解为一系列具体的、可视化的分镜画面。
+
+      ### 核心原则 (必须严格遵守)
+      1. **动作拆分 (Action Splitting)**：
+         - 如果一句剧本包含连续动作（例如：“他走进房间，环顾四周，然后惊恐地盯着角落”），**必须**拆解为 3 个独立的分镜，严禁合并在同一个画面中。
+         - 每个分镜只表现一个核心动作或状态。
       
-      输出要求：
-      - 必须是纯粹的 JSON 格式。
-      - 返回格式示例：{"panels": [{"description": "...", "visualPrompt": "...", "shotType": "..."}]}
-      - 每个镜头包含：
-         1. description: 画面内容的详细视觉描述（中文）。
-         2. visualPrompt: 用于 AI 绘画的英文提示词（包含光影、环境细节、动作）。
-         3. shotType: 景别 (如: "Close-up", "Medium Shot", "Wide Shot", "Extreme Wide Shot")。
-      - 不要包含任何解释性文字或 Markdown 标签。
+      2. **智能景别推断 (Smart Shot Inference)**：
+         请根据画面内容，从以下列表中选择最精准的景别（Shot Type）：
+         - "EXTREME LONG SHOT": 展现宏大场景、城市全貌、远处的山脉、孤独渺小的人影。
+         - "LONG SHOT": 人物全身可见，强调人物与大环境的关系。
+         - "FULL SHOT": 人物从头到脚完整可见，用于表现肢体动作、行走。
+         - "MID SHOT": 人物腰部以上，用于对话、上半身动作。
+         - "CLOSE-UP": 面部特写，展现情绪、表情。
+         - "EXTREME CLOSE-UP": 局部特写（眼睛、嘴唇、手指、物品细节）。
+
+      3. **视觉翻译 (Visual Translation)**：
+         - description: 简练的中文剧情描述。
+         - visualPrompt: 纯英文提示词，用于 AI 绘画。必须包含：主体(Subject)、动作(Action)、光影(Lighting)、环境(Environment)。
+         - **注意**：如果剧本未描写背景，请根据上下文自动补全合理的背景（如：cyberpunk city, sunny beach, dark room），防止背景缺失。
+
+      ### 输出格式
+      必须只返回纯 JSON 格式，不要包含 Markdown 标记：
+      {"panels": [{"description": "...", "visualPrompt": "...", "shotType": "..."}]}
     `;
 
-    console.log("[Director] 正在调用火山引擎 API...");
+    console.log("[Director] 正在调用火山引擎 API (Smart Splitting)...");
 
     const response = await fetch(ARK_CHAT_URL, {
       method: "POST",
@@ -45,12 +55,11 @@ export async function analyzeScript(scriptText: string) {
         model: ARK_TEXT_ENDPOINT_ID,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `请拆解以下剧本：\n\n${scriptText}` }
+          { role: "user", content: `请拆解以下剧本，注意将长动作拆分为不同分镜：\n\n${scriptText}` }
         ],
-        temperature: 0.6, // 略微调低随机性，增强 JSON 格式稳定性
+        temperature: 0.7, // 稍微提高创造性，以便更好地补全画面细节
         max_tokens: 4000
       }),
-      // 注意：Vercel 免费版超时限制为 10s，如果 API 响应慢可能会超时
       cache: 'no-store' 
     });
 
@@ -63,35 +72,38 @@ export async function analyzeScript(scriptText: string) {
 
     let content = resJson.choices?.[0]?.message?.content || "";
     
-    // 3. 增强版内容清洗：去除 Markdown 标签及其前后的空白
+    // 3. 内容清洗
     content = content.replace(/```json\n?/, "").replace(/```\n?/, "").trim();
     
-    console.log("[Director] 成功接收 AI 返回内容 (前100字):", content.substring(0, 100));
+    console.log("[Director] AI 返回内容 (Preview):", content.substring(0, 100));
 
     // 4. 解析 JSON
     let data;
     try {
         data = JSON.parse(content);
     } catch (e) {
-        console.error("[Director] JSON 解析失败，原始内容为:", content);
-        throw new Error("AI 返回格式不正确，未能解析为 JSON");
+        console.error("[Director] JSON 解析失败:", content);
+        // 尝试进行简单的 JSON 修复（处理偶尔的结尾截断问题）
+        if (content.trim().endsWith("}")) {
+             throw new Error("AI 返回格式不正确");
+        } else {
+             throw new Error("AI 返回内容截断，请尝试缩短剧本");
+        }
     }
 
-    // 5. 兼容性格式化处理
+    // 5. 格式标准化
     if (Array.isArray(data)) {
         return { panels: data };
     }
     
     if (!data.panels || !Array.isArray(data.panels)) {
-        console.error("[Director] 返回数据缺少 panels 数组:", data);
-        throw new Error("剧本拆解失败：AI 返回数据格式缺失分镜列表");
+        throw new Error("AI 返回数据缺少 panels 列表");
     }
 
     return data;
 
   } catch (error: any) {
     console.error("[Director Runtime Error]", error);
-    // 抛出友好的错误信息给前端 toast
-    throw new Error(error.message || "剧本分析过程中发生未知错误");
+    throw new Error(error.message || "剧本分析服务暂时不可用");
   }
 }
