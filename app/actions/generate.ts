@@ -13,12 +13,10 @@ const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
 
 // 🟢 配置：双模型路由
-// 生产环境用 Pro 模型 (8K, 高细节)
 const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
-// 草图环境用 Turbo/Lite 模型 (快速, 便宜)，未配置则回退到 Pro
 const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
 
-// 🟢 配置：景别权重图 (解决景别不明显问题)
+// 🟢 配置：景别权重图
 const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME LONG SHOT": "(tiny figure in distance:1.6), (massive environment:2.0), (wide angle lens:1.5), aerial view, <subject> only occupies 10% of frame",
     "LONG SHOT": "(full body visible:1.5), (feet visible:1.5), (surrounding environment visible:1.3), distance shot, wide angle",
@@ -54,11 +52,15 @@ const RATIO_MAP: Record<string, string> = {
 
 /**
  * 💡 语义检查 1：非面部肢体/物体细节 (开启 No Face 模式)
+ * 🔥 已新增车辆相关关键词，防止人物混入车辆特写
  */
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = [
       'hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand',
-      '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿'
+      // 🔥 新增车辆与驾驶关键词
+      'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 
+      '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿',
+      '车', '轮', '轮胎', '驾驶'
     ];
     return keywords.some(k => prompt.toLowerCase().includes(k));
 }
@@ -153,7 +155,7 @@ export async function generateShotImage(
     const isFaceMacroShot = isFaceMacro(actionPrompt);
     const isCloseUp = shotType.toUpperCase().includes("CLOSE") || isFaceMacroShot;
 
-    console.log(`[Server] 生成开始 | 模式: ${isDraftMode ? '草图(Draft)' : '精绘(Pro)'} | 语义: ${isNonFace ? '肢体' : (isFaceMacroShot ? '微距' : '常规')} | 景别: ${shotType}`);
+    console.log(`[Server] 生成开始 | 模式: ${isDraftMode ? '草图(Draft)' : '精绘(Pro)'} | 语义: ${isNonFace ? '肢体/物体/车辆' : (isFaceMacroShot ? '微距' : '常规')} | 景别: ${shotType}`);
 
     // 1. 视觉分析与清洗 (仅 Pro 模式或有参考图时执行)
     let visionAnalysis: VisionAnalysis | null = null;
@@ -192,11 +194,12 @@ export async function generateShotImage(
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
       if (char) {
           if (isNonFace) {
-             characterPart = ""; // 拍脚时不带人设
+             // 🔥 如果是车/轮/脚等非人脸特写，强制清空角色描述
+             console.log("[Logic] 触发非人脸/物体特写模式，已移除角色描述注入");
+             characterPart = ""; 
           } else if (isFaceMacroShot) {
              characterPart = `(Character features: ${char.description.substring(0, 50)}), `;
           } else {
-             // 如果当前在强调新环境，弱化角色描述中的背景信息(通过 LLM 清洗更好，这里先用权重控制)
              characterPart = `(Character: ${char.description}), `;
           }
       }
@@ -209,7 +212,7 @@ export async function generateShotImage(
         // 🟢 草图模式：强制黑白、线条、忽略颜色
         finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ${actionPrompt}, ${characterPart} storyboard sketch`;
     } else if (isNonFace) {
-        // 🦵 肢体特写：熔断逻辑
+        // 🦵 肢体/物体特写：熔断逻辑
         finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:1.8), (no face:1.8), ${stylePreset}`;
     } else if (isFaceMacroShot) {
         // 👁️ 面部微距：特征清洗
@@ -229,14 +232,11 @@ export async function generateShotImage(
       negative_prompt: isDraftMode ? DRAFT_NEGATIVE : getStrictNegative(shotType, isNonFace, stylePreset), 
       size: RATIO_MAP[aspectRatio] || "2560x1440", 
       n: 1,
-      // 草图模式降低步数和引导，提升速度
       steps: isDraftMode ? 25 : 40,
       guidance_scale: isDraftMode ? 5.0 : 7.5
     };
 
     // 5. 参考图 (Img2Img)
-    // 草图模式下，除非必要，否则不使用 Sharp 处理后的参考图，以保持最简线条
-    // 如果必须用 (比如构图参考)，可以放开
     const targetRefImage = referenceImageUrl || sceneImageUrl;
     if (targetRefImage && !isDraftMode) {
         const base64Image = await processImageRef(targetRefImage, visionAnalysis, shotType);
