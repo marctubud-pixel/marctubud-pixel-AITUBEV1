@@ -12,6 +12,10 @@ Git 指令跟进 (中文化标准)：AI 必须在回复末尾附上 Git 同步�
 
 验收归档闭环：AI 提供代码 -> 用户实测通过 -> 用户确认 -> AI 更新文档 -> 进入下一阶段。
 
+(新增) 上帝模式优先：在开发 UI 交互或演示流程时，必须优先开启 Mock Mode，避免浪费 API 额度。
+
+(新增) 交付级测试：每次功能更新，必须验证“导出 ZIP”与“拖拽排序”的稳定性。
+
 🎯 二、 核心愿景与战略 (Core Vision)
 定位：全球领先的 AI 原生视频创作社区。
 
@@ -39,52 +43,54 @@ Image Processing: Sharp (Node.js) - 服务端物理裁剪引擎。
 AI Engine: Doubao-Seedream-4.5 (Vision) + Seedream-3.0 (T2I) + 智能提示词工程 (Prompt Override Mode)。
 
 🚀 六、 开发进度追踪 (Current Progress)
-✅ 今日完成工作 (Milestones - 2025/12/30)
+🚀 六、 开发进度追踪 (Current Progress)
+✅ 今日完成工作 (Milestones - 2026/01/01)
+1. CineFlow 核心引擎 V3.1 (The "Hallucination Killer")
+我们攻克了 AI 分镜最顽固的两个幻觉问题：
 
-1. AIGC 核心引擎 V2.1 (The "Ghost Face" Battle)
+主语清洗 (Subject Scrubbing)：
 
-物理层：服务端裁剪 (Sharp Integration)，配合 Vision 坐标阻断 AI 联想。
+原理：在 generate.ts 中引入正则清洗，针对非人脸特写（脚部、车轮），物理删除 Prompt 中的“他/她/男人/侦探”等代词。
 
-逻辑层：熔断式语义隔离 (Semantic Fuse)，实现中英文双语识别与负面指令高权重熔断。
+效果：彻底解决了“脚部特写长出人头”和“车轮里有人脸”的惊悚 Bug。
 
-特征层：智能清洗 (Feature Scrubbing)，解决“眼球里长裙子”的特征污染问题。
+景别定义分离 (Shot Definitions Split)：
 
-2. CineFlow 2.0 终极完善 (Logic Closure)
+原理：新增 OBJECT_SHOT_PROMPTS。当检测到物体特写时，CLOSE-UP 的定义自动从“聚焦面部”切换为“聚焦物体细节/微距”。
 
-Director 智能体 (app/actions/director.ts) 重构：
+效果：即使在草图模式下，特写镜头也不再强行生成五官。
 
-Prompt 覆盖模式 (Override Mode)：针对特定镜头（车轮、手部、脚部），从“追加提示词”升级为**“完全覆盖”**，彻底根除 AI 幻觉（如车轮里长人）。
+全景保护 (Panorama Authority)：
 
-主语识别增强：精准区分“车停下”（轮胎特写）与“人停下”（脚部特写），并移除了对“行走”的误判（恢复全景）。
+原理：在 director.ts 中，一旦检测到“全景/全身/大场景”，强制锁定 ShotType 为 FULL SHOT，压制住“看/拿”等局部动词触发的特写误判。
 
-防御式编程：引入强制类型转换，解决了 Server Action 因 AI 返回非字符串数据导致崩溃的隐患。
+2. CineFlow V2.0 交互大升级 (The "Editor" Evolution)
+从“生成器”进化为真正的“编辑器”：
 
-前端交互 (page.tsx) 逻辑修正：
+拖拽排序 (Drag & Drop)：集成 @dnd-kit，实现分镜卡片丝滑拖拽，分镜号（#01, #02...）随位置自动重排。
 
-Prompt 优先级重构：生图时优先使用后端清洗过的 panel.prompt (English)，不再盲目拼接中文描述，确保去人化逻辑在生图端真正生效。
+多格式剧本导入 (Universal Import)：支持直接上传 Word (.docx)、Excel (.xlsx)、TXT 文件，自动提取文本并填充。
 
-生图引擎 (generate.ts) 补丁：
+一键打包交付 (ZIP Export)：新增 ZIP 导出功能，自动将所有分镜图按 序号_景别_描述.png 规范命名打包，满足商业交付需求。
 
-车辆关键词支持：在 isNonFaceDetail 中新增 car/wheel/tire，配合熔断机制，实现了“车轮特写”自动屏蔽角色 ID。
+全局氛围控制 (Global Atmosphere)：前端新增“氛围输入框”，一键将“赛博朋克/宫崎骏风”注入所有分镜，实现整齐划一的影调。
 
-3. 基础设施
+3. 开发者体验优化 (DX)
+上帝模式 (Mock Mode)：
 
-角色库 UI 就绪，存储权限修复。
+后端：generate.ts 支持接收 useMock 参数，跳过 API 调用，返回高清占位图。
+
+前端：UI 新增“MOCK ON/OFF”开关，解决 API 欠费/限流时的开发阻塞问题，同时方便极速演示。
 
 🚩 待解决与后续计划 (To-Dos)
+[今日重点] 角色库功能补全 (Character Consistency)
+负面提示词 (Negative Prompt)：在角色编辑弹窗中增加此字段，并在生图时自动挂载（例如防止某角色总是生成眼镜）。
 
-[明日重点] 角色库功能升级 (Character Library Upgrade)
+画廊联动：CineFlow 编辑器增加“从角色库选择参考图”的弹窗，打通资产库。
 
-字段扩展：
+[本周目标] 商业化闭环 (Monetization Setup)
+基于《执行计划》，开始搭建变现基础设施：
 
-在“编辑角色”弹窗中新增 “负面提示词 (Negative Prompt)” 字段。
+SOP 导出优化：不仅导出图片，还要能一键生成包含“提示词 + 参数”的 PDF 文档（作为 9.9元 引流产品）。
 
-目的：为特定角色配置永久屏蔽词（如 glasses），减少重复劳动。
-
-引擎接入：
-
-修改 actions/generate.ts，使其自动挂载角色的 negative_prompt。
-
-画廊联动：
-
-实现 CineFlow 编辑器直接调用角色库“参考图画廊”的功能。
+案例库页面：开发 /cases 路由，用于展示我们用 CineFlow 生成的精美视频/分镜案例。
