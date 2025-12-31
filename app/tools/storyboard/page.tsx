@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Clapperboard, Loader2, ArrowLeft, PenTool, Image as ImageIcon, Trash2, Plus, 
-  PlayCircle, Download, Upload, RefreshCw, FileText, Sparkles, GripVertical, Package, RotateCcw
+  PlayCircle, Download, Upload, RefreshCw, FileText, Sparkles, GripVertical, Package, RotateCcw, Zap
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
@@ -15,7 +15,6 @@ import { exportStoryboardPDF } from '@/utils/export-pdf';
 import { parseFileToText } from '@/utils/file-parsers';
 import { exportStoryboardZIP } from '@/utils/export-zip';
 
-// 🏗️ Dnd-Kit 核心库
 import {
   DndContext, 
   closestCenter,
@@ -83,22 +82,17 @@ const ASPECT_RATIOS = [
   { value: "9:16", label: "9:16", cssClass: "aspect-[9/16]" },
 ];
 
-// 📦 分镜卡片组件
 const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, step, isOverlay, ...props }, ref) => {
-    
     const baseClass = isOverlay 
         ? "ring-2 ring-yellow-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" 
         : "border-white/5 hover:border-white/10";
 
-    // 模式 A: 成片网格
     if (step === 'generating' || step === 'done') {
         return (
             <div ref={ref} {...props} className={`relative bg-black rounded-xl overflow-hidden border transition-all group ${currentRatioClass} ${baseClass}`}>
-                {/* 拖拽手柄 */}
                 <div className="absolute top-2 right-2 z-40 p-1.5 bg-black/60 hover:bg-yellow-500 text-white/70 hover:text-black rounded cursor-grab active:cursor-grabbing backdrop-blur-md border border-white/10 transition-colors" title="拖拽排序">
                      <GripVertical size={14} />
                 </div>
-
                 {panel.isLoading ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/50 backdrop-blur-sm z-10">
                         <Loader2 className="animate-spin w-8 h-8 text-yellow-500" />
@@ -107,25 +101,17 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                     <img src={panel.imageUrl} className="w-full h-full object-cover" draggable={false} />
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-[#111] text-zinc-600">
-                        <ImageIcon size={32} className="mb-2 opacity-20"/>
-                        <span className="text-xs">等待生成</span>
+                        <ImageIcon size={32} className="mb-2 opacity-20"/><span className="text-xs">等待生成</span>
                     </div>
                 )}
-    
                 <div className="absolute top-2 left-2 z-20 pointer-events-none">
-                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider">
-                        {CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0] || panel.shotType}
-                    </span>
+                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded uppercase tracking-wider">{CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0] || panel.shotType}</span>
                 </div>
-    
                 {!panel.isLoading && !isOverlay && (
                     <div className="absolute top-10 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button onClick={() => onRegenerate(panel.id)} className="p-1.5 bg-black/60 hover:bg-white text-white hover:text-black rounded backdrop-blur-md border border-white/10 transition-all" title="重绘此镜头">
-                            <RefreshCw size={14} />
-                        </button>
+                         <button onClick={() => onRegenerate(panel.id)} className="p-1.5 bg-black/60 hover:bg-white text-white hover:text-black rounded backdrop-blur-md border border-white/10 transition-all" title="重绘此镜头"><RefreshCw size={14} /></button>
                     </div>
                 )}
-    
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 pt-10 text-white z-20 pointer-events-none">
                     <div className="flex items-start gap-2">
                         <span className="text-[10px] font-bold bg-yellow-500 text-black px-1.5 py-0.5 rounded font-mono mt-0.5">#{String(idx + 1).padStart(2, '0')}</span>
@@ -135,59 +121,30 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
             </div>
         );
     }
-
-    // 模式 B: 列表编辑
     return (
         <div ref={ref} {...props} className={`bg-[#151515] p-4 rounded-xl border flex flex-col md:flex-row gap-4 relative ${baseClass}`}>
-            <div className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing z-20">
-                <GripVertical size={20} />
-            </div>
-
+            <div className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing z-20"><GripVertical size={20} /></div>
             <div className="flex items-start gap-3 md:w-48 shrink-0 ml-8">
-                <div className="w-6 h-6 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-xs text-zinc-500 font-bold mt-1">
-                    {String(idx + 1).padStart(2, '0')}
-                </div>
+                <div className="w-6 h-6 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-xs text-zinc-500 font-bold mt-1">{String(idx + 1).padStart(2, '0')}</div>
                 <div className="flex flex-col gap-2 w-full">
                     <select value={panel.shotType} onChange={(e) => onUpdate(panel.id, 'shotType', e.target.value)} className="bg-black border border-zinc-800 text-yellow-500 text-[10px] font-bold px-2 py-1.5 rounded outline-none focus:border-yellow-500 uppercase tracking-wide">
                         {CINEMATIC_SHOTS.map(shot => <option key={shot.value} value={shot.value}>{shot.label}</option>)}
                     </select>
-                    {!isOverlay && (
-                        <button onClick={() => onDelete(panel.id)} className="text-zinc-600 hover:text-red-500 text-xs flex items-center gap-1 self-start ml-1">
-                            <Trash2 size={10}/> Delete
-                        </button>
-                    )}
+                    {!isOverlay && (<button onClick={() => onDelete(panel.id)} className="text-zinc-600 hover:text-red-500 text-xs flex items-center gap-1 self-start ml-1"><Trash2 size={10}/> Delete</button>)}
                 </div>
             </div>
-            
             <div className="flex-1">
-                <textarea 
-                    value={panel.description} 
-                    onChange={(e) => onUpdate(panel.id, 'description', e.target.value)} 
-                    className="w-full bg-transparent text-sm text-gray-300 placeholder-zinc-700 border-none focus:ring-0 p-0 resize-none leading-relaxed" 
-                    placeholder="Shot description..."
-                    rows={3} 
-                />
+                <textarea value={panel.description} onChange={(e) => onUpdate(panel.id, 'description', e.target.value)} className="w-full bg-transparent text-sm text-gray-300 placeholder-zinc-700 border-none focus:ring-0 p-0 resize-none leading-relaxed" placeholder="Shot description..." rows={3} />
             </div>
         </div>
     );
 });
 PanelCard.displayName = "PanelCard";
 
-// 📦 Sortable Wrapper
 function SortablePanelItem(props: any) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.panel.id });
-    
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.3 : 1, 
-    };
-  
-    return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-            <PanelCard {...props} />
-        </div>
-    );
+    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 };
+    return (<div ref={setNodeRef} style={style} {...attributes} {...listeners}><PanelCard {...props} /></div>);
 }
 
 export default function StoryboardPage() {
@@ -210,6 +167,9 @@ export default function StoryboardPage() {
   const [selectedRefImage, setSelectedRefImage] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   
+  // 🟢 新增：Mock 模式状态
+  const [isMockMode, setIsMockMode] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
   const tempProjectId = "temp_workspace"; 
@@ -219,10 +179,7 @@ export default function StoryboardPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveDragId(event.active.id as string);
-  };
-
+  const handleDragStart = (event: DragStartEvent) => { setActiveDragId(event.active.id as string); };
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (active.id !== over?.id) {
@@ -332,16 +289,25 @@ export default function StoryboardPage() {
     try {
         const tempShotId = `shot_${Date.now()}`; 
         const actionPrompt = buildActionPrompt(panel);
+        // 🟢 传入 isMockMode 参数
         const res = await generateShotImage(
             tempShotId, actionPrompt, tempProjectId, mode === 'draft', stylePreset, aspectRatio, panel.shotType, 
-            selectedCharacterId || undefined, selectedRefImage || undefined, sceneImageUrl || undefined 
+            selectedCharacterId || undefined, selectedRefImage || undefined, sceneImageUrl || undefined,
+            isMockMode 
         );
         if (res.success) {
             const successRes = res as { success: true; url: string };
             setPanels(current => current.map(p => p.id === panelId ? { ...p, imageUrl: successRes.url, isLoading: false } : p));
             toast.success('镜头已重绘');
-        } else { throw new Error((res as any).message || '生成失败'); }
-    } catch (error: any) { console.error(error); toast.error('重绘失败'); setPanels(current => current.map(p => p.id === panelId ? { ...p, isLoading: false } : p)); }
+        } else { 
+            const errorRes = res as { success: false; message: string };
+            throw new Error(errorRes.message || '生成失败'); 
+        }
+    } catch (error: any) { 
+        console.error(error); 
+        toast.error(`重绘失败: ${error.message}`); 
+        setPanels(current => current.map(p => p.id === panelId ? { ...p, isLoading: false } : p)); 
+    }
   };
 
   const handleGenerateImages = async () => {
@@ -353,15 +319,25 @@ export default function StoryboardPage() {
         try {
             const tempShotId = `shot_${Date.now()}_${panel.id.substring(0, 4)}`;
             const actionPrompt = buildActionPrompt(panel);
+            // 🟢 传入 isMockMode 参数
             const res = await generateShotImage(
               tempShotId, actionPrompt, tempProjectId, mode === 'draft', stylePreset, aspectRatio, panel.shotType, 
-              selectedCharacterId || undefined, selectedRefImage || undefined, sceneImageUrl || undefined 
+              selectedCharacterId || undefined, selectedRefImage || undefined, sceneImageUrl || undefined,
+              isMockMode
             );
             if (res.success) {
               const successRes = res as { success: true; url: string };
               setPanels(current => current.map(p => p.id === panel.id ? { ...p, imageUrl: successRes.url, isLoading: false } : p));
+            } else {
+              const errorRes = res as { success: false; message: string };
+              toast.error(`Shot failed: ${errorRes.message}`);
+              setPanels(current => current.map(p => p.id === panel.id ? { ...p, isLoading: false } : p));
             }
-        } catch (e) { console.error(e); }
+        } catch (e: any) { 
+            console.error(e);
+            toast.error(e.message);
+            setPanels(current => current.map(p => p.id === panel.id ? { ...p, isLoading: false } : p));
+        }
     }
     setIsDrawing(false);
     setStep('done');
@@ -391,6 +367,7 @@ export default function StoryboardPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white p-6 font-sans">
       <Toaster position="top-center" richColors />
+      {/* 顶部导航 */}
       <div className="max-w-7xl mx-auto mb-8 flex items-center justify-between">
         <Link href="/tools" className="inline-flex items-center text-zinc-500 hover:text-white transition-colors"><ArrowLeft className="w-4 h-4 mr-2" /> 返回工作台</Link>
         <div className="flex items-center gap-4 text-xs font-mono text-zinc-600">
@@ -408,12 +385,24 @@ export default function StoryboardPage() {
           <div className="bg-[#111] p-6 rounded-2xl border border-white/5 flex flex-col gap-5">
             <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold text-zinc-400 flex items-center gap-2"><Clapperboard className="w-4 h-4 text-yellow-500" /> PROJECT SETTINGS</h2>
-                <div className="flex bg-black/50 rounded-lg p-1 border border-white/5">
-                    {ASPECT_RATIOS.map(r => (
-                        <button key={r.value} onClick={() => setAspectRatio(r.value)} className={`text-[10px] px-2 py-1 rounded transition-all ${aspectRatio === r.value ? 'bg-zinc-800 text-white font-bold' : 'text-zinc-600 hover:text-zinc-400'}`}>{r.label}</button>
-                    ))}
-                </div>
+                
+                {/* 🟢 上帝模式开关 */}
+                <button 
+                    onClick={() => setIsMockMode(!isMockMode)}
+                    className={`text-[10px] px-2 py-1 rounded flex items-center gap-1 border transition-colors ${isMockMode ? 'bg-green-500/20 border-green-500 text-green-500' : 'bg-black/30 border-white/10 text-zinc-600'}`}
+                    title="开启后不消耗 API 额度，仅生成测试图"
+                >
+                    <Zap size={10} fill={isMockMode ? "currentColor" : "none"}/>
+                    {isMockMode ? "MOCK ON" : "REAL API"}
+                </button>
             </div>
+
+            <div className="flex bg-black/50 rounded-lg p-1 border border-white/5">
+                {ASPECT_RATIOS.map(r => (
+                    <button key={r.value} onClick={() => setAspectRatio(r.value)} className={`text-[10px] px-2 py-1 rounded transition-all ${aspectRatio === r.value ? 'bg-zinc-800 text-white font-bold' : 'text-zinc-600 hover:text-zinc-400'}`}>{r.label}</button>
+                ))}
+            </div>
+
             {/* 模式选择 */}
             <div className="bg-black/30 p-1 rounded-lg flex border border-white/5">
                 <button onClick={() => setMode('draft')} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold transition-all ${mode === 'draft' ? 'bg-yellow-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}><PenTool className="w-3 h-3" /> 草图模式</button>
@@ -516,7 +505,6 @@ export default function StoryboardPage() {
                     <div className="space-y-8 animate-in fade-in">
                         <div className="flex justify-between items-center">
                             <button onClick={() => setStep('review')} className="text-xs text-zinc-500 hover:text-white flex items-center gap-1"><ArrowLeft size={12}/> Back to Editor</button>
-                            {/* 🟢 右侧顶部也保留快捷按钮 */}
                             {step === 'done' && (
                                 <div className="flex gap-2">
                                     <button onClick={handleExportZIP} className="bg-zinc-800 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-zinc-700 transition-colors border border-white/10">

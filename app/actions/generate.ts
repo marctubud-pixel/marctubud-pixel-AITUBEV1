@@ -15,18 +15,15 @@ const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations
 const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
 const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
 
-// 🟢 配置：标准景别 (含人)
 const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME LONG SHOT": "(tiny figure in distance:1.6), (massive environment:2.0), (wide angle lens:1.5), aerial view, <subject> only occupies 10% of frame",
     "LONG SHOT": "(full body visible:1.5), (feet visible:1.5), (surrounding environment visible:1.3), distance shot, wide angle",
     "FULL SHOT": "(full body from head to toe:1.8), (feet visible:1.5), standing pose, environment visible",
     "MID SHOT": "(waist up:1.5), (head and torso focus:1.5), portrait composition",
-    "CLOSE-UP": "(face focus:1.8), (head and shoulders:1.5), (background blurred:1.2), depth of field", // 🚨 凶手在这里
+    "CLOSE-UP": "(face focus:1.8), (head and shoulders:1.5), (background blurred:1.2), depth of field",
     "EXTREME CLOSE-UP": "(macro photography:2.0), (extreme detail:1.5), (focus on single part:2.0), crop to detail"
 };
 
-// 🛡️ [新增] 无人景别 (Object/Action Only)
-// 当检测到 isNonFace 时，使用这组定义，顶替掉上面的标准定义
 const OBJECT_SHOT_PROMPTS: Record<string, string> = {
     "CLOSE-UP": "(macro view:1.5), (object focus:1.8), (detail shot:1.5), low angle, depth of field",
     "EXTREME CLOSE-UP": "(microscopic detail:2.0), (texture focus:1.8), macro photography",
@@ -49,7 +46,7 @@ const STYLE_PRESETS: Record<string, string> = {
 };
 
 const RATIO_MAP: Record<string, string> = {
-  "16:9": "2560x1440",  "9:16": "1440x2560", "1:1": "2048x2048",   "4:3": "2304x1728",   "3:4": "1728x2304", "2.39:1": "3072x1280" 
+  "16:9": "2560x1440", "9:16": "1440x2560", "1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "2.39:1": "3072x1280" 
 };
 
 function isNonFaceDetail(prompt: string): boolean {
@@ -78,13 +75,12 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: s
     let base = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
     
     if (isDraftMode) {
-        base = DRAFT_NEGATIVE_BASE; // 草图模式的基础负面词
+        base = DRAFT_NEGATIVE_BASE; 
     } else if (stylePreset === 'realistic') {
         base += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting";
     }
 
     if (isNonFace) {
-        // 🔥 无论草图还是正式图，只要是 isNonFace，必须封杀人脸和上半身
         return `${base}, face, head, eyes, portrait, person, woman, girl, man, boy, human silhouette, look at camera, upper body, torso, selfie`;
     } else {
         return shotType.toUpperCase().includes("CLOSE") 
@@ -94,7 +90,6 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: s
 }
 
 async function processImageRef(url: string, vision: VisionAnalysis | null, targetShot: string): Promise<string | null> {
-    // ... (保持不变，省略以节省空间，功能同前)
     try {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Fetch failed`);
@@ -118,6 +113,7 @@ async function processImageRef(url: string, vision: VisionAnalysis | null, targe
       }
 }
 
+// 🟢 修改：新增 useMock 参数 (默认为 false)
 export async function generateShotImage(
   shotId: string | number, 
   actionPrompt: string, 
@@ -125,26 +121,37 @@ export async function generateShotImage(
   isDraftMode: boolean, 
   stylePreset: string = 'realistic',
   aspectRatio: string = '16:9',
-  shotType: string = 'MID SHOT', // 如果前端没传，默认MID SHOT
+  shotType: string = 'MID SHOT',
   characterId?: string,
   referenceImageUrl?: string, 
-  sceneImageUrl?: string      
+  sceneImageUrl?: string,
+  useMock: boolean = false // 🔥 新增参数：前端传 true 时开启上帝模式
 ) {
   try {
+    // 🛑 Mock 拦截器
+    if (useMock) {
+        console.log(`[Mock Mode] Skipping AI generation for Shot ${shotId}`);
+        await new Promise(resolve => setTimeout(resolve, 800)); // 模拟延迟
+        
+        // 生成随机图
+        const randomSeed = Math.floor(Math.random() * 99999);
+        const mockUrl = `https://picsum.photos/seed/${randomSeed}/1280/720`; 
+        
+        return { success: true, url: mockUrl };
+    }
+
     if (!ARK_API_KEY) throw new Error("API Key Missing");
 
-    // 🚨 模式判定
     const isNonFace = isNonFaceDetail(actionPrompt); 
     const isFaceMacroShot = isFaceMacro(actionPrompt);
     const isCloseUp = shotType.toUpperCase().includes("CLOSE") || isFaceMacroShot;
 
-    console.log(`[Server] 生成开始 | Draft: ${isDraftMode} | NonFace: ${isNonFace} | Shot: ${shotType}`);
+    console.log(`[Server] 生成开始 | Mock: ${useMock} | Prompt: ${actionPrompt.substring(0, 50)}...`);
 
-    // 1. 视觉分析 (Pro only)
+    // 1. 视觉分析
     let visionAnalysis: VisionAnalysis | null = null;
     let keyFeaturesPrompt = "";
     if (referenceImageUrl && !isDraftMode) {
-        // ... (保持不变)
         try {
             visionAnalysis = await analyzeRefImage(referenceImageUrl);
             if (visionAnalysis && visionAnalysis.key_features) {
@@ -168,7 +175,6 @@ export async function generateShotImage(
     let finalPrompt = "";
     let characterPart = "";
     
-    // 🧹 [Subject Scrubbing] 清洗人称代词
     let cleanedActionPrompt = actionPrompt;
     if (isNonFace) {
         cleanedActionPrompt = cleanedActionPrompt
@@ -181,15 +187,13 @@ export async function generateShotImage(
             .replace(/man/gi, "")
             .replace(/woman/gi, "")
             .replace(/detective/gi, "");
-        console.log(`[Scrubbing] 清洗结果: "${cleanedActionPrompt}"`);
     }
 
-    // 角色描述注入
     if (characterId) {
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
       if (char) {
           if (isNonFace) {
-             characterPart = ""; // 彻底阻断角色描述
+             characterPart = ""; 
           } else if (isFaceMacroShot) {
              characterPart = `(Character features: ${char.description.substring(0, 50)}), `;
           } else {
@@ -198,22 +202,16 @@ export async function generateShotImage(
       }
     }
 
-    // ⚖️ [Shot Weight Switch] 景别权重切换
-    // 如果是 NonFace 模式，切换到 "无脸景别库"，防止 "CLOSE-UP" 带来 "face focus"
     const shotDictionary = isNonFace ? OBJECT_SHOT_PROMPTS : SHOT_PROMPTS;
     const shotWeightPrompt = shotDictionary[shotType.toUpperCase()] || shotDictionary["MID SHOT"] || "";
 
-    // 🔥 最终组装
     if (isDraftMode) {
-        // 草图模式：现在也享受 isNonFace 的待遇了
         if (isNonFace) {
-            // 强制追加 no people 权重
             finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ((${cleanedActionPrompt}:1.5)), (strictly no people:2.0), storyboard sketch`;
         } else {
             finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ${cleanedActionPrompt}, ${characterPart} storyboard sketch`;
         }
     } else {
-        // Pro 模式
         if (isNonFace) {
              finalPrompt = `((${cleanedActionPrompt}:2.8)), ${shotWeightPrompt}, ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:2.0), (no face:2.0), ${stylePreset}`;
         } else if (isFaceMacroShot) {
@@ -223,11 +221,7 @@ export async function generateShotImage(
         }
     }
 
-    // 4. Payload 构造
     const currentModel = isDraftMode ? MODEL_DRAFT : MODEL_PRO;
-    
-    // 🛡️ [Negative Prompt] 统一防御
-    // 现在 Draft Mode 也会调用 getStrictNegative 来获取 "no face" 等词
     const negativePrompt = getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode);
 
     const payload: any = {
@@ -250,7 +244,7 @@ export async function generateShotImage(
         }
     }
 
-    console.log(`[Gen] API Req | NonFace:${isNonFace} | Prompt: ${finalPrompt.substring(0, 100)}... | Neg: ${negativePrompt.substring(0, 50)}...`);
+    console.log(`[Gen] API Req | NonFace:${isNonFace} | Prompt: ${finalPrompt.substring(0, 100)}...`);
 
     const response = await fetch(ARK_API_URL, {
       method: "POST",
@@ -269,7 +263,6 @@ export async function generateShotImage(
   }
 }
 
-// ... processResponse 保持不变
 async function processResponse(data: any, shotId: string | number, projectId: string) {
     const imageUrl = data.data?.[0]?.url;
     if (!imageUrl) throw new Error("No image url returned");
