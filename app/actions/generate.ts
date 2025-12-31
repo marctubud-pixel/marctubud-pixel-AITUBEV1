@@ -52,14 +52,14 @@ const RATIO_MAP: Record<string, string> = {
 
 /**
  * 💡 语义检查 1：非面部肢体/物体细节 (开启 No Face 模式)
- * 作用：当检测到这些词时，强制屏蔽人脸，防止"车轮上长脸"或"脚上长脸"
  */
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = [
       'hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand',
-      // 🔥 车辆与驾驶关键词 (与 Director 的 Override 对应)
+      // 🔥 车辆与驾驶关键词
       'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt',
-      '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿',
+      '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', 
+      '积水', '步伐', '脚步', '水花', // 🔥 新增：解决踩水镜头出人脸问题
       '车', '轮', '轮胎', '驾驶'
     ];
     return keywords.some(k => prompt.toLowerCase().includes(k));
@@ -96,8 +96,8 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset: st
     }
 
     if (isNonFace) {
-        // 肢体/物体特写：封杀人脸
-        return `${base}, face, head, eyes, portrait, person, woman, girl, man, human silhouette, look at camera`;
+        // 🔥 核武器级负面词：不仅禁止脸，还禁止上半身
+        return `${base}, face, head, eyes, portrait, person, woman, girl, man, boy, human silhouette, look at camera, upper body, torso`;
     } else {
         // 人像/眼部特写：允许脸，但禁止下半身干扰
         return shotType.toUpperCase().includes("CLOSE") 
@@ -155,7 +155,7 @@ export async function generateShotImage(
     const isFaceMacroShot = isFaceMacro(actionPrompt);
     const isCloseUp = shotType.toUpperCase().includes("CLOSE") || isFaceMacroShot;
 
-    console.log(`[Server] 生成开始 | 模式: ${isDraftMode ? '草图(Draft)' : '精绘(Pro)'} | 语义: ${isNonFace ? '肢体/物体/车辆' : (isFaceMacroShot ? '微距' : '常规')} | 景别: ${shotType}`);
+    console.log(`[Server] 生成开始 | 模式: ${isDraftMode ? 'Draft' : 'Pro'} | 语义: ${isNonFace ? '无脸/局部' : (isFaceMacroShot ? '微距' : '常规')} | 景别: ${shotType}`);
 
     // 1. 视觉分析与清洗
     let visionAnalysis: VisionAnalysis | null = null;
@@ -188,6 +188,24 @@ export async function generateShotImage(
     let finalPrompt = "";
     let characterPart = "";
 
+    // 🧹 [新增] Prompt 清洗：如果是局部特写，必须杀死所有人类代词
+    let cleanedActionPrompt = actionPrompt;
+    if (isNonFace) {
+        console.log(`[Scrubbing] 清洗前: ${cleanedActionPrompt}`);
+        // 移除：他，她，男人，侦探，主角
+        cleanedActionPrompt = cleanedActionPrompt
+            .replace(/他/g, "")
+            .replace(/她/g, "")
+            .replace(/男人/g, "")
+            .replace(/女人/g, "")
+            .replace(/侦探/g, "")
+            .replace(/主角/g, "")
+            .replace(/man/gi, "")
+            .replace(/woman/gi, "")
+            .replace(/detective/gi, "");
+        console.log(`[Scrubbing] 清洗后: ${cleanedActionPrompt}`);
+    }
+
     // 角色描述处理
     if (characterId) {
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
@@ -203,16 +221,21 @@ export async function generateShotImage(
       }
     }
 
+    // 获取景别强化词
     const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
 
     if (isDraftMode) {
-        finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ${actionPrompt}, ${characterPart} storyboard sketch`;
+        // 🟢 草图模式
+        finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ${cleanedActionPrompt}, ${characterPart} storyboard sketch`;
     } else if (isNonFace) {
-        finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:1.8), (no face:1.8), ${stylePreset}`;
+        // 🦵 肢体/物体特写：熔断逻辑 (加强版)
+        finalPrompt = `((${cleanedActionPrompt}:2.8)), ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:2.0), (no face:2.0), ${stylePreset}`;
     } else if (isFaceMacroShot) {
-        finalPrompt = `((${actionPrompt}:2.5)), (macro photography:1.5), (extreme detail:1.4), (focus on face:1.2), ${characterPart} ${keyFeaturesPrompt}, ${stylePreset}`;
+        // 👁️ 面部微距
+        finalPrompt = `((${cleanedActionPrompt}:2.5)), (macro photography:1.5), (extreme detail:1.4), (focus on face:1.2), ${characterPart} ${keyFeaturesPrompt}, ${stylePreset}`;
     } else {
-        finalPrompt = `${shotWeightPrompt}, ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} ${sceneControlPrompt}, (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`;
+        // 👤 常规模式
+        finalPrompt = `${shotWeightPrompt}, ${cleanedActionPrompt}, ${characterPart} ${keyFeaturesPrompt} ${sceneControlPrompt}, (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`;
     }
 
     // 4. Payload 构造
@@ -228,8 +251,10 @@ export async function generateShotImage(
       guidance_scale: isDraftMode ? 5.0 : 7.5
     };
 
-    if (referenceImageUrl && !isDraftMode) {
-        const base64Image = await processImageRef(referenceImageUrl, visionAnalysis, shotType);
+    // 5. 参考图 (Img2Img)
+    const targetRefImage = referenceImageUrl || sceneImageUrl;
+    if (targetRefImage && !isDraftMode) {
+        const base64Image = await processImageRef(targetRefImage, visionAnalysis, shotType);
         if (base64Image) {
             payload.image_url = base64Image;
             const highStrength = isNonFace || isFaceMacroShot;
