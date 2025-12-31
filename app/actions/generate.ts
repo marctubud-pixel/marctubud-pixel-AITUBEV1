@@ -52,13 +52,13 @@ const RATIO_MAP: Record<string, string> = {
 
 /**
  * 💡 语义检查 1：非面部肢体/物体细节 (开启 No Face 模式)
- * 🔥 已新增车辆相关关键词，防止人物混入车辆特写
+ * 作用：当检测到这些词时，强制屏蔽人脸，防止"车轮上长脸"或"脚上长脸"
  */
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = [
       'hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand',
-      // 🔥 新增车辆与驾驶关键词
-      'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 
+      // 🔥 车辆与驾驶关键词 (与 Director 的 Override 对应)
+      'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt',
       '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿',
       '车', '轮', '轮胎', '驾驶'
     ];
@@ -157,7 +157,7 @@ export async function generateShotImage(
 
     console.log(`[Server] 生成开始 | 模式: ${isDraftMode ? '草图(Draft)' : '精绘(Pro)'} | 语义: ${isNonFace ? '肢体/物体/车辆' : (isFaceMacroShot ? '微距' : '常规')} | 景别: ${shotType}`);
 
-    // 1. 视觉分析与清洗 (仅 Pro 模式或有参考图时执行)
+    // 1. 视觉分析与清洗
     let visionAnalysis: VisionAnalysis | null = null;
     let keyFeaturesPrompt = "";
     
@@ -174,8 +174,7 @@ export async function generateShotImage(
         } catch (e) { console.warn("[Vision] 分析跳过", e); }
     }
 
-    // 2. 场景/记忆污染隔离 (Scene Isolation)
-    // 如果 Prompt 包含环境词，或者有场景参考图，强制压制角色原有的背景
+    // 2. 场景/记忆污染隔离
     const hasEnvironmentPrompt = ['beach', 'sea', 'city', 'room', 'forest', 'sand', 'sky', 'outdoor', 'indoor', 'street'].some(k => actionPrompt.toLowerCase().includes(k));
     let sceneControlPrompt = "";
     
@@ -194,7 +193,6 @@ export async function generateShotImage(
       const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
       if (char) {
           if (isNonFace) {
-             // 🔥 如果是车/轮/脚等非人脸特写，强制清空角色描述
              console.log("[Logic] 触发非人脸/物体特写模式，已移除角色描述注入");
              characterPart = ""; 
           } else if (isFaceMacroShot) {
@@ -205,25 +203,19 @@ export async function generateShotImage(
       }
     }
 
-    // 获取景别强化词
     const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
 
     if (isDraftMode) {
-        // 🟢 草图模式：强制黑白、线条、忽略颜色
         finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ${actionPrompt}, ${characterPart} storyboard sketch`;
     } else if (isNonFace) {
-        // 🦵 肢体/物体特写：熔断逻辑
         finalPrompt = `((${actionPrompt}:2.8)), ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:1.8), (no face:1.8), ${stylePreset}`;
     } else if (isFaceMacroShot) {
-        // 👁️ 面部微距：特征清洗
         finalPrompt = `((${actionPrompt}:2.5)), (macro photography:1.5), (extreme detail:1.4), (focus on face:1.2), ${characterPart} ${keyFeaturesPrompt}, ${stylePreset}`;
     } else {
-        // 👤 常规模式：标准组合 + 场景隔离 + 景别强化
         finalPrompt = `${shotWeightPrompt}, ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} ${sceneControlPrompt}, (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`;
     }
 
     // 4. Payload 构造
-    // 根据模式选择模型
     const currentModel = isDraftMode ? MODEL_DRAFT : MODEL_PRO;
     
     const payload: any = {
@@ -236,10 +228,8 @@ export async function generateShotImage(
       guidance_scale: isDraftMode ? 5.0 : 7.5
     };
 
-    // 5. 参考图 (Img2Img)
-    const targetRefImage = referenceImageUrl || sceneImageUrl;
-    if (targetRefImage && !isDraftMode) {
-        const base64Image = await processImageRef(targetRefImage, visionAnalysis, shotType);
+    if (referenceImageUrl && !isDraftMode) {
+        const base64Image = await processImageRef(referenceImageUrl, visionAnalysis, shotType);
         if (base64Image) {
             payload.image_url = base64Image;
             const highStrength = isNonFace || isFaceMacroShot;

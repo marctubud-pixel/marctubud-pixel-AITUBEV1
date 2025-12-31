@@ -4,65 +4,67 @@ const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_TEXT_ENDPOINT_ID = process.env.VOLC_TEXT_ENDPOINT_ID;
 const ARK_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 
-// 🔨 强制规则函数：根据主语类型进行针对性修正
+// 🔨 强制规则函数：根据主语类型进行针对性修正 (已同步最新防幻觉逻辑)
 function enforceCinematicRules(panels: any[]) {
   return panels.map((panel, index) => {
     const desc = (panel.description || "").trim();
-    // 标准化 ShotType，防止大小写问题
+    // 标准化 ShotType
     let shotType = (panel.shotType || "MID SHOT").toUpperCase().replace("SHOT", " SHOT").replace("  ", " ").trim();
     let prompt = (panel.visualPrompt || "").toLowerCase();
 
-    console.log(`[Panel ${index}] 分析: "${desc}"`);
+    // 容错处理
+    if (shotType === "CLOSE UP") shotType = "CLOSE-UP";
+    if (shotType === "EXTREME CLOSE UP") shotType = "EXTREME CLOSE-UP";
+    if (shotType === "LONGSHOT") shotType = "LONG SHOT";
 
-    // 🔍 检测“停止/动作”关键词
+    console.log(`[Panel ${index}] 分析: "${desc}" | 原始Shot: ${shotType}`);
+
+    // 🛡️ [全景保护]
+    const isPanorama = desc.includes("全景") || desc.includes("远景") || desc.includes("全身") || desc.includes("大场景") || desc.includes("环境") || desc.includes("背影") || shotType === "EXTREME LONG SHOT" || shotType === "FULL SHOT";
+
+    // 🔍 关键词检测
     const isStopping = desc.includes("停下") || desc.includes("止步") || desc.includes("刹车") || desc.includes("停止") || desc.includes("不动了");
+    const isVehicle = desc.includes("车") || desc.includes("驾驶");
     
-    // 🔍 检测主语类型
-    const isVehicle = desc.includes("车") || desc.includes("轮") || desc.includes("驾驶");
-    const isHand = desc.includes("手") || desc.includes("指") || desc.includes("拿") || desc.includes("握");
-    const isEye = desc.includes("眼") || desc.includes("视") || desc.includes("盯") || desc.includes("看");
+    // 严格化判断
+    const isHandSpecific = desc.includes("手部") || desc.includes("指尖") || desc.includes("手掌") || (desc.includes("手") && desc.includes("特写"));
+    const isEyeSpecific = desc.includes("眼部") || desc.includes("瞳") || desc.includes("眸") || (desc.includes("眼") && desc.includes("特写"));
 
-    // 🔴 场景 1：车辆/轮胎停止 -> 强制轮胎特写
+    // 🔴 场景 1：车辆/轮胎停止 -> 强制轮胎特写 (最高优先级)
     if (isStopping && isVehicle) {
       console.log(`⚡️ [Override] 检测到车辆停止 -> 强制轮胎特写`);
       shotType = "CLOSE-UP";
-      // 强制重写 Prompt，聚焦轮胎细节
       if (!prompt.includes("tire") && !prompt.includes("wheel")) {
-        panel.visualPrompt = `${panel.visualPrompt}, extreme close-up of car tires, spinning wheels stopping, friction with asphalt, motion blur, low angle`;
+        panel.visualPrompt = `${panel.visualPrompt}, extreme close-up of car tires, spinning wheels stopping, friction with asphalt, motion blur, low angle, (no people:2.0)`;
       }
     }
 
-    // 🔴 场景 2：手部动作 -> 强制手部特写
-    else if (isHand) {
-      console.log(`⚡️ [Override] 检测到手部动作 -> 强制手部特写`);
+    // 🔴 场景 2：手部动作 -> 强制手部特写 (受全景保护)
+    else if (isHandSpecific && !isPanorama) {
+      console.log(`⚡️ [Override] 检测到手部特写意图 -> 强制手部特写`);
       shotType = "CLOSE-UP";
       if (!prompt.includes("hand")) {
         panel.visualPrompt = `${panel.visualPrompt}, close-up of hands, detailed fingers, focus on action`;
       }
     }
 
-    // 🔴 场景 3：眼神/凝视 -> 强制眼部特写
-    else if (isEye) {
-      console.log(`⚡️ [Override] 检测到眼神 -> 强制眼部特写`);
+    // 🔴 场景 3：眼神/凝视 -> 强制眼部特写 (受全景保护)
+    else if (isEyeSpecific && !isPanorama) {
+      console.log(`⚡️ [Override] 检测到眼部特写意图 -> 强制眼部特写`);
       shotType = "CLOSE-UP";
       if (!prompt.includes("eye")) {
         panel.visualPrompt = `${panel.visualPrompt}, extreme close-up of eyes, focus on iris, emotional expression`;
       }
     }
 
-    // 🔴 场景 4：通用的人体停止（默认判定为脚部） -> 强制脚部特写
-    else if (isStopping) {
+    // 🔴 场景 4：人物停止 -> 强制脚部特写 (受全景保护)
+    else if (isStopping && !isVehicle && !isPanorama) {
       console.log(`⚡️ [Override] 检测到人物停止 -> 强制脚部特写`);
-      shotType = "CLOSE-UP"; // 或者是 LOW ANGLE
+      shotType = "CLOSE-UP";
       if (!prompt.includes("feet") && !prompt.includes("shoes")) {
         panel.visualPrompt = `${panel.visualPrompt}, close-up of feet coming to a stop, focus on shoes, ground level view, low angle`;
       }
     }
-
-    // 🔴 修正：容错处理
-    if (shotType === "CLOSE UP") shotType = "CLOSE-UP";
-    if (shotType === "EXTREME CLOSE UP") shotType = "EXTREME CLOSE-UP";
-    if (shotType === "LONGSHOT") shotType = "LONG SHOT";
 
     panel.shotType = shotType;
     return panel;
@@ -70,9 +72,6 @@ function enforceCinematicRules(panels: any[]) {
 }
 
 export async function analyzeScript(scriptText: string) {
-  // ... (保留之前的 analyzeScript 主体逻辑，不做变动，只需要确保最后调用了 enforceCinematicRules)
-  
-  // 这里为了完整性我还是贴一下，防止你复制漏了
   console.log("[Director] 收到分析请求，长度:", scriptText?.length || 0);
 
   if (!ARK_API_KEY || !ARK_TEXT_ENDPOINT_ID) {
@@ -83,12 +82,7 @@ export async function analyzeScript(scriptText: string) {
     const systemPrompt = `
       你是一位分镜导演。请将剧本拆解为 JSON 列表。
       JSON 结构: {"panels": [{"description": "...", "visualPrompt": "...", "shotType": "..."}]}
-      
       ShotType 词汇表: EXTREME LONG SHOT, LONG SHOT, FULL SHOT, MID SHOT, CLOSE-UP, EXTREME CLOSE-UP.
-      
-      关键原则：
-      1. 动作拆分：长句必须拆分。
-      2. 视觉翻译：visualPrompt 必须包含具体的视觉细节。
     `;
 
     const response = await fetch(ARK_CHAT_URL, {
@@ -126,7 +120,7 @@ export async function analyzeScript(scriptText: string) {
     let panels = Array.isArray(data) ? data : data.panels;
     if (!panels || !Array.isArray(panels)) throw new Error("数据格式错误");
 
-    // 🔥 执行更智能的修正逻辑
+    // 🔥 执行同步后的修正逻辑
     panels = enforceCinematicRules(panels);
 
     return { panels };
