@@ -24,10 +24,11 @@ const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME CLOSE-UP": "(macro photography:2.0), (extreme detail:1.5), (focus on single part:2.0), crop to detail"
 };
 
+// [Hallucination Killer] 物体特写专用定义
 const OBJECT_SHOT_PROMPTS: Record<string, string> = {
-    "CLOSE-UP": "(macro view:1.5), (object focus:1.8), (detail shot:1.5), low angle, depth of field",
-    "EXTREME CLOSE-UP": "(microscopic detail:2.0), (texture focus:1.8), macro photography",
-    "MID SHOT": "(object center frame:1.5), (clear view:1.5)",
+    "CLOSE-UP": "(macro view:1.5), (object focus:1.8), (detail shot:1.5), low angle, depth of field, (no face:2.0)",
+    "EXTREME CLOSE-UP": "(microscopic detail:2.0), (texture focus:1.8), macro photography, (no face:2.0)",
+    "MID SHOT": "(object center frame:1.5), (clear view:1.5), (no face:1.5)",
     "FULL SHOT": "(full object visible:1.5), (environment context:1.2)"
 };
 
@@ -52,7 +53,7 @@ const RATIO_MAP: Record<string, string> = {
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = [
       'hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand',
-      'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt',
+      'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal',
       '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', 
       '积水', '步伐', '脚步', '水花', '踩', 
       '车', '轮', '轮胎', '驾驶'
@@ -81,7 +82,8 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: s
     }
 
     if (isNonFace) {
-        return `${base}, face, head, eyes, portrait, person, woman, girl, man, boy, human silhouette, look at camera, upper body, torso, selfie`;
+        // [Hallucination Killer] 强力压制非人脸镜头中的人脸
+        return `${base}, face, head, eyes, portrait, person, woman, girl, man, boy, human silhouette, look at camera, upper body, torso, selfie, hair`;
     } else {
         return shotType.toUpperCase().includes("CLOSE") 
             ? `${base}, legs, feet, shoes, socks, pants, skirt, lower body, full body` 
@@ -113,7 +115,6 @@ async function processImageRef(url: string, vision: VisionAnalysis | null, targe
       }
 }
 
-// 🟢 修改：新增 useMock 参数 (默认为 false)
 export async function generateShotImage(
   shotId: string | number, 
   actionPrompt: string, 
@@ -125,7 +126,7 @@ export async function generateShotImage(
   characterId?: string,
   referenceImageUrl?: string, 
   sceneImageUrl?: string,
-  useMock: boolean = false // 🔥 新增参数：前端传 true 时开启上帝模式
+  useMock: boolean = false 
 ) {
   try {
     // 🛑 Mock 拦截器
@@ -133,9 +134,12 @@ export async function generateShotImage(
         console.log(`[Mock Mode] Skipping AI generation for Shot ${shotId}`);
         await new Promise(resolve => setTimeout(resolve, 800)); // 模拟延迟
         
-        // 生成随机图
-        const randomSeed = Math.floor(Math.random() * 99999);
-        const mockUrl = `https://picsum.photos/seed/${randomSeed}/1280/720`; 
+        // 随机返回一张高质量占位图，用于测试UI布局
+        const seeds = [10, 20, 30, 40, 50, 60];
+        const randomSeed = seeds[Math.floor(Math.random() * seeds.length)];
+        const width = aspectRatio === '9:16' ? 720 : 1280;
+        const height = aspectRatio === '9:16' ? 1280 : 720;
+        const mockUrl = `https://picsum.photos/seed/${randomSeed + Number(shotId)}/${width}/${height}`; 
         
         return { success: true, url: mockUrl };
     }
@@ -146,7 +150,7 @@ export async function generateShotImage(
     const isFaceMacroShot = isFaceMacro(actionPrompt);
     const isCloseUp = shotType.toUpperCase().includes("CLOSE") || isFaceMacroShot;
 
-    console.log(`[Server] 生成开始 | Mock: ${useMock} | Prompt: ${actionPrompt.substring(0, 50)}...`);
+    console.log(`[Server] 生成开始 | Type:${shotType} | NonFace:${isNonFace} | Prompt: ${actionPrompt.substring(0, 30)}...`);
 
     // 1. 视觉分析
     let visionAnalysis: VisionAnalysis | null = null;
@@ -174,8 +178,11 @@ export async function generateShotImage(
     // 3. Prompt 组装与清洗
     let finalPrompt = "";
     let characterPart = "";
-    
+    let characterNegative = ""; // [New] 角色专属负面提示词
+
     let cleanedActionPrompt = actionPrompt;
+    
+    // [Hallucination Killer] 主语清洗 - 使用单词边界 \b 防止误杀
     if (isNonFace) {
         cleanedActionPrompt = cleanedActionPrompt
             .replace(/他/g, "")
@@ -184,20 +191,35 @@ export async function generateShotImage(
             .replace(/女人/g, "")
             .replace(/侦探/g, "")
             .replace(/主角/g, "")
-            .replace(/man/gi, "")
-            .replace(/woman/gi, "")
-            .replace(/detective/gi, "");
+            .replace(/\bman\b/gi, "")       // 使用正则边界，防止替换 mansion -> sion
+            .replace(/\bwoman\b/gi, "")
+            .replace(/\bhe\b/gi, "")
+            .replace(/\bshe\b/gi, "")
+            .replace(/\bperson\b/gi, "")
+            .replace(/\bdetective\b/gi, "");
     }
 
+    // [New] 角色数据加载 (包含 negative_prompt)
     if (characterId) {
-      const { data: char } = await supabaseAdmin.from('characters').select('description').eq('id', characterId).single();
+      const { data: char } = await supabaseAdmin
+        .from('characters')
+        .select('description, negative_prompt')
+        .eq('id', characterId)
+        .single();
+        
       if (char) {
+          // A. 处理正向描述
           if (isNonFace) {
-             characterPart = ""; 
+             characterPart = ""; // 特写镜头移除角色描述
           } else if (isFaceMacroShot) {
              characterPart = `(Character features: ${char.description.substring(0, 50)}), `;
           } else {
              characterPart = `(Character: ${char.description}), `;
+          }
+
+          // B. 处理负面描述 (追加到 Negative Prompt)
+          if (char.negative_prompt) {
+             characterNegative = `, ${char.negative_prompt}`;
           }
       }
     }
@@ -222,12 +244,15 @@ export async function generateShotImage(
     }
 
     const currentModel = isDraftMode ? MODEL_DRAFT : MODEL_PRO;
-    const negativePrompt = getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode);
+    
+    // [New] 组合负面提示词
+    const baseNegative = getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode);
+    const finalNegative = `${baseNegative}${characterNegative}`;
 
     const payload: any = {
       model: currentModel, 
       prompt: finalPrompt, 
-      negative_prompt: negativePrompt, 
+      negative_prompt: finalNegative, 
       size: RATIO_MAP[aspectRatio] || "2560x1440", 
       n: 1,
       steps: isDraftMode ? 25 : 40,
@@ -244,7 +269,7 @@ export async function generateShotImage(
         }
     }
 
-    console.log(`[Gen] API Req | NonFace:${isNonFace} | Prompt: ${finalPrompt.substring(0, 100)}...`);
+    console.log(`[Gen] API Req | NonFace:${isNonFace} | Prompt: ${finalPrompt.substring(0, 50)}... | Neg: ${finalNegative.substring(0, 20)}...`);
 
     const response = await fetch(ARK_API_URL, {
       method: "POST",
