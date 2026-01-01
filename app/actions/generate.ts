@@ -3,11 +3,21 @@
 import { createClient } from '@supabase/supabase-js'
 import { analyzeRefImage, type VisionAnalysis } from './vision'; 
 import sharp from 'sharp'; 
+import Replicate from "replicate"; // 🟢 [V6.0] 新增依赖
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// 🟢 [V6.0] Replicate 配置 (InstantID)
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN,
+});
+
+// 使用 Lightning 版本以获得更快的速度 (或者换回 wangfuyun/instantid 获取极致画质)
+// 确认代码里是这行：
+const INSTANT_ID_MODEL = "wangfuyun/instantid:c6411132e18585481d68324869c3a50993096d27457d19c1186e8a09289255a6";
 
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
@@ -15,7 +25,8 @@ const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations
 const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
 const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
 
-// 🟢 1. 强化景别控制 (加入反向抑制)
+// --- [现有常量配置保持不变] ---
+
 const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME WIDE SHOT": "(tiny figure:1.5), (massive environment:2.0), wide angle lens, aerial view, <subject> only occupies 5% of frame, (no close up:2.0), (no portrait:2.0)",
     "WIDE SHOT": "(full body visible:1.6), (feet visible:1.6), (head to toe:1.5), distance shot, wide angle, environment focus, (no crop:1.5)",
@@ -25,7 +36,6 @@ const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME CLOSE-UP": "(macro photography:2.0), (extreme detail:1.5), (focus on single part:2.0), crop to detail, (no full body:2.0)"
 };
 
-// 2. 拍摄角度词库
 const ANGLE_PROMPTS: Record<string, string> = {
     "EYE LEVEL": "eye level shot, neutral angle, straight on",
     "LOW ANGLE": "low angle shot, (looking up at subject:1.4), worm's eye view, imposing, floor level camera",
@@ -42,7 +52,6 @@ const OBJECT_SHOT_PROMPTS: Record<string, string> = {
     "FULL SHOT": "(full object visible:1.5), (environment context:1.2)"
 };
 
-// 🟢 3. 回归经典线稿风格 (Classic V3 Style)
 const DRAFT_PROMPT_CLASSIC = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0), professional storyboard";
 const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient, text, watermark";
 
@@ -61,20 +70,11 @@ const RATIO_MAP: Record<string, string> = {
   "16:9": "2560x1440", "9:16": "1440x2560", "1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "2.39:1": "3072x1280" 
 };
 
+// --- [辅助函数保持不变] ---
+
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶'];
     return keywords.some(k => prompt.toLowerCase().includes(k));
-}
-
-function isFaceMacro(prompt: string): boolean {
-    const keywords = ['eye', 'lip', 'mouth', 'nose', 'lash', '眼', '嘴', '唇', '鼻', '睫毛', 'pupil', 'iris'];
-    return keywords.some(k => prompt.toLowerCase().includes(k));
-}
-
-function cleanVisualFeatures(features: string[], isCloseUp: boolean): string[] {
-    if (!isCloseUp) return features;
-    const banList = ['skirt', 'dress', 'pants', 'jeans', 'trousers', 'shoe', 'boot', 'sock', 'leg', 'knee', 'thigh', 'waist', 'standing', 'walking', 'full body', 'pleated', 'uniform', 'bag'];
-    return features.filter(f => !banList.some(ban => f.toLowerCase().includes(ban)));
 }
 
 function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: string, isDraftMode?: boolean): string {
@@ -86,7 +86,6 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: s
         base += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting";
     }
 
-    // 🟢 针对全景/远景的强力负面 (防止大头照)
     if (shotType.includes("WIDE") || shotType.includes("LONG") || shotType.includes("FULL")) {
         base += ", close up, portrait, face focus, headshot, macro";
     }
@@ -124,6 +123,8 @@ async function processImageRef(url: string, vision: VisionAnalysis | null, targe
       }
 }
 
+// --- [主生成函数] ---
+
 export async function generateShotImage(
   shotId: string | number, 
   actionPrompt: string, 
@@ -136,26 +137,23 @@ export async function generateShotImage(
   referenceImageUrl?: string, 
   sceneImageUrl?: string,
   useMock: boolean = false,
-  cameraAngle: string = 'EYE LEVEL'
-  // 移除 draftStyle 参数
+  cameraAngle: string = 'EYE LEVEL',
+  useInstantID: boolean = false // 🟢 [V6.0] 新增参数：开启画质革命
 ) {
   try {
     console.log(`\n========== [DEBUG: Shot ${shotId}] ==========`);
-    console.log(`1. Mode: ${isDraftMode ? 'DRAFT' : 'RENDER'} | Ratio: ${aspectRatio} | Angle: ${cameraAngle}`);
+    console.log(`1. Mode: ${isDraftMode ? 'DRAFT' : 'RENDER'} | UseMock: ${useMock} | InstantID: ${useInstantID}`);
 
     if (useMock) { return { success: true, url: "https://picsum.photos/1280/720" }; }
-    if (!ARK_API_KEY) throw new Error("API Key Missing");
 
     const isNonFace = isNonFaceDetail(actionPrompt); 
-
     let activeRefImage = referenceImageUrl;
     let characterPart = "";
     let characterNegative = ""; 
+    let characterAvatarUrl = ""; // 用于 InstantID
 
-    // Render模式下注入角色
-    const shouldInjectCharacter = characterId && !isDraftMode; 
-
-    if (shouldInjectCharacter && characterId) {
+    // --- 角色信息获取 ---
+    if (characterId) {
       const { data: char } = await supabaseAdmin
         .from('characters')
         .select('name, description, negative_prompt, avatar_url')
@@ -165,13 +163,79 @@ export async function generateShotImage(
       if (char) {
           if (!isNonFace) characterPart = `(Character: ${char.description}), `;
           if (char.negative_prompt) characterNegative = `, ${char.negative_prompt}`;
+          characterAvatarUrl = char.avatar_url; // 获取头像 URL
           
-          if (!activeRefImage && char.avatar_url && !isNonFace) {
+          if (!activeRefImage && char.avatar_url && !isNonFace && !useInstantID) {
+              // 仅在非 InstantID 模式下，才将头像作为参考图注入 Doubao
+              // InstantID 模式下，头像是专门的 face_image 参数
               activeRefImage = char.avatar_url;
-              console.log(`✅ [Render Mode] 角色头像注入`);
           }
       }
     }
+
+    // =================================================================
+    // 🟢 V6.0 分支: InstantID (画质革命 / ID 保持)
+    // 条件：开启开关 + 必须有角色 + 非线稿模式 + 非无脸特写
+    // =================================================================
+    if (useInstantID && characterId && !isDraftMode && !isNonFace && characterAvatarUrl) {
+        console.log("🚀 [V6.0] 触发 InstantID 生成流程...");
+
+        // 1. 准备姿态/构图图 (Pose/ControlNet)
+        let poseImageBase64 = null;
+        if (activeRefImage) {
+             // 复用现有的 Sharp 处理逻辑来裁剪或优化参考图
+             poseImageBase64 = await processImageRef(activeRefImage, null, shotType);
+        }
+
+        // 2. 准备 Prompt
+        const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
+        const angleWeightPrompt = ANGLE_PROMPTS[cameraAngle.toUpperCase()] || ANGLE_PROMPTS["EYE LEVEL"];
+        const instantIdPrompt = `${shotWeightPrompt}, ${angleWeightPrompt}, ${actionPrompt}, ${STYLE_PRESETS[stylePreset]}, masterpiece, best quality, 8k`;
+        const instantIdNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}`;
+
+        // 3. 调用 Replicate
+        // 注意: InstantID 需要 face_image (ID) 和 pose_image (可选)
+        const output = await replicate.run(
+            INSTANT_ID_MODEL as any,
+            {
+                input: {
+                    prompt: instantIdPrompt,
+                    negative_prompt: instantIdNegative,
+                    face_image: characterAvatarUrl, // 核心：ID 来源
+                    pose_image: poseImageBase64,    // 核心：构图来源 (可选)
+                    control_strength: 0.7,          // 姿态控制强度
+                    identity_strength: 0.8,         // ID 保持强度
+                    num_inference_steps: 4,         // Lightning 版只需几步
+                    guidance_scale: 1.5,
+                    width: Number(RATIO_MAP[aspectRatio]?.split('x')[0] || 1280),
+                    height: Number(RATIO_MAP[aspectRatio]?.split('x')[1] || 720),
+                    scheduler: "K_EULER",
+                }
+            }
+        );
+
+        // 4. 处理结果
+        // Replicate 返回通常是 [url1, url2...]
+        if (Array.isArray(output) && output.length > 0) {
+            const rawUrl = output[0];
+            // 下载并转存 Supabase
+            const res = await fetch(rawUrl);
+            const buffer = Buffer.from(await res.arrayBuffer());
+            const fileName = `cineflow/${projectId}/iid_${Date.now()}_${shotId}.png`; // iid 前缀区分
+            
+            await supabaseAdmin.storage.from('images').upload(fileName, buffer, { contentType: 'image/png', upsert: true });
+            const { data: { publicUrl } } = supabaseAdmin.storage.from('images').getPublicUrl(fileName);
+            return { success: true, url: publicUrl };
+        } else {
+            throw new Error("InstantID returned no images");
+        }
+    }
+
+    // =================================================================
+    // 🟠 原有流程: Doubao / Volcengine (用于 Draft 或无角色生成)
+    // =================================================================
+
+    if (!ARK_API_KEY) throw new Error("API Key Missing");
 
     let visionAnalysis: VisionAnalysis | null = null;
     let keyFeaturesPrompt = "";
@@ -187,7 +251,6 @@ export async function generateShotImage(
     let finalNegative = "";
 
     if (isDraftMode) {
-        // 🟢 经典线稿风格
         finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}`;
         finalNegative = `${DRAFT_NEGATIVE_BASE}`;
     } else {
