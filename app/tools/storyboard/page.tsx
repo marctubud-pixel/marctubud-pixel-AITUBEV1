@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Clapperboard, Loader2, ArrowLeft, PenTool, Image as ImageIcon, Trash2, Plus, 
-  PlayCircle, Download, Upload, RefreshCw, FileText, Sparkles, GripVertical, Package, RotateCcw, Zap
+  PlayCircle, Download, Upload, RefreshCw, FileText, Sparkles, GripVertical, Package, RotateCcw, Zap,
+  User, X, Check
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
@@ -35,6 +36,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// --- 类型定义升级 ---
 type StoryboardPanel = {
   id: string;
   description: string; 
@@ -42,10 +44,13 @@ type StoryboardPanel = {
   environment?: string; 
   prompt: string;      
   imageUrl?: string;   
-  isLoading: boolean;  
+  isLoading: boolean;
+  // [New] 角色注入字段
+  characterId?: string;
+  characterAvatar?: string;
 }
 
-type Character = { id: string; name: string; avatar_url: string | null; }
+type Character = { id: string; name: string; avatar_url: string | null; description: string; }
 type CharacterImage = { id: string; image_url: string; description: string | null; }
 type WorkflowStep = 'input' | 'review' | 'generating' | 'done';
 
@@ -82,11 +87,13 @@ const ASPECT_RATIOS = [
   { value: "9:16", label: "9:16", cssClass: "aspect-[9/16]" },
 ];
 
-const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, step, isOverlay, ...props }, ref) => {
+// --- Panel 组件 (增加 onOpenCharModal) ---
+const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, onOpenCharModal, step, isOverlay, ...props }, ref) => {
     const baseClass = isOverlay 
         ? "ring-2 ring-yellow-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" 
         : "border-white/5 hover:border-white/10";
 
+    // A. 渲染模式 (Rendered View)
     if (step === 'generating' || step === 'done') {
         return (
             <div ref={ref} {...props} className={`relative bg-black rounded-xl overflow-hidden border transition-all group ${currentRatioClass} ${baseClass}`}>
@@ -102,6 +109,12 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-[#111] text-zinc-600">
                         <ImageIcon size={32} className="mb-2 opacity-20"/><span className="text-xs">等待生成</span>
+                    </div>
+                )}
+                {/* 角色头像角标 */}
+                {panel.characterAvatar && (
+                    <div className="absolute top-2 right-10 z-20 w-6 h-6 rounded-full border border-white/20 overflow-hidden" title="包含指定角色">
+                        <Image src={panel.characterAvatar} alt="Char" fill className="object-cover" />
                     </div>
                 )}
                 <div className="absolute top-2 left-2 z-20 pointer-events-none">
@@ -121,20 +134,60 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
             </div>
         );
     }
+
+    // B. 编辑模式 (Editor View)
     return (
-        <div ref={ref} {...props} className={`bg-[#151515] p-4 rounded-xl border flex flex-col md:flex-row gap-4 relative ${baseClass}`}>
+        <div ref={ref} {...props} className={`bg-[#151515] p-4 rounded-xl border flex flex-col md:flex-row gap-4 relative group ${baseClass}`}>
             <div className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing z-20"><GripVertical size={20} /></div>
+            
+            {/* 左侧控制区 */}
             <div className="flex items-start gap-3 md:w-48 shrink-0 ml-8">
                 <div className="w-6 h-6 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-xs text-zinc-500 font-bold mt-1">{String(idx + 1).padStart(2, '0')}</div>
                 <div className="flex flex-col gap-2 w-full">
                     <select value={panel.shotType} onChange={(e) => onUpdate(panel.id, 'shotType', e.target.value)} className="bg-black border border-zinc-800 text-yellow-500 text-[10px] font-bold px-2 py-1.5 rounded outline-none focus:border-yellow-500 uppercase tracking-wide">
                         {CINEMATIC_SHOTS.map(shot => <option key={shot.value} value={shot.value}>{shot.label}</option>)}
                     </select>
-                    {!isOverlay && (<button onClick={() => onDelete(panel.id)} className="text-zinc-600 hover:text-red-500 text-xs flex items-center gap-1 self-start ml-1"><Trash2 size={10}/> Delete</button>)}
+                    
+                    {/* [New] 角色注入按钮 */}
+                    {!isOverlay && (
+                      <button 
+                        onClick={() => onOpenCharModal(panel.id)}
+                        className={`text-[10px] flex items-center gap-1.5 px-2 py-1.5 rounded border transition-all ${panel.characterId ? 'bg-blue-500/10 border-blue-500 text-blue-400' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
+                        title="注入角色特征"
+                      >
+                         {panel.characterAvatar ? (
+                           <div className="w-3 h-3 rounded-full overflow-hidden relative">
+                              <Image src={panel.characterAvatar} alt="C" fill className="object-cover"/>
+                           </div>
+                         ) : <User size={10} />}
+                         {panel.characterId ? "已注入" : "指定角色"}
+                      </button>
+                    )}
+
+                    {!isOverlay && (<button onClick={() => onDelete(panel.id)} className="text-zinc-600 hover:text-red-500 text-xs flex items-center gap-1 self-start ml-1 mt-1"><Trash2 size={10}/> Delete</button>)}
                 </div>
             </div>
-            <div className="flex-1">
-                <textarea value={panel.description} onChange={(e) => onUpdate(panel.id, 'description', e.target.value)} className="w-full bg-transparent text-sm text-gray-300 placeholder-zinc-700 border-none focus:ring-0 p-0 resize-none leading-relaxed" placeholder="Shot description..." rows={3} />
+
+            {/* 文本编辑区 */}
+            <div className="flex-1 space-y-2">
+                <textarea 
+                  value={panel.description} 
+                  onChange={(e) => onUpdate(panel.id, 'description', e.target.value)} 
+                  className="w-full bg-transparent text-sm text-white placeholder-zinc-700 border-none focus:ring-0 p-0 resize-none leading-relaxed font-medium" 
+                  placeholder="Shot description (What is happening?)..." 
+                  rows={2} 
+                />
+                <div className="w-full h-[1px] bg-white/5"></div>
+                <div className="flex gap-2">
+                   <span className="text-[10px] text-zinc-600 font-bold uppercase pt-1">PROMPT:</span>
+                   <textarea 
+                     value={panel.prompt} 
+                     onChange={(e) => onUpdate(panel.id, 'prompt', e.target.value)} 
+                     className="w-full bg-transparent text-xs text-zinc-400 placeholder-zinc-700 border-none focus:ring-0 p-0 resize-none leading-relaxed font-mono" 
+                     placeholder="Detailed visual prompts (Lighting, details, style)..." 
+                     rows={2} 
+                   />
+                </div>
             </div>
         </div>
     );
@@ -147,6 +200,7 @@ function SortablePanelItem(props: any) {
     return (<div ref={setNodeRef} style={style} {...attributes} {...listeners}><PanelCard {...props} /></div>);
 }
 
+// --- Main Page Component ---
 export default function StoryboardPage() {
   const [script, setScript] = useState('');
   const [globalAtmosphere, setGlobalAtmosphere] = useState('');
@@ -167,8 +221,12 @@ export default function StoryboardPage() {
   const [selectedRefImage, setSelectedRefImage] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   
-  // 🟢 新增：Mock 模式状态
+  // 🟢 Mock 模式状态
   const [isMockMode, setIsMockMode] = useState(false);
+
+  // 🟢 角色注入模态框状态
+  const [showCharModal, setShowCharModal] = useState(false);
+  const [activePanelIdForModal, setActivePanelIdForModal] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
@@ -194,8 +252,12 @@ export default function StoryboardPage() {
 
   useEffect(() => {
     const fetchCharacters = async () => {
-      const { data, error } = await supabase.from('characters').select('id, name, avatar_url').order('created_at', { ascending: false });
-      if (!error) setCharacters(data || []);
+      // 获取角色及描述
+      const { data, error } = await supabase
+        .from('characters')
+        .select('id, name, avatar_url, description')
+        .order('created_at', { ascending: false });
+      if (!error) setCharacters(data as Character[] || []);
     };
     fetchCharacters();
   }, []);
@@ -225,6 +287,7 @@ export default function StoryboardPage() {
   };
 
   const handleSceneUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // ... (保持不变)
     if (!e.target.files || !e.target.files.length) return;
     setIsUploadingScene(true);
     try {
@@ -274,10 +337,60 @@ export default function StoryboardPage() {
     setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
   };
 
+  // --- 🟢 新增：打开角色选择器 ---
+  const handleOpenCharModal = (panelId: string) => {
+    setActivePanelIdForModal(panelId);
+    setShowCharModal(true);
+  }
+
+  // --- 🟢 新增：注入角色逻辑 ---
+  const handleInjectCharacter = (char: Character) => {
+    if (!activePanelIdForModal) return;
+    
+    setPanels(current => current.map(p => {
+        if (p.id === activePanelIdForModal) {
+            // 构造新的提示词：保留原有提示词，追加角色描述
+            const existingPrompt = p.prompt || "";
+            const charPrompt = `(Character: ${char.name}, ${char.description})`;
+            
+            // 避免重复添加
+            const newPrompt = existingPrompt.includes(char.name) 
+                ? existingPrompt 
+                : `${existingPrompt} ${charPrompt}`.trim();
+
+            return {
+                ...p,
+                characterId: char.id,
+                characterAvatar: char.avatar_url || undefined,
+                prompt: newPrompt
+            };
+        }
+        return p;
+    }));
+    
+    toast.success(`已注入角色: ${char.name}`);
+    setShowCharModal(false);
+    setActivePanelIdForModal(null);
+  };
+
+  // --- 🟢 新增：移除角色 ---
+  const handleRemoveCharacter = () => {
+    if (!activePanelIdForModal) return;
+    setPanels(current => current.map(p => {
+        if(p.id === activePanelIdForModal) {
+            return { ...p, characterId: undefined, characterAvatar: undefined };
+        }
+        return p;
+    }));
+    toast.success("已移除角色关联");
+    setShowCharModal(false);
+  }
+
   const buildActionPrompt = (panel: StoryboardPanel) => {
     const effectiveEnv = panel.environment?.trim() || sceneDescription;
     const scenePart = effectiveEnv ? `(Environment: ${effectiveEnv}), ` : '';
     const atmospherePart = globalAtmosphere.trim() ? `(Atmosphere: ${globalAtmosphere}), ` : '';
+    // 如果 Prompt 很长，通常意味着用户或 AI 已经写得很详细了，直接用
     if (panel.prompt && panel.prompt.length > 10) return `${atmospherePart}${panel.prompt}`;
     return `${atmospherePart}${scenePart}${panel.description}`;
   };
@@ -289,10 +402,12 @@ export default function StoryboardPage() {
     try {
         const tempShotId = `shot_${Date.now()}`; 
         const actionPrompt = buildActionPrompt(panel);
-        // 🟢 传入 isMockMode 参数
+        // 优先使用 panel 自身的角色，否则使用全局角色
+        const effectiveCharId = panel.characterId || selectedCharacterId || undefined;
+
         const res = await generateShotImage(
             tempShotId, actionPrompt, tempProjectId, mode === 'draft', stylePreset, aspectRatio, panel.shotType, 
-            selectedCharacterId || undefined, selectedRefImage || undefined, sceneImageUrl || undefined,
+            effectiveCharId, selectedRefImage || undefined, sceneImageUrl || undefined,
             isMockMode 
         );
         if (res.success) {
@@ -319,10 +434,12 @@ export default function StoryboardPage() {
         try {
             const tempShotId = `shot_${Date.now()}_${panel.id.substring(0, 4)}`;
             const actionPrompt = buildActionPrompt(panel);
-            // 🟢 传入 isMockMode 参数
+            // 优先使用 panel 自身的角色，否则使用全局角色
+            const effectiveCharId = panel.characterId || selectedCharacterId || undefined;
+
             const res = await generateShotImage(
               tempShotId, actionPrompt, tempProjectId, mode === 'draft', stylePreset, aspectRatio, panel.shotType, 
-              selectedCharacterId || undefined, selectedRefImage || undefined, sceneImageUrl || undefined,
+              effectiveCharId, selectedRefImage || undefined, sceneImageUrl || undefined,
               isMockMode
             );
             if (res.success) {
@@ -367,6 +484,58 @@ export default function StoryboardPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white p-6 font-sans">
       <Toaster position="top-center" richColors />
+      
+      {/* 🟢 Character Injection Modal */}
+      {showCharModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+              <div className="bg-[#111] w-full max-w-2xl rounded-2xl border border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+                  <div className="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-900">
+                      <h3 className="font-bold text-lg flex items-center gap-2"><User className="text-blue-500" /> 选择角色注入 (Inject Character)</h3>
+                      <button onClick={() => setShowCharModal(false)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white"><X size={20}/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                      {characters.length === 0 ? (
+                          <div className="text-center text-zinc-500 py-10">
+                              <p>角色库为空，请先去创建角色。</p>
+                              <Link href="/tools/characters" className="text-blue-500 hover:underline mt-2 inline-block">去创建</Link>
+                          </div>
+                      ) : (
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+                              <button 
+                                onClick={handleRemoveCharacter}
+                                className="aspect-square rounded-xl bg-zinc-900 border border-zinc-700 hover:border-red-500 flex flex-col items-center justify-center gap-2 transition-all group"
+                              >
+                                  <X className="text-zinc-500 group-hover:text-red-500" />
+                                  <span className="text-xs text-zinc-500 group-hover:text-red-500">不指定角色</span>
+                              </button>
+                              {characters.map(char => (
+                                  <button 
+                                    key={char.id} 
+                                    onClick={() => handleInjectCharacter(char)}
+                                    className="relative aspect-square rounded-xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 overflow-hidden group transition-all text-left"
+                                  >
+                                      {char.avatar_url ? (
+                                          <Image src={char.avatar_url} alt={char.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500"/>
+                                      ) : (
+                                          <div className="w-full h-full flex items-center justify-center"><User className="text-zinc-700"/></div>
+                                      )}
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-3">
+                                          <span className="text-sm font-bold truncate">{char.name}</span>
+                                          <span className="text-[10px] text-zinc-400 line-clamp-1 opacity-0 group-hover:opacity-100 transition-opacity">点击注入</span>
+                                      </div>
+                                  </button>
+                              ))}
+                          </div>
+                      )}
+                  </div>
+                  <div className="p-4 bg-zinc-900 border-t border-white/10 text-[10px] text-zinc-500 flex justify-between">
+                      <span>提示：选择后将自动把角色描述追加到 Prompt 中。</span>
+                      <span>当前选中分镜 ID: {activePanelIdForModal?.slice(0,8)}</span>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* 顶部导航 */}
       <div className="max-w-7xl mx-auto mb-8 flex items-center justify-between">
         <Link href="/tools" className="inline-flex items-center text-zinc-500 hover:text-white transition-colors"><ArrowLeft className="w-4 h-4 mr-2" /> 返回工作台</Link>
@@ -418,9 +587,9 @@ export default function StoryboardPage() {
             )}
             <div className="space-y-4 pt-4 border-t border-white/5">
                  <div>
-                    <label className="text-xs font-bold text-zinc-500 mb-2 flex justify-between"><span>MAIN CHARACTER</span>{selectedCharacterId && <Link href="/tools/characters" className="text-blue-500 hover:underline">Manage</Link>}</label>
+                    <label className="text-xs font-bold text-zinc-500 mb-2 flex justify-between"><span>GLOBAL CHARACTER</span>{selectedCharacterId && <Link href="/tools/characters" className="text-blue-500 hover:underline">Manage</Link>}</label>
                     <select value={selectedCharacterId || ''} onChange={(e) => setSelectedCharacterId(e.target.value || null)} className="w-full bg-black border border-zinc-800 rounded-lg p-2 text-sm text-gray-300 focus:border-blue-500 outline-none">
-                        <option value="">-- No Character --</option>
+                        <option value="">-- Main Character (Default) --</option>
                         {characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}
                     </select>
                  </div>
@@ -495,7 +664,15 @@ export default function StoryboardPage() {
                         </div>
                         <div className="grid gap-3">
                             {panels.map((panel, idx) => (
-                                <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} onDelete={handleDeletePanel} onUpdate={handleUpdatePanel} />
+                                <SortablePanelItem 
+                                  key={panel.id} 
+                                  panel={panel} 
+                                  idx={idx} 
+                                  step={step} 
+                                  onDelete={handleDeletePanel} 
+                                  onUpdate={handleUpdatePanel} 
+                                  onOpenCharModal={handleOpenCharModal} // 🟢 传递打开模态框方法
+                                />
                             ))}
                         </div>
                     </div>
