@@ -2,21 +2,19 @@
 
 import { createClient } from '@supabase/supabase-js'
 import sharp from 'sharp'; 
-import Replicate from "replicate"; // 🟢 [V6.0] 新增依赖
+import Replicate from "replicate"; 
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// 🟢 [V6.0] Replicate 配置 (InstantID)
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-// 使用 Lightning 版本以获得更快的速度
-// 确认代码里是这行：
-const INSTANT_ID_MODEL = "wangfuyun/instantid:c6411132e18585481d68324869c3a50993096d27457d19c1186e8a09289255a6";
+// ✅ [V6.0] 使用 zsxkib 的稳定版
+const INSTANT_ID_MODEL = "zsxkib/instant-id:2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789";
 
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
@@ -33,7 +31,7 @@ const DRAFT_PROMPT_CLASSIC = "monochrome storyboard sketch, rough pencil drawing
 // 🟢 强力负面
 const DRAFT_NEGATIVE_BASE = "(color:2.0), (rgb:2.0), (colorful:2.0), painting, realistic, photorealistic, 3d render, complex details, shading, gradient, text, watermark, (cyberpunk:2.0), (sci-fi:2.0), (city:2.0), (modern buildings:2.0), pink, blue, red, green, yellow, purple, cyan, teal, orange, magenta, brown, golden, silver, blonde";
 
-// 🟢 辅助函数：清洗角色描述中的环境词和颜色词
+// 🟢 辅助函数
 function cleanCharacterDescription(desc: string): string {
     const banList = [
         'cyberpunk', 'city', 'neon', 'future', 'sci-fi', 'urban', 'street', 'night', 'lights', 'building', 'skyscraper', 'modern',
@@ -46,7 +44,7 @@ function cleanCharacterDescription(desc: string): string {
     return cleaned.replace(/\s+/g, ' ').trim();
 }
 
-// 🟢 图片处理函数升级：强制转黑白，物理去除色度信息
+// 🟢 图片处理函数
 async function fetchImageAsBase64(url: string, makeGrayscale: boolean = false): Promise<string | null> {
     try {
         const res = await fetch(url);
@@ -78,7 +76,7 @@ export async function repaintShotWithCharacter(
     projectId: string,
     aspectRatio: string = "16:9",
     isDraftMode: boolean = false,
-    useInstantID: boolean = false // 🟢 [V6.0] 新增参数
+    useInstantID: boolean = false
 ) {
     try {
         console.log(`\n========== [REPAINT: Shot ${shotId}] ==========`);
@@ -95,15 +93,10 @@ export async function repaintShotWithCharacter(
         if (error || !char) throw new Error("Character not found");
 
         // =================================================================
-        // 🟢 V6.0 分支: InstantID (专用于 Render 模式下的完美换人)
+        // 🟢 V6.0 分支: InstantID (zsxkib 版本)
         // =================================================================
         if (useInstantID && !isDraftMode && char.avatar_url) {
-            console.log("🚀 [V6.0 Repaint] 触发 InstantID 换人重绘...");
-            
-            // InstantID 逻辑：
-            // Face Image = 角色头像 (ID源)
-            // Pose Image = 原始分镜图 (构图源)
-            // Prompt = 角色描述 + 动作描述
+            console.log("🚀 [V6.0 Repaint] 触发 InstantID (zsxkib) 重绘...");
             
             const instantPrompt = `(Character: ${char.description}), ${prompt}, masterpiece, best quality, 8k, cinematic lighting`;
             const instantNegative = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, anime, cartoon, sketch";
@@ -114,15 +107,23 @@ export async function repaintShotWithCharacter(
                     input: {
                         prompt: instantPrompt,
                         negative_prompt: instantNegative,
-                        face_image: char.avatar_url, // 核心：ID 来源
-                        pose_image: originImageUrl,  // 核心：构图/Pose 来源 (传入 URL 即可)
-                        control_strength: 0.65,      // 稍微降低控制力度，允许角色特征适配
-                        identity_strength: 0.85,     // 提高 ID 权重，确保像本人
-                        num_inference_steps: 4,      // Lightning 极速版
-                        guidance_scale: 1.5,
+                        
+                        // ✅ 修正：使用 'image' 参数
+                        image: char.avatar_url, 
+                        
+                        // ✅ 姿态参考 (分镜图)
+                        pose_image: originImageUrl, 
+                        
+                        // ✅ 画质增强参数
+                        sdxl_weights: "protovision-xl-high-fidel",
+                        scheduler: "K_EULER_ANCESTRAL",
+                        num_inference_steps: 30,
+                        guidance_scale: 5,
+                        control_strength: 0.6,
+                        ip_adapter_scale: 0.8,
+                        
                         width: Number(RATIO_MAP[aspectRatio]?.split('x')[0] || 1280),
                         height: Number(RATIO_MAP[aspectRatio]?.split('x')[1] || 720),
-                        scheduler: "K_EULER",
                     }
                 }
             );
@@ -142,10 +143,9 @@ export async function repaintShotWithCharacter(
         }
 
         // =================================================================
-        // 🟠 原有流程: Doubao / Volcengine (Draft Mode 或 Fallback)
+        // 🟠 原有流程: Doubao / Volcengine
         // =================================================================
 
-        // 🟢 1. 准备底图 (Draft 模式强制黑白)
         const originBase64 = await fetchImageAsBase64(originImageUrl, isDraftMode);
         if (!originBase64) throw new Error("Failed to process original image");
 
@@ -153,7 +153,6 @@ export async function repaintShotWithCharacter(
         let finalNegative = "";
 
         if (isDraftMode) {
-            // 清洗 Prompt
             const cleanDesc = cleanCharacterDescription(char.description);
             finalPrompt = `
                 (${DRAFT_PROMPT_CLASSIC}), 
@@ -164,7 +163,6 @@ export async function repaintShotWithCharacter(
             `.trim();
             finalNegative = DRAFT_NEGATIVE_BASE; 
         } else {
-            // Render 模式 (非 InstantID)
             finalPrompt = `(Character: ${char.description}), ${prompt}, (same composition:1.5), (maintain pose:1.4), high quality`;
             finalNegative = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo";
         }

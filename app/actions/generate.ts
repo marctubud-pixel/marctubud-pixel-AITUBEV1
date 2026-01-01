@@ -3,21 +3,19 @@
 import { createClient } from '@supabase/supabase-js'
 import { analyzeRefImage, type VisionAnalysis } from './vision'; 
 import sharp from 'sharp'; 
-import Replicate from "replicate"; // 🟢 [V6.0] 新增依赖
+import Replicate from "replicate"; 
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// 🟢 [V6.0] Replicate 配置 (InstantID)
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-// 使用 Lightning 版本以获得更快的速度 (或者换回 wangfuyun/instantid 获取极致画质)
-// 确认代码里是这行：
-const INSTANT_ID_MODEL = "wangfuyun/instantid:c6411132e18585481d68324869c3a50993096d27457d19c1186e8a09289255a6";
+// ✅ [V6.0] 使用 zsxkib 的稳定版 (参数标准: image = ID, pose_image = 参考图)
+const INSTANT_ID_MODEL = "zsxkib/instant-id:2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789";
 
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
@@ -25,7 +23,7 @@ const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations
 const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
 const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
 
-// --- [现有常量配置保持不变] ---
+// --- [常量配置保持不变] ---
 
 const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME WIDE SHOT": "(tiny figure:1.5), (massive environment:2.0), wide angle lens, aerial view, <subject> only occupies 5% of frame, (no close up:2.0), (no portrait:2.0)",
@@ -70,7 +68,7 @@ const RATIO_MAP: Record<string, string> = {
   "16:9": "2560x1440", "9:16": "1440x2560", "1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "2.39:1": "3072x1280" 
 };
 
-// --- [辅助函数保持不变] ---
+// --- [辅助函数] ---
 
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶'];
@@ -138,7 +136,7 @@ export async function generateShotImage(
   sceneImageUrl?: string,
   useMock: boolean = false,
   cameraAngle: string = 'EYE LEVEL',
-  useInstantID: boolean = false // 🟢 [V6.0] 新增参数：开启画质革命
+  useInstantID: boolean = false
 ) {
   try {
     console.log(`\n========== [DEBUG: Shot ${shotId}] ==========`);
@@ -150,7 +148,7 @@ export async function generateShotImage(
     let activeRefImage = referenceImageUrl;
     let characterPart = "";
     let characterNegative = ""; 
-    let characterAvatarUrl = ""; // 用于 InstantID
+    let characterAvatarUrl = ""; 
 
     // --- 角色信息获取 ---
     if (characterId) {
@@ -163,27 +161,23 @@ export async function generateShotImage(
       if (char) {
           if (!isNonFace) characterPart = `(Character: ${char.description}), `;
           if (char.negative_prompt) characterNegative = `, ${char.negative_prompt}`;
-          characterAvatarUrl = char.avatar_url; // 获取头像 URL
+          characterAvatarUrl = char.avatar_url; 
           
           if (!activeRefImage && char.avatar_url && !isNonFace && !useInstantID) {
-              // 仅在非 InstantID 模式下，才将头像作为参考图注入 Doubao
-              // InstantID 模式下，头像是专门的 face_image 参数
               activeRefImage = char.avatar_url;
           }
       }
     }
 
     // =================================================================
-    // 🟢 V6.0 分支: InstantID (画质革命 / ID 保持)
-    // 条件：开启开关 + 必须有角色 + 非线稿模式 + 非无脸特写
+    // 🟢 V6.0 分支: InstantID (zsxkib 版本)
     // =================================================================
     if (useInstantID && characterId && !isDraftMode && !isNonFace && characterAvatarUrl) {
-        console.log("🚀 [V6.0] 触发 InstantID 生成流程...");
+        console.log("🚀 [V6.0] 触发 InstantID 生成流程 (zsxkib)...");
 
         // 1. 准备姿态/构图图 (Pose/ControlNet)
         let poseImageBase64 = null;
         if (activeRefImage) {
-             // 复用现有的 Sharp 处理逻辑来裁剪或优化参考图
              poseImageBase64 = await processImageRef(activeRefImage, null, shotType);
         }
 
@@ -193,35 +187,40 @@ export async function generateShotImage(
         const instantIdPrompt = `${shotWeightPrompt}, ${angleWeightPrompt}, ${actionPrompt}, ${STYLE_PRESETS[stylePreset]}, masterpiece, best quality, 8k`;
         const instantIdNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}`;
 
-        // 3. 调用 Replicate
-        // 注意: InstantID 需要 face_image (ID) 和 pose_image (可选)
+        // 3. 调用 Replicate (修正参数名: face_image -> image)
         const output = await replicate.run(
             INSTANT_ID_MODEL as any,
             {
                 input: {
                     prompt: instantIdPrompt,
                     negative_prompt: instantIdNegative,
-                    face_image: characterAvatarUrl, // 核心：ID 来源
-                    pose_image: poseImageBase64,    // 核心：构图来源 (可选)
-                    control_strength: 0.7,          // 姿态控制强度
-                    identity_strength: 0.8,         // ID 保持强度
-                    num_inference_steps: 4,         // Lightning 版只需几步
-                    guidance_scale: 1.5,
+                    
+                    // ✅ 修正：使用 'image' 参数传递角色头像
+                    image: characterAvatarUrl,      
+                    
+                    // ✅ 构图参考
+                    pose_image: poseImageBase64,    
+                    
+                    // ✅ 画质增强参数
+                    sdxl_weights: "protovision-xl-high-fidel",
+                    scheduler: "K_EULER_ANCESTRAL",
+                    num_inference_steps: 30, // 提升步数以保证画质
+                    guidance_scale: 5,
+                    
+                    control_strength: 0.7,
+                    ip_adapter_scale: 0.8,
                     width: Number(RATIO_MAP[aspectRatio]?.split('x')[0] || 1280),
                     height: Number(RATIO_MAP[aspectRatio]?.split('x')[1] || 720),
-                    scheduler: "K_EULER",
                 }
             }
         );
 
         // 4. 处理结果
-        // Replicate 返回通常是 [url1, url2...]
         if (Array.isArray(output) && output.length > 0) {
             const rawUrl = output[0];
-            // 下载并转存 Supabase
             const res = await fetch(rawUrl);
             const buffer = Buffer.from(await res.arrayBuffer());
-            const fileName = `cineflow/${projectId}/iid_${Date.now()}_${shotId}.png`; // iid 前缀区分
+            const fileName = `cineflow/${projectId}/iid_${Date.now()}_${shotId}.png`;
             
             await supabaseAdmin.storage.from('images').upload(fileName, buffer, { contentType: 'image/png', upsert: true });
             const { data: { publicUrl } } = supabaseAdmin.storage.from('images').getPublicUrl(fileName);
@@ -232,7 +231,7 @@ export async function generateShotImage(
     }
 
     // =================================================================
-    // 🟠 原有流程: Doubao / Volcengine (用于 Draft 或无角色生成)
+    // 🟠 原有流程: Doubao / Volcengine
     // =================================================================
 
     if (!ARK_API_KEY) throw new Error("API Key Missing");
