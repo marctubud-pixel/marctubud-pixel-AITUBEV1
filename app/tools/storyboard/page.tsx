@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Clapperboard, Loader2, ArrowLeft, PenTool, Image as ImageIcon, Trash2, Plus, 
+  Clapperboard, Loader2, ArrowLeft, PenTool, Image as ImageIcon, Trash2, Plus, Minus,
   Download, RefreshCw, FileText, Sparkles, GripVertical, Package, RotateCcw, Zap,
   User, X, Check, Globe, Settings, ChevronRight, LayoutGrid, Palette,
   Sun, Moon, Paperclip, Ratio, Send, ChevronDown, MoreHorizontal, Flame, CloudRain, Zap as ZapIcon,
-  Maximize2, Eye, ArrowUp, ArrowDown, Repeat, Wand2, ChevronLeft
+  Maximize2, Eye, ArrowUp, ArrowDown, Repeat, Wand2, ChevronLeft, Camera, GripHorizontal, ChevronUp, Upload
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
@@ -42,6 +42,8 @@ import { CSS } from '@dnd-kit/utilities';
 // --- i18n ---
 const TRANSLATIONS = {
   zh: {
+    title: "智能分镜生成",
+    subtitle: "不断进化的AI分镜生成器",
     back: "返回",
     step1: "剧本",
     step2: "筹备",
@@ -49,10 +51,11 @@ const TRANSLATIONS = {
     mockOn: "Mock On",
     mockOff: "Real API",
     manageChars: "角色库",
-    scriptPlaceholder: "输入你的故事，或上传剧本文件...",
+    scriptPlaceholder: "输入你的故事，或上传剧本文件...\n(例如：赛博朋克侦探走入雨巷，发现了一枚发光的芯片...)",
     analyzeBtn: "拆解剧本",
     analyzing: "AI 思考中...",
-    uploadScript: "上传文件",
+    uploadScript: "上传脚本",
+    autoRatio: "自动画幅",
     panelCount: "分镜数量",
     ratio: "画幅",
     auto: "自动",
@@ -65,6 +68,8 @@ const TRANSLATIONS = {
     startGen: "生成分镜",
     shotList: "分镜表",
     addShot: "加镜头",
+    delShot: "删镜头",
+    delShotTip: "点击卡片删除",
     exportZip: "素材包",
     exportPdf: "通告单",
     newProject: "新项目",
@@ -76,12 +81,18 @@ const TRANSLATIONS = {
     author: "导演/作者",
     notes: "备注信息",
     confirmExport: "确认导出",
-    injectChar: "注入角色",
+    injectChar: "角色替换",
+    charLib: "角色库",
     noChar: "不指定",
     cameraAngle: "拍摄角度",
-    casting: "选角替换" 
+    casting: "选角替换",
+    shotPrefix: "分镜",
+    shotSize: "景别",
+    angle: "角度"
   },
   en: {
+    title: "CineFlow Evolution",
+    subtitle: "AI-Powered Storyboard Generation V5.3",
     back: "Back",
     step1: "Script",
     step2: "Setup",
@@ -92,7 +103,8 @@ const TRANSLATIONS = {
     scriptPlaceholder: "Tell your story...",
     analyzeBtn: "Analyze",
     analyzing: "Thinking...",
-    uploadScript: "Upload",
+    uploadScript: "Upload Script",
+    autoRatio: "Auto Ratio",
     panelCount: "Shots",
     ratio: "Ratio",
     auto: "Auto",
@@ -105,6 +117,8 @@ const TRANSLATIONS = {
     startGen: "Generate",
     shotList: "Shots",
     addShot: "Add Shot",
+    delShot: "Delete",
+    delShotTip: "Select to delete",
     exportZip: "Assets",
     exportPdf: "PDF (SOP)",
     newProject: "New",
@@ -116,10 +130,14 @@ const TRANSLATIONS = {
     author: "Director",
     notes: "Notes",
     confirmExport: "Export",
-    injectChar: "Inject",
+    injectChar: "Inject Character",
+    charLib: "Character Library",
     noChar: "None",
     cameraAngle: "Angle",
-    casting: "Casting"
+    casting: "Casting",
+    shotPrefix: "Shot",
+    shotSize: "Shot Size",
+    angle: "Angle"
   }
 };
 
@@ -195,28 +213,42 @@ const ASPECT_RATIOS = [
 ];
 
 // --- PanelCard ---
-const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, onOpenCharModal, onImageClick, step, isOverlay, t, isDark, ...props }, ref) => {
+const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, onOpenCharModal, onImageClick, step, isOverlay, t, isDark, isDeleteMode, ...props }, ref) => {
     const cardBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
-    const cardBorder = isDark ? "border-zinc-800" : "border-gray-100";
+    const cardBorder = isDark ? "border-zinc-800" : "border-gray-200";
     const textColor = isDark ? "text-gray-200" : "text-gray-800";
     const subTextColor = isDark ? "text-zinc-500" : "text-gray-400";
-    const baseClass = isOverlay ? "ring-2 ring-blue-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" : `${cardBorder} hover:shadow-md transition-shadow duration-300`;
+    const inputBg = isDark ? "bg-[#131314]" : "bg-gray-50";
+    
+    const [isPromptOpen, setIsPromptOpen] = useState(false);
 
+    // 🟢 状态 1：已生成图片或正在生成 (Step 3) - 维持小卡片
     if (step === 'generating' || step === 'done') {
+        const baseClass = isOverlay ? "ring-2 ring-blue-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" : `${cardBorder} hover:shadow-md transition-shadow duration-300`;
+        const shotLabel = CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0];
+        const angleLabel = CAMERA_ANGLES.find(a => a.value === panel.cameraAngle)?.label.split(' ')[1];
+
         return (
             <div ref={ref} {...props} className={`relative ${cardBg} rounded-2xl overflow-hidden border ${baseClass} ${currentRatioClass} group`}>
-                <div className={`absolute top-2 right-2 z-40 p-1.5 rounded-full cursor-grab active:cursor-grabbing backdrop-blur-md transition-colors ${isDark ? 'bg-black/50 hover:bg-blue-500 text-white' : 'bg-white/50 hover:bg-blue-500 text-black hover:text-white'}`}>
-                     <GripVertical size={14} />
-                </div>
                 
-                {/* 🟢 Click index instead of panel object */}
-                <div className="w-full h-full cursor-pointer" onDoubleClick={() => onImageClick(idx)}>
+                {/* 顶部 Header */}
+                <div className="absolute top-2 left-2 z-20 flex gap-2 pointer-events-none">
+                    <div className={`px-2 py-1 rounded-md font-bold text-[10px] shadow-sm backdrop-blur-md flex items-center gap-2 ${isDark ? 'bg-black/60 text-white' : 'bg-white/80 text-black'}`}>
+                        <span>{t.shotPrefix} {String(idx + 1).padStart(2, '0')}</span>
+                        <span className="opacity-30">|</span>
+                        <span>{shotLabel}</span>
+                        <span className="opacity-30">|</span>
+                        <span>{angleLabel}</span>
+                    </div>
+                </div>
+
+                <div className="w-full h-full cursor-pointer" onClick={() => onImageClick(idx)}>
                     {panel.isLoading ? (
                         <div className={`absolute inset-0 flex flex-col items-center justify-center backdrop-blur-sm z-10 ${isDark ? 'bg-zinc-900/50' : 'bg-white/50'}`}>
                             <Loader2 className="animate-spin w-8 h-8 text-blue-500" />
                         </div>
                     ) : panel.imageUrl ? (
-                        <img src={panel.imageUrl} className="w-full h-full object-cover" draggable={false} />
+                        <img src={panel.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" draggable={false} />
                     ) : (
                         <div className={`w-full h-full flex flex-col items-center justify-center ${isDark ? 'bg-[#111]' : 'bg-gray-50'}`}>
                             <ImageIcon size={24} className={`${isDark ? 'text-zinc-700' : 'text-gray-300'} mb-2`}/><span className="text-[10px] text-zinc-500">{t.waiting}</span>
@@ -224,77 +256,89 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                     )}
                 </div>
                 
-                {panel.characterAvatar && (
-                    <div className="absolute top-2 right-10 z-20 w-6 h-6 rounded-full border-2 border-white/20 overflow-hidden shadow-lg">
-                        <Image src={panel.characterAvatar} alt="Char" fill className="object-cover" />
-                    </div>
-                )}
-                
-                <div className="absolute top-2 left-2 z-20 pointer-events-none flex gap-1">
-                    <span className="bg-black/50 backdrop-blur-md text-white text-[9px] font-bold px-2 py-1 rounded-full uppercase">{CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0] || panel.shotType}</span>
-                    {panel.cameraAngle && panel.cameraAngle !== 'EYE LEVEL' && (
-                        <span className="bg-blue-600/80 backdrop-blur-md text-white text-[9px] font-bold px-2 py-1 rounded-full uppercase">{CAMERA_ANGLES.find(a => a.value === panel.cameraAngle)?.label.split(' ')[1] || panel.cameraAngle}</span>
-                    )}
-                </div>
-                
-                {!panel.isLoading && !isOverlay && (
-                    <div className="absolute top-10 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
-                         <button onClick={() => onRegenerate(panel.id)} className="p-1.5 bg-black/60 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md transition-all"><RefreshCw size={14} /></button>
-                         <button onClick={() => onImageClick(idx)} className="p-1.5 bg-black/60 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md transition-all"><Maximize2 size={14} /></button>
-                    </div>
-                )}
-                
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white z-20 pointer-events-none">
-                    <div className="flex items-start gap-2">
-                        <span className="text-[10px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded font-mono mt-0.5">#{String(idx + 1).padStart(2, '0')}</span>
-                        <p className="text-[10px] text-zinc-100 line-clamp-2 leading-relaxed opacity-90 font-medium">{panel.description}</p>
-                    </div>
+                    <p className="text-[10px] text-zinc-100 line-clamp-2 leading-relaxed opacity-90 font-medium">{panel.description}</p>
                 </div>
             </div>
         );
     }
 
+    // 🟢 状态 2：编辑模式 (Step 2) - 回归大卡片 (Horizontal Layout)
+    const baseClass = isOverlay ? "ring-2 ring-blue-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" : `${cardBorder} hover:border-blue-500/50 transition-all shadow-sm`;
+    
     return (
-        <div ref={ref} {...props} className={`${cardBg} p-4 rounded-2xl border ${cardBorder} flex flex-col md:flex-row gap-4 relative group hover:border-blue-500/30 transition-all shadow-sm`}>
-            <div className={`absolute left-2 top-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing z-20 ${subTextColor} hover:text-blue-500`}><GripVertical size={20} /></div>
+        <div ref={ref} {...props} className={`${cardBg} p-5 rounded-2xl border ${baseClass} flex gap-5 relative group min-h-[180px]`}>
             
-            <div className="flex items-start gap-3 md:w-48 shrink-0 ml-8">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-xs font-bold mt-1 ${isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 text-gray-500'}`}>{String(idx + 1).padStart(2, '0')}</div>
-                <div className="flex flex-col gap-2 w-full">
+            {/* 左侧：拖拽手柄 + 参数控制 + 删除 */}
+            <div className="w-48 flex flex-col gap-4 shrink-0 border-r border-dashed pr-4 border-gray-200 dark:border-zinc-800">
+                 <div className="flex items-center justify-between">
+                     <div className={`px-2.5 py-1 rounded-md font-mono text-xs font-bold ${isDark ? 'bg-zinc-800 text-zinc-300' : 'bg-gray-100 text-gray-600'}`}>
+                         {t.shotPrefix} {String(idx + 1).padStart(2, '0')}
+                     </div>
+                     <div className={`p-1.5 cursor-grab active:cursor-grabbing ${subTextColor} hover:text-blue-500 rounded-full transition-colors`}>
+                         <GripHorizontal size={16} />
+                     </div>
+                 </div>
+
+                 <div className="space-y-3 flex-1">
                     <div className="space-y-1">
-                        <label className="text-[8px] font-bold text-zinc-500 uppercase">Shot Size</label>
-                        <select value={panel.shotType} onChange={(e) => onUpdate(panel.id, 'shotType', e.target.value)} className={`w-full bg-transparent border ${isDark ? 'border-zinc-700 text-blue-400' : 'border-gray-200 text-blue-600'} text-[10px] font-bold px-2 py-1.5 rounded-lg outline-none focus:border-blue-500 uppercase tracking-wide`}>
-                            {CINEMATIC_SHOTS.map(shot => <option key={shot.value} value={shot.value}>{shot.label}</option>)}
+                        <label className="text-[9px] font-bold text-zinc-500 uppercase flex items-center gap-1"><Eye size={10}/> {t.shotSize}</label>
+                        <select 
+                            value={panel.shotType} 
+                            onChange={(e) => onUpdate(panel.id, 'shotType', e.target.value)} 
+                            className={`w-full bg-transparent border ${isDark ? 'border-zinc-700 text-zinc-300' : 'border-gray-200 text-gray-800'} text-[10px] font-bold px-2 py-2 rounded-lg outline-none focus:border-blue-500 uppercase`}
+                        >
+                            {CINEMATIC_SHOTS.map(shot => <option key={shot.value} value={shot.value}>{shot.label.split('(')[0]}</option>)}
                         </select>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[8px] font-bold text-zinc-500 uppercase">Angle</label>
-                        <select value={panel.cameraAngle || 'EYE LEVEL'} onChange={(e) => onUpdate(panel.id, 'cameraAngle', e.target.value)} className={`w-full bg-transparent border ${isDark ? 'border-zinc-700 text-purple-400' : 'border-gray-200 text-purple-600'} text-[10px] font-bold px-2 py-1.5 rounded-lg outline-none focus:border-purple-500 uppercase tracking-wide`}>
-                            {CAMERA_ANGLES.map(angle => <option key={angle.value} value={angle.value}>{angle.label}</option>)}
+                        <label className="text-[9px] font-bold text-zinc-500 uppercase flex items-center gap-1"><Camera size={10}/> {t.angle}</label>
+                        <select 
+                            value={panel.cameraAngle || 'EYE LEVEL'} 
+                            onChange={(e) => onUpdate(panel.id, 'cameraAngle', e.target.value)} 
+                            className={`w-full bg-transparent border ${isDark ? 'border-zinc-700 text-zinc-300' : 'border-gray-200 text-gray-800'} text-[10px] font-bold px-2 py-2 rounded-lg outline-none focus:border-blue-500 uppercase`}
+                        >
+                            {CAMERA_ANGLES.map(angle => <option key={angle.value} value={angle.value}>{angle.label.split(' ')[1]}</option>)}
                         </select>
                     </div>
-                    {!isOverlay && (<button onClick={() => onDelete(panel.id)} className="text-zinc-400 hover:text-red-500 text-xs flex items-center gap-1 self-start ml-1 mt-1"><Trash2 size={12}/> Delete</button>)}
-                </div>
+                 </div>
+
+                 {/* 删除按钮 - 仅在 Delete Mode 显示 */}
+                 {isDeleteMode && (
+                     <button onClick={() => onDelete(panel.id)} className="w-full py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2">
+                         <Trash2 size={12} /> {t.delShot}
+                     </button>
+                 )}
             </div>
 
-            <div className="flex-1 space-y-2">
+            {/* 右侧：文字描述 + Prompt */}
+            <div className="flex-1 flex flex-col gap-3">
                 <textarea 
                   value={panel.description} 
                   onChange={(e) => onUpdate(panel.id, 'description', e.target.value)} 
-                  className={`w-full bg-transparent text-sm ${textColor} placeholder-zinc-500 border-none focus:ring-0 p-0 resize-none leading-relaxed font-medium`}
-                  rows={2} 
+                  className={`w-full bg-transparent text-sm ${textColor} placeholder-zinc-500 border-none focus:ring-0 p-0 resize-none leading-relaxed font-medium h-24`}
                   placeholder="Describe the action..."
                 />
+
                 <div className={`w-full h-[1px] ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}></div>
-                <div className="flex gap-2">
-                   <span className="text-[10px] text-zinc-500 font-bold uppercase pt-1">PROMPT:</span>
-                   <textarea 
-                     value={panel.prompt} 
-                     onChange={(e) => onUpdate(panel.id, 'prompt', e.target.value)} 
-                     className="w-full bg-transparent text-xs text-zinc-500 placeholder-zinc-600 border-none focus:ring-0 p-0 resize-none leading-relaxed font-mono" 
-                     rows={2} 
-                     placeholder="AI visual details..."
-                   />
+
+                {/* Prompt 折叠 */}
+                <div>
+                     <button 
+                        onClick={() => setIsPromptOpen(!isPromptOpen)}
+                        className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider ${subTextColor} hover:text-blue-500 mb-1`}
+                     >
+                         {isPromptOpen ? <ChevronUp size={10}/> : <ChevronDown size={10}/>} <span>AI Prompt</span>
+                     </button>
+                     
+                     {isPromptOpen && (
+                         <textarea 
+                           value={panel.prompt} 
+                           onChange={(e) => onUpdate(panel.id, 'prompt', e.target.value)} 
+                           className={`w-full bg-transparent text-[10px] text-zinc-500 placeholder-zinc-600 border ${isDark ? 'border-zinc-800 bg-black/20' : 'border-gray-200 bg-white/50'} rounded-lg p-2 focus:ring-0 focus:border-blue-500/50 resize-none leading-relaxed font-mono h-16 animate-in slide-in-from-top-2`} 
+                           placeholder="AI visual details..."
+                         />
+                     )}
                 </div>
             </div>
         </div>
@@ -317,7 +361,6 @@ export default function StoryboardPage() {
 
   const [script, setScript] = useState('');
   const [globalAtmosphere, setGlobalAtmosphere] = useState('');
-  
   const [sceneDescription, setSceneDescription] = useState(''); 
   const [step, setStep] = useState<WorkflowStep>('input');
   const [panels, setPanels] = useState<StoryboardPanel[]>([]);
@@ -333,9 +376,9 @@ export default function StoryboardPage() {
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); 
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [isMockMode, setIsMockMode] = useState(false);
+  const [isDeleteMode, setIsDeleteMode] = useState(false); 
   
-  // 🟢 Lightbox & Casting State
-  // 🔥 Change: Store 'index' not 'object' to allow next/prev
+  // Lightbox & Casting State
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isRepainting, setIsRepainting] = useState(false);
   const [showCastingModal, setShowCastingModal] = useState(false);
@@ -376,17 +419,26 @@ export default function StoryboardPage() {
     fetchCharacters();
   }, []);
 
-  // 🟢 Keyboard Navigation for Lightbox
+  // Keyboard Navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (lightboxIndex === null) return;
-      if (e.key === 'ArrowLeft') setLightboxIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
-      if (e.key === 'ArrowRight') setLightboxIndex(prev => (prev !== null && prev < panels.length - 1 ? prev + 1 : prev));
-      if (e.key === 'Escape') setLightboxIndex(null);
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') setLightboxIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') setLightboxIndex(prev => (prev !== null && prev < panels.length - 1 ? prev + 1 : prev));
+      if (e.key === 'Escape' || e.key === 'Enter') setLightboxIndex(null); 
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lightboxIndex, panels.length]);
+
+  // Command+Enter
+  const handleScriptKeyDown = (e: React.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          if (!isAnalyzing && script.trim()) {
+              handleAnalyzeScript();
+          }
+      }
+  };
 
   const handleScriptFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -430,7 +482,7 @@ export default function StoryboardPage() {
   };
   const handleAddPanel = () => {
     setPanels(current => [...current, {
-        id: crypto.randomUUID(), description: "New shot...", shotType: "MID SHOT", cameraAngle: "EYE LEVEL", environment: "", prompt: "", isLoading: false
+        id: crypto.randomUUID(), description: "", shotType: "MID SHOT", cameraAngle: "EYE LEVEL", environment: "", prompt: "", isLoading: false
     }]);
   };
 
@@ -522,8 +574,6 @@ export default function StoryboardPage() {
     toast.success('Batch generation complete');
   };
 
-  // ... 在 page.tsx 文件中找到这个函数 ...
-
   const handleCastingSelect = async (char: Character) => {
     if (lightboxIndex === null) return;
     const currentPanel = panels[lightboxIndex];
@@ -531,7 +581,6 @@ export default function StoryboardPage() {
     
     setIsRepainting(true);
     setShowCastingModal(false);
-    // 🟢 提示信息区分模式
     const toastMsg = mode === 'draft' ? `Redrawing inject ${char.name} as sketch...` : `Injecting ${char.name} into shot...`;
     const toastId = toast.loading(toastMsg);
 
@@ -544,7 +593,7 @@ export default function StoryboardPage() {
             actionPrompt,
             tempProjectId,
             aspectRatio,
-            mode === 'draft' // 🟢 核心修复：传入当前是否为 Draft 模式
+            mode === 'draft' 
         );
 
         if (res.success) {
@@ -559,8 +608,6 @@ export default function StoryboardPage() {
         setIsRepainting(false);
     }
 };
-
-// ... 函数结束 ...
 
   const handleExportPDF = async () => {
     setIsExporting(true);
@@ -601,26 +648,51 @@ export default function StoryboardPage() {
     <div className={`min-h-screen ${pageBg} font-sans transition-colors duration-300`}>
       <Toaster position="top-center" richColors theme={isDark ? "dark" : "light"}/>
       
-      {/* 🟢 Improved Lightbox Navigation */}
+      {/* 🟢 Lightbox Pro (Restored Overlay Style with Bottom Buttons) */}
       {currentLightboxPanel && currentLightboxPanel.imageUrl && (
           <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
-              <button onClick={() => setLightboxIndex(null)} className="absolute top-6 right-6 text-white/50 hover:text-white p-2 z-50"><X size={32} /></button>
               
-              {/* Prev Button */}
+              {/* Close Button (Top Right) */}
+              <button onClick={() => setLightboxIndex(null)} className="absolute top-6 right-6 text-white/50 hover:text-white p-2 z-50 bg-black/20 rounded-full backdrop-blur-md"><X size={28} /></button>
+
+              {/* Image Nav Buttons */}
               {lightboxIndex !== null && lightboxIndex > 0 && (
-                  <button onClick={() => setLightboxIndex(lightboxIndex - 1)} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-4 z-50 transition-colors">
+                  <button onClick={() => setLightboxIndex(lightboxIndex - 1)} className="absolute left-6 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-4 z-50 transition-colors">
                       <ChevronLeft size={48} />
                   </button>
               )}
-              {/* Next Button */}
               {lightboxIndex !== null && lightboxIndex < panels.length - 1 && (
-                  <button onClick={() => setLightboxIndex(lightboxIndex + 1)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-4 z-50 transition-colors">
+                  <button onClick={() => setLightboxIndex(lightboxIndex + 1)} className="absolute right-6 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-4 z-50 transition-colors">
                       <ChevronRight size={48} />
                   </button>
               )}
 
-              <div className="relative w-full h-[80vh] flex items-center justify-center">
-                  <img src={currentLightboxPanel.imageUrl} className="max-w-full max-h-full object-contain shadow-2xl scale-100 animate-in zoom-in-95 duration-200 rounded-lg" />
+              {/* Main Image */}
+              <div className="relative w-full h-[80vh] flex items-center justify-center group">
+                  <img src={currentLightboxPanel.imageUrl} className="max-w-full max-h-full object-contain shadow-2xl rounded-lg scale-100 animate-in zoom-in-95 duration-200" />
+                  
+                  {/* Metadata Overlay (Bottom) */}
+                  <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black/90 via-black/60 to-transparent text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end rounded-b-lg pointer-events-none">
+                      <div className="flex items-center gap-3 mb-2 max-w-4xl mx-auto w-full">
+                          <span className="bg-blue-600 text-xs font-bold px-2 py-0.5 rounded font-mono">#{String((lightboxIndex ?? 0) + 1).padStart(2, '0')}</span>
+                          <span className="bg-white/20 text-xs font-bold px-2 py-0.5 rounded uppercase">{CINEMATIC_SHOTS.find(s => s.value === currentLightboxPanel.shotType)?.label.split('(')[0]}</span>
+                          <span className="bg-purple-600/50 text-xs font-bold px-2 py-0.5 rounded uppercase">{CAMERA_ANGLES.find(a => a.value === currentLightboxPanel.cameraAngle)?.label.split(' ')[1]}</span>
+                      </div>
+                      <p className="text-base font-medium leading-relaxed text-zinc-100 max-w-4xl mx-auto w-full">{currentLightboxPanel.description}</p>
+                  </div>
+
+                  {/* Character Replace Button (Fixed at Bottom Right) */}
+                  <div className="absolute bottom-6 right-6 z-50 pointer-events-auto">
+                      <button 
+                        onClick={() => setShowCastingModal(true)} 
+                        disabled={isRepainting}
+                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold rounded-full flex items-center gap-2 shadow-xl hover:shadow-purple-500/30 transition-all hover:scale-105 active:scale-95"
+                      >
+                          {isRepainting ? <Loader2 className="animate-spin w-5 h-5"/> : <User size={18} />}
+                          {t.injectChar}
+                      </button>
+                  </div>
+
                   {isRepainting && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm rounded-lg">
                           <Loader2 className="animate-spin text-white w-12 h-12 mb-4" />
@@ -628,31 +700,20 @@ export default function StoryboardPage() {
                       </div>
                   )}
               </div>
-
-              <div className="mt-6 flex gap-4">
-                  <button 
-                    onClick={() => setShowCastingModal(true)} 
-                    disabled={isRepainting}
-                    className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold rounded-full flex items-center gap-2 shadow-lg hover:shadow-blue-500/50 transition-all"
-                  >
-                      {isRepainting ? <Loader2 className="animate-spin w-5 h-5"/> : <Wand2 size={20} />}
-                      {t.casting} (Inject Character)
-                  </button>
-              </div>
           </div>
       )}
 
-      {/* 🟢 Casting Modal */}
+      {/* 🟢 Casting Modal (Glassmorphism) */}
       {showCastingModal && (
-          <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-              <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[70vh]`}>
-                  <div className="p-4 border-b border-white/10 flex justify-between items-center">
-                      <h3 className="font-bold flex items-center gap-2 text-white"><User size={18} /> Select Character to Inject</h3>
-                      <button onClick={() => setShowCastingModal(false)}><X size={20} className="text-white/50 hover:text-white"/></button>
+          <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/30 backdrop-blur-xl p-4 animate-in fade-in" onClick={() => setShowCastingModal(false)}>
+              <div className={`${isDark ? 'bg-[#1e1e1e]/90 border-zinc-700' : 'bg-white/90 border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[70vh] backdrop-blur-2xl`} onClick={e => e.stopPropagation()}>
+                  <div className="p-5 border-b border-white/10 flex justify-between items-center">
+                      <h3 className={`font-bold flex items-center gap-2 text-lg ${isDark ? 'text-white' : 'text-black'}`}><User size={20} className="text-blue-500"/> {t.charLib}</h3>
+                      <button onClick={() => setShowCastingModal(false)}><X size={20} className="text-zinc-500 hover:text-red-500"/></button>
                   </div>
                   <div className="p-6 grid grid-cols-3 sm:grid-cols-4 gap-4 overflow-y-auto custom-scrollbar">
                       {characters.map(char => (
-                          <button key={char.id} onClick={() => handleCastingSelect(char)} className="group relative aspect-square rounded-2xl border border-white/10 overflow-hidden hover:border-blue-500 transition-all">
+                          <button key={char.id} onClick={() => handleCastingSelect(char)} className="group relative aspect-square rounded-2xl border border-white/10 overflow-hidden hover:border-blue-500 transition-all shadow-md">
                               {char.avatar_url ? <Image src={char.avatar_url} alt={char.name} fill className="object-cover group-hover:scale-110 transition-transform duration-500"/> : <User className="text-zinc-700 m-auto"/>}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
                                   <span className="text-xs font-bold text-white truncate">{char.name}</span>
@@ -664,10 +725,11 @@ export default function StoryboardPage() {
           </div>
       )}
       
-      {/* ... Rest of UI (Modals, Header) Unchanged ... */}
+      {/* ... Rest of UI (Char Modal, Export Modal) ... */}
       {showCharModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-              <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]`}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowCharModal(false)}>
+              <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]`} onClick={e => e.stopPropagation()}>
+                  {/* ... same content ... */}
                   <div className={`p-4 border-b ${isDark ? 'border-zinc-800' : 'border-gray-100'} flex justify-between items-center`}>
                       <h3 className="font-bold flex items-center gap-2 text-sm"><User size={16} className="text-blue-500" /> {t.injectChar}</h3>
                       <button onClick={() => setShowCharModal(false)}><X size={18} className="text-zinc-500 hover:text-red-500"/></button>
@@ -734,13 +796,13 @@ export default function StoryboardPage() {
         </div>
         
         <div className="flex items-center gap-2">
-             <button onClick={() => setIsMockMode(!isMockMode)} className={`text-[10px] px-3 py-1.5 rounded-full font-bold border transition-all flex items-center gap-1.5 ${isMockMode ? 'bg-green-500/10 border-green-500 text-green-500' : `${isDark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-gray-200'} text-zinc-500`}`}>
+             <button onClick={() => setIsMockMode(!isMockMode)} className={`text-[10px] px-3 py-1.5 rounded-full font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${isMockMode ? 'bg-green-500/10 border-green-500 text-green-500' : `${isDark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-gray-200'} text-zinc-500`}`}>
                 <Zap size={10} fill={isMockMode ? "currentColor" : "none"}/> {isMockMode ? t.mockOn : t.mockOff}
              </button>
-             <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')} className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
+             <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')} className={`p-2 rounded-full transition-colors cursor-pointer ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
                 {isDark ? <Moon size={18}/> : <Sun size={18}/>}
              </button>
-             <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
+             <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className={`p-2 rounded-full transition-colors cursor-pointer ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
                 <Globe size={18}/>
              </button>
              <Link href="/tools/characters" className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
@@ -750,15 +812,16 @@ export default function StoryboardPage() {
       </div>
 
       {/* Main Content */}
-      <div className="pt-24 pb-12 px-6 min-h-screen">
+      <div className="pt-40 pb-12 px-6 min-h-screen">
         {step === 'input' && (
            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 flex flex-col items-center justify-center min-h-[70vh]">
               <div className="w-full space-y-6">
                  <div className="text-center space-y-1 mb-8">
-                    <h1 className={`text-4xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        CineFlow <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500">Evolution</span>
+                    {/* 🟢 字体加大加粗 */}
+                    <h1 className={`text-6xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {t.title}
                     </h1>
-                    <p className="text-zinc-500 text-sm">AI-Powered Storyboard Generation V4.0</p>
+                    <p className="text-zinc-500 text-sm mt-2">{t.subtitle}</p>
                  </div>
                  
                  <div className={`relative w-full rounded-3xl shadow-xl transition-all duration-300 ${isDark ? 'bg-[#1e1e1e] shadow-black/50 border border-zinc-800' : 'bg-white shadow-blue-900/5 border border-white'}`}>
@@ -767,18 +830,32 @@ export default function StoryboardPage() {
                       placeholder={t.scriptPlaceholder}
                       value={script} 
                       onChange={(e) => setScript(e.target.value)}
+                      onKeyDown={handleScriptKeyDown}
                     />
                     
                     <div className="flex items-center justify-between p-4 pl-6">
                         <div className="flex items-center gap-2">
+                             {/* 🟢 按钮顺序交换：上传在左，比例在右 */}
+                             <div className="relative">
+                                 <input type="file" ref={fileInputRef} onChange={handleScriptFileUpload} className="hidden" accept=".txt,.md,.docx,.xlsx" />
+                                 <button 
+                                    onClick={() => fileInputRef.current?.click()} 
+                                    className={`p-2.5 rounded-full transition-all flex items-center gap-2 text-xs font-bold cursor-pointer hover:scale-105 active:scale-95 ${isDark ? 'hover:bg-zinc-800 text-zinc-400 bg-zinc-900' : 'hover:bg-gray-100 text-gray-500 bg-gray-50'}`} 
+                                    title={t.uploadScript}
+                                 >
+                                     <Paperclip size={18}/>
+                                     <span>{t.uploadScript}</span>
+                                 </button>
+                             </div>
+
                              <div className="relative">
                                  <button 
                                    onClick={() => setShowRatioMenu(!showRatioMenu)}
-                                   className={`p-2.5 rounded-full transition-all flex items-center gap-2 text-xs font-bold ${isDark ? 'hover:bg-zinc-800 text-zinc-400 bg-zinc-900' : 'hover:bg-gray-100 text-gray-500 bg-gray-50'}`}
+                                   className={`p-2.5 rounded-full transition-all flex items-center gap-2 text-xs font-bold cursor-pointer hover:scale-105 active:scale-95 ${isDark ? 'hover:bg-zinc-800 text-zinc-400 bg-zinc-900' : 'hover:bg-gray-100 text-gray-500 bg-gray-50'}`}
                                    title={t.ratio}
                                  >
                                      <Ratio size={18} />
-                                     <span>{ASPECT_RATIOS.find(r => r.value === aspectRatio)?.label.split(' ')[0]}</span>
+                                     <span>{t.autoRatio}</span>
                                  </button>
                                  
                                  {showRatioMenu && (
@@ -795,33 +872,25 @@ export default function StoryboardPage() {
                                      </div>
                                  )}
                              </div>
-
-                             <div className="relative">
-                                 <input type="file" ref={fileInputRef} onChange={handleScriptFileUpload} className="hidden" accept=".txt,.md,.docx,.xlsx" />
-                                 <button 
-                                    onClick={() => fileInputRef.current?.click()} 
-                                    className={`p-2.5 rounded-full transition-all ${isDark ? 'hover:bg-zinc-800 text-zinc-400 bg-zinc-900' : 'hover:bg-gray-100 text-gray-500 bg-gray-50'}`} 
-                                    title={t.uploadScript}
-                                 >
-                                     <Paperclip size={18}/>
-                                 </button>
-                             </div>
                         </div>
 
+                        {/* 🟢 浅色模式按钮修复：白底黑字带边框 */}
                         <button 
                             onClick={handleAnalyzeScript} 
                             disabled={isAnalyzing || !script.trim()} 
-                            className={`px-6 py-3 rounded-full font-bold text-sm transition-all shadow-lg flex items-center gap-2 
+                            className={`px-6 py-3 rounded-full font-bold text-sm transition-all shadow-lg flex items-center gap-2 cursor-pointer hover:scale-105 active:scale-95 border
                             ${isAnalyzing || !script.trim() 
-                                ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed dark:bg-zinc-800 dark:text-zinc-600' 
-                                : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-blue-500/30 hover:scale-105 active:scale-95'}`}
+                                ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed border-transparent' 
+                                : isDark 
+                                    ? 'bg-zinc-800 text-white border-zinc-700 hover:bg-zinc-700' 
+                                    : 'bg-white text-black border-gray-200 hover:bg-gray-50'}`}
                         >
                             {isAnalyzing ? <Loader2 className="animate-spin w-4 h-4" /> : <Sparkles size={16} />}
                             {t.analyzeBtn}
                         </button>
                     </div>
                  </div>
-                 <p className="text-center text-xs text-zinc-400 font-medium opacity-60">CineFlow V4.0 Gemini Evolution</p>
+                 <p className="text-center text-xs text-zinc-400 font-medium opacity-60">CineFlow V5.3 Evolution</p>
               </div>
            </div>
         )}
@@ -897,7 +966,7 @@ export default function StoryboardPage() {
                         </div>
                     )}
 
-                    <button onClick={handleGenerateImages} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-blue-500/25 hover:shadow-lg text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-2">
+                    <button onClick={handleGenerateImages} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-blue-500/25 hover:shadow-lg text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer hover:scale-105 active:scale-95">
                         {mode === 'draft' ? <PenTool size={18}/> : <Palette size={18}/>} {t.startGen}
                     </button>
                  </div>
@@ -906,19 +975,30 @@ export default function StoryboardPage() {
               <div className="flex-1 space-y-4">
                  <div className="flex justify-between items-center mb-2">
                     <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">{t.shotList} ({panels.length})</h3>
-                    <button onClick={handleAddPanel} className={`text-xs ${buttonBg} px-3 py-1.5 rounded-full transition-colors flex items-center gap-2`}><Plus size={14}/> {t.addShot}</button>
+                    <div className="flex gap-2">
+                        {/* 🟢 删除模式切换按钮 */}
+                        <button 
+                            onClick={() => setIsDeleteMode(!isDeleteMode)} 
+                            className={`text-xs px-3 py-1.5 rounded-full transition-colors flex items-center gap-2 cursor-pointer ${isDeleteMode ? 'bg-red-500 text-white' : buttonBg}`}
+                        >
+                            <Minus size={14}/> {t.delShot}
+                        </button>
+                        <button onClick={handleAddPanel} className={`text-xs ${buttonBg} px-3 py-1.5 rounded-full transition-colors flex items-center gap-2 cursor-pointer hover:scale-105`}><Plus size={14}/> {t.addShot}</button>
+                    </div>
                  </div>
                  
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                    {/* 🟢 Key Fix: Pass isDeleteMode */}
                     <SortableContext items={panels.map(p => p.id)} strategy={rectSortingStrategy}>
-                        <div className="grid gap-4">
+                        {/* 🟢 布局回归：一行两个大卡片 */}
+                        <div className={`grid gap-4 grid-cols-1 xl:grid-cols-2`}>
                             {panels.map((panel, idx) => (
-                                <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} onDelete={handleDeletePanel} onUpdate={handleUpdatePanel} onOpenCharModal={handleOpenCharModal} onImageClick={setLightboxIndex} t={t} isDark={isDark}/>
+                                <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} onDelete={handleDeletePanel} onUpdate={handleUpdatePanel} onOpenCharModal={handleOpenCharModal} onImageClick={setLightboxIndex} t={t} isDark={isDark} currentRatioClass={currentRatioClass} isDeleteMode={isDeleteMode}/>
                             ))}
                         </div>
                     </SortableContext>
                     <DragOverlay>
-                        {activePanel ? <PanelCard panel={activePanel} idx={panels.findIndex(p => p.id === activePanel.id)} step={step} isOverlay={true} t={t} isDark={isDark}/> : null}
+                        {activePanel ? <PanelCard panel={activePanel} idx={panels.findIndex(p => p.id === activePanel.id)} step={step} isOverlay={true} t={t} isDark={isDark} currentRatioClass={currentRatioClass} isDeleteMode={isDeleteMode}/> : null}
                     </DragOverlay>
                  </DndContext>
               </div>
@@ -928,7 +1008,7 @@ export default function StoryboardPage() {
         {(step === 'generating' || step === 'done') && (
             <div className="max-w-[1920px] mx-auto animate-in fade-in space-y-8">
                  <div className="flex justify-between items-center px-4">
-                     <button onClick={() => setStep('review')} className="text-xs font-bold text-zinc-500 hover:text-blue-500 flex items-center gap-2 transition-colors"><ArrowLeft size={14}/> Back to Setup</button>
+                     <button onClick={() => setStep('review')} className="text-xs font-bold text-zinc-500 hover:text-blue-500 flex items-center gap-2 transition-colors cursor-pointer"><ArrowLeft size={14}/> Back to Setup</button>
                      <div className="flex items-center gap-4">
                          <div className="text-xs font-mono text-zinc-500">
                              TOTAL: <span className={isDark ? "text-white" : "text-black"}>{panels.length}</span> SHOTS | RATIO: <span className={isDark ? "text-white" : "text-black"}>{aspectRatio}</span>
@@ -951,14 +1031,14 @@ export default function StoryboardPage() {
 
                  {step === 'done' && (
                      <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 backdrop-blur-xl border p-2 rounded-full flex gap-2 shadow-2xl animate-in slide-in-from-bottom-10 z-40 ${isDark ? 'bg-[#111]/90 border-white/10' : 'bg-white/90 border-gray-200'}`}>
-                         <button onClick={() => setShowExportModal(true)} disabled={isExporting} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-full text-xs flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20">
+                         <button onClick={() => setShowExportModal(true)} disabled={isExporting} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-full text-xs flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 cursor-pointer">
                              {isExporting ? <Loader2 className="animate-spin w-4 h-4"/> : <Download size={16}/>} {t.exportPdf}
                          </button>
                          <div className={`w-[1px] mx-1 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}></div>
-                         <button onClick={handleExportZIP} disabled={isExporting} className={`px-6 py-3 font-bold rounded-full text-xs flex items-center gap-2 transition-all ${isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}>
+                         <button onClick={handleExportZIP} disabled={isExporting} className={`px-6 py-3 font-bold rounded-full text-xs flex items-center gap-2 transition-all cursor-pointer ${isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}>
                              {isExporting ? <Loader2 className="animate-spin w-4 h-4"/> : <Package size={16}/>} {t.exportZip}
                          </button>
-                         <button onClick={() => { setStep('input'); setScript(''); setPanels([]); }} className={`px-4 py-3 rounded-full transition-all ${isDark ? 'hover:bg-zinc-800 text-zinc-500' : 'hover:bg-gray-100 text-gray-500'}`}>
+                         <button onClick={() => { setStep('input'); setScript(''); setPanels([]); }} className={`px-4 py-3 rounded-full transition-all cursor-pointer ${isDark ? 'hover:bg-zinc-800 text-zinc-500' : 'hover:bg-gray-100 text-gray-500'}`}>
                              <RotateCcw size={16}/>
                          </button>
                      </div>
