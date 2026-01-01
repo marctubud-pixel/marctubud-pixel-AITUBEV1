@@ -96,21 +96,25 @@ SOP 导出优化：不仅导出图片，还要能一键生成包含“提示词 
 案例库页面：开发 /cases 路由，用于展示我们用 CineFlow 生成的精美视频/分镜案例。
 
 🚀 实时更新、 开发进度追踪 (Progress Tracker)
+🚀 六、 开发进度追踪 (Progress Tracker) - V3.1 商业版
 
 ✅ 已完成 (Completed)
-1. CineFlow 核心引擎 V3.1 (The "Hallucination Killer") [已验收]
-   - Subject Scrubbing: 正则逻辑升级，成功在特写镜头中物理移除人脸幻觉。
-   - Shot Definitions: 动态切换 OBJECT_SHOT_PROMPTS，非人脸物体特写不再出现五官。
-2. 角色注入系统 (Character Injection) [已验收]
-   - 数据库: negative_prompt 字段实装。
-   - 前端: 编辑器支持弹窗选择角色，自动挂载 Avatar 和 Prompt。
-   - 后端: 自动合并 "全局角色" 与 "分镜级角色"，负面词生效。
-3. 稳定性修复 [已验收]
-   - 修复 Supabase Client 多实例导致的内存泄漏与卡顿，改用 Singleton 模式。
+1. 核心引擎 (Engine Layer):
+   - CineFlow V3.1 "Hallucination Killer" (幻觉清洗 + 动态景别定义).
+   - 角色注入系统 (Character Injection) + 负面提示词挂载.
+   - 后端 Mock Mode (省钱开发模式).
+
+2. 交互与界面 (UI/UX Layer):
+   - 全新三步走工作流: Script (极简) -> Setup (控制台) -> Render (宽屏).
+   - i18n 架构: 支持中/英文一键切换.
+   - 响应式 Grid: 宽屏模式下支持 5-6 列分镜展示.
+
+3. 商业化交付 (Delivery Layer):
+   - SOP PDF 导出: 工业级排版 (封面/页眉/参数表/SOP指令), 支持元数据录入.
+   - Asset ZIP 导出: 结构化工程包 (assets文件夹 + script.txt + project.json).
+   - 中文字体集成: 解决 PDF 中文乱码问题.
 
 🚩 下一步计划 (Next Steps)
-[本周目标] 商业化闭环 (Monetization Setup)
-1. SOP 交付级导出 (The "9.9 RMB" Product):
-   - 升级现有的 PDF 导出功能。
-   - 不仅导出图片，要在每张图旁边附带：Prompt (中英对照)、Negative Prompt、Seed、参数配置。
-   - 打造一份可以直接卖给甲方的 "AI 导演执行手册"。
+[待定] 运营与变现验证
+   - 实测 PDF 交付物对目标客户（如广告公司、短视频编导）的吸引力.
+   - 考虑是否增加 "导入 Project.json" 功能，实现项目存档恢复.

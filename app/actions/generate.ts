@@ -15,16 +15,26 @@ const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations
 const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
 const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
 
+// 🟢 1. 强化景别控制 (加入反向抑制)
 const SHOT_PROMPTS: Record<string, string> = {
-    "EXTREME LONG SHOT": "(tiny figure in distance:1.6), (massive environment:2.0), (wide angle lens:1.5), aerial view, <subject> only occupies 10% of frame",
-    "LONG SHOT": "(full body visible:1.5), (feet visible:1.5), (surrounding environment visible:1.3), distance shot, wide angle",
-    "FULL SHOT": "(full body from head to toe:1.8), (feet visible:1.5), standing pose, environment visible",
-    "MID SHOT": "(waist up:1.5), (head and torso focus:1.5), portrait composition",
-    "CLOSE-UP": "(face focus:1.8), (head and shoulders:1.5), (background blurred:1.2), depth of field",
-    "EXTREME CLOSE-UP": "(macro photography:2.0), (extreme detail:1.5), (focus on single part:2.0), crop to detail"
+    "EXTREME WIDE SHOT": "(tiny figure:1.5), (massive environment:2.0), wide angle lens, aerial view, <subject> only occupies 5% of frame, (no close up:2.0), (no portrait:2.0)",
+    "WIDE SHOT": "(full body visible:1.6), (feet visible:1.6), (head to toe:1.5), distance shot, wide angle, environment focus, (no crop:1.5)",
+    "FULL SHOT": "(full body from head to toe:1.8), (feet visible:1.6), standing pose, environment visible, (no close up:1.5)",
+    "MID SHOT": "(waist up:1.5), (head and torso focus:1.5), portrait composition, standard cinematic shot",
+    "CLOSE-UP": "(face focus:1.8), (head and shoulders:1.5), (background blurred:1.2), depth of field, emotion focus",
+    "EXTREME CLOSE-UP": "(macro photography:2.0), (extreme detail:1.5), (focus on single part:2.0), crop to detail, (no full body:2.0)"
 };
 
-// [Hallucination Killer] 物体特写专用定义
+// 2. 拍摄角度词库
+const ANGLE_PROMPTS: Record<string, string> = {
+    "EYE LEVEL": "eye level shot, neutral angle, straight on",
+    "LOW ANGLE": "low angle shot, (looking up at subject:1.4), worm's eye view, imposing, floor level camera",
+    "HIGH ANGLE": "high angle shot, (looking down at subject:1.4), bird's eye view, vulnerable, camera above head",
+    "OVERHEAD SHOT": "directly overhead, top down view, god's eye view, 90 degree angle down, map view",
+    "DUTCH ANGLE": "dutch angle, tilted camera, slanted horizon, dynamic composition, unease",
+    "OVER-THE-SHOULDER": "over the shoulder shot, focus on subject, blurred foreground shoulder"
+};
+
 const OBJECT_SHOT_PROMPTS: Record<string, string> = {
     "CLOSE-UP": "(macro view:1.5), (object focus:1.8), (detail shot:1.5), low angle, depth of field, (no face:2.0)",
     "EXTREME CLOSE-UP": "(microscopic detail:2.0), (texture focus:1.8), macro photography, (no face:2.0)",
@@ -32,8 +42,9 @@ const OBJECT_SHOT_PROMPTS: Record<string, string> = {
     "FULL SHOT": "(full object visible:1.5), (environment context:1.2)"
 };
 
-const DRAFT_PROMPT_PREFIX = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0)";
-const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient";
+// 🟢 3. 回归经典线稿风格 (Classic V3 Style)
+const DRAFT_PROMPT_CLASSIC = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0), professional storyboard";
+const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient, text, watermark";
 
 const STYLE_PRESETS: Record<string, string> = {
   "realistic": "cinematic lighting, photorealistic, 8k, masterpiece, movie still, arri alexa, high detail, real photo",
@@ -51,13 +62,7 @@ const RATIO_MAP: Record<string, string> = {
 };
 
 function isNonFaceDetail(prompt: string): boolean {
-    const keywords = [
-      'hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand',
-      'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal',
-      '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', 
-      '积水', '步伐', '脚步', '水花', '踩', 
-      '车', '轮', '轮胎', '驾驶'
-    ];
+    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶'];
     return keywords.some(k => prompt.toLowerCase().includes(k));
 }
 
@@ -76,13 +81,17 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: s
     let base = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
     
     if (isDraftMode) {
-        base = DRAFT_NEGATIVE_BASE; 
+        base = DRAFT_NEGATIVE_BASE;
     } else if (stylePreset === 'realistic') {
         base += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting";
     }
 
+    // 🟢 针对全景/远景的强力负面 (防止大头照)
+    if (shotType.includes("WIDE") || shotType.includes("LONG") || shotType.includes("FULL")) {
+        base += ", close up, portrait, face focus, headshot, macro";
+    }
+
     if (isNonFace) {
-        // [Hallucination Killer] 强力压制非人脸镜头中的人脸
         return `${base}, face, head, eyes, portrait, person, woman, girl, man, boy, human silhouette, look at camera, upper body, torso, selfie, hair`;
     } else {
         return shotType.toUpperCase().includes("CLOSE") 
@@ -126,150 +135,82 @@ export async function generateShotImage(
   characterId?: string,
   referenceImageUrl?: string, 
   sceneImageUrl?: string,
-  useMock: boolean = false 
+  useMock: boolean = false,
+  cameraAngle: string = 'EYE LEVEL'
+  // 移除 draftStyle 参数
 ) {
   try {
-    // 🛑 Mock 拦截器
-    if (useMock) {
-        console.log(`[Mock Mode] Skipping AI generation for Shot ${shotId}`);
-        await new Promise(resolve => setTimeout(resolve, 800)); // 模拟延迟
-        
-        // 随机返回一张高质量占位图，用于测试UI布局
-        const seeds = [10, 20, 30, 40, 50, 60];
-        const randomSeed = seeds[Math.floor(Math.random() * seeds.length)];
-        const width = aspectRatio === '9:16' ? 720 : 1280;
-        const height = aspectRatio === '9:16' ? 1280 : 720;
-        const mockUrl = `https://picsum.photos/seed/${randomSeed + Number(shotId)}/${width}/${height}`; 
-        
-        return { success: true, url: mockUrl };
-    }
+    console.log(`\n========== [DEBUG: Shot ${shotId}] ==========`);
+    console.log(`1. Mode: ${isDraftMode ? 'DRAFT' : 'RENDER'} | Ratio: ${aspectRatio} | Angle: ${cameraAngle}`);
 
+    if (useMock) { return { success: true, url: "https://picsum.photos/1280/720" }; }
     if (!ARK_API_KEY) throw new Error("API Key Missing");
 
     const isNonFace = isNonFaceDetail(actionPrompt); 
-    const isFaceMacroShot = isFaceMacro(actionPrompt);
-    const isCloseUp = shotType.toUpperCase().includes("CLOSE") || isFaceMacroShot;
 
-    console.log(`[Server] 生成开始 | Type:${shotType} | NonFace:${isNonFace} | Prompt: ${actionPrompt.substring(0, 30)}...`);
-
-    // 1. 视觉分析
-    let visionAnalysis: VisionAnalysis | null = null;
-    let keyFeaturesPrompt = "";
-    if (referenceImageUrl && !isDraftMode) {
-        try {
-            visionAnalysis = await analyzeRefImage(referenceImageUrl);
-            if (visionAnalysis && visionAnalysis.key_features) {
-                const cleanedFeatures = cleanVisualFeatures(visionAnalysis.key_features, isCloseUp);
-                const finalFeatures = cleanedFeatures.filter(f => !isNonFace || !['eye', 'lip', 'nose', 'face', 'hair'].some(k => f.includes(k.toLowerCase())));
-                keyFeaturesPrompt = finalFeatures.map(f => `(${f}:1.1)`).join(", ");
-            }
-        } catch (e) { console.warn("[Vision] 分析跳过", e); }
-    }
-
-    // 2. 场景隔离
-    const hasEnvironmentPrompt = ['beach', 'sea', 'city', 'room', 'forest', 'sand', 'sky', 'outdoor', 'indoor', 'street'].some(k => actionPrompt.toLowerCase().includes(k));
-    let sceneControlPrompt = "";
-    if (sceneImageUrl) {
-        sceneControlPrompt = `(background consistency:1.5)`; 
-    } else if (hasEnvironmentPrompt) {
-        sceneControlPrompt = `(ignore character background:1.5), (focus on environment description:1.4)`;
-    }
-
-    // 3. Prompt 组装与清洗
-    let finalPrompt = "";
+    let activeRefImage = referenceImageUrl;
     let characterPart = "";
-    let characterNegative = ""; // [New] 角色专属负面提示词
+    let characterNegative = ""; 
 
-    let cleanedActionPrompt = actionPrompt;
-    
-    // [Hallucination Killer] 主语清洗 - 使用单词边界 \b 防止误杀
-    if (isNonFace) {
-        cleanedActionPrompt = cleanedActionPrompt
-            .replace(/他/g, "")
-            .replace(/她/g, "")
-            .replace(/男人/g, "")
-            .replace(/女人/g, "")
-            .replace(/侦探/g, "")
-            .replace(/主角/g, "")
-            .replace(/\bman\b/gi, "")       // 使用正则边界，防止替换 mansion -> sion
-            .replace(/\bwoman\b/gi, "")
-            .replace(/\bhe\b/gi, "")
-            .replace(/\bshe\b/gi, "")
-            .replace(/\bperson\b/gi, "")
-            .replace(/\bdetective\b/gi, "");
-    }
+    // Render模式下注入角色
+    const shouldInjectCharacter = characterId && !isDraftMode; 
 
-    // [New] 角色数据加载 (包含 negative_prompt)
-    if (characterId) {
+    if (shouldInjectCharacter && characterId) {
       const { data: char } = await supabaseAdmin
         .from('characters')
-        .select('description, negative_prompt')
+        .select('name, description, negative_prompt, avatar_url')
         .eq('id', characterId)
-        .single();
+        .maybeSingle(); 
         
       if (char) {
-          // A. 处理正向描述
-          if (isNonFace) {
-             characterPart = ""; // 特写镜头移除角色描述
-          } else if (isFaceMacroShot) {
-             characterPart = `(Character features: ${char.description.substring(0, 50)}), `;
-          } else {
-             characterPart = `(Character: ${char.description}), `;
-          }
-
-          // B. 处理负面描述 (追加到 Negative Prompt)
-          if (char.negative_prompt) {
-             characterNegative = `, ${char.negative_prompt}`;
+          if (!isNonFace) characterPart = `(Character: ${char.description}), `;
+          if (char.negative_prompt) characterNegative = `, ${char.negative_prompt}`;
+          
+          if (!activeRefImage && char.avatar_url && !isNonFace) {
+              activeRefImage = char.avatar_url;
+              console.log(`✅ [Render Mode] 角色头像注入`);
           }
       }
     }
 
+    let visionAnalysis: VisionAnalysis | null = null;
+    let keyFeaturesPrompt = "";
+    if (activeRefImage) {
+        try { visionAnalysis = await analyzeRefImage(activeRefImage); } catch (e) {}
+    }
+    
     const shotDictionary = isNonFace ? OBJECT_SHOT_PROMPTS : SHOT_PROMPTS;
-    const shotWeightPrompt = shotDictionary[shotType.toUpperCase()] || shotDictionary["MID SHOT"] || "";
+    const shotWeightPrompt = shotDictionary[shotType.toUpperCase()] || shotDictionary["MID SHOT"];
+    const angleWeightPrompt = ANGLE_PROMPTS[cameraAngle.toUpperCase()] || ANGLE_PROMPTS["EYE LEVEL"];
+    
+    let finalPrompt = "";
+    let finalNegative = "";
 
     if (isDraftMode) {
-        if (isNonFace) {
-            finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ((${cleanedActionPrompt}:1.5)), (strictly no people:2.0), storyboard sketch`;
-        } else {
-            finalPrompt = `${DRAFT_PROMPT_PREFIX}, ${shotWeightPrompt}, ${cleanedActionPrompt}, ${characterPart} storyboard sketch`;
-        }
+        // 🟢 经典线稿风格
+        finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}`;
+        finalNegative = `${DRAFT_NEGATIVE_BASE}`;
     } else {
-        if (isNonFace) {
-             finalPrompt = `((${cleanedActionPrompt}:2.8)), ${shotWeightPrompt}, ${keyFeaturesPrompt}, (macro view:1.4), (strictly no people:2.0), (no face:2.0), ${stylePreset}`;
-        } else if (isFaceMacroShot) {
-             finalPrompt = `((${cleanedActionPrompt}:2.5)), ${shotWeightPrompt}, (focus on face:1.2), ${characterPart} ${keyFeaturesPrompt}, ${stylePreset}`;
-        } else {
-             finalPrompt = `${shotWeightPrompt}, ${cleanedActionPrompt}, ${characterPart} ${keyFeaturesPrompt} ${sceneControlPrompt}, (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`;
-        }
+        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} (${STYLE_PRESETS[stylePreset]}:1.4)`; 
+        finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode)}${characterNegative}`;
     }
 
-    const currentModel = isDraftMode ? MODEL_DRAFT : MODEL_PRO;
-    
-    // [New] 组合负面提示词
-    const baseNegative = getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode);
-    const finalNegative = `${baseNegative}${characterNegative}`;
-
     const payload: any = {
-      model: currentModel, 
+      model: isDraftMode ? MODEL_DRAFT : MODEL_PRO, 
       prompt: finalPrompt, 
       negative_prompt: finalNegative, 
       size: RATIO_MAP[aspectRatio] || "2560x1440", 
-      n: 1,
-      steps: isDraftMode ? 25 : 40,
-      guidance_scale: isDraftMode ? 5.0 : 7.5
+      n: 1
     };
 
-    if (referenceImageUrl && !isDraftMode) {
-        const base64Image = await processImageRef(referenceImageUrl, visionAnalysis, shotType);
+    if (activeRefImage) { 
+        const base64Image = await processImageRef(activeRefImage, visionAnalysis, shotType);
         if (base64Image) {
             payload.image_url = base64Image;
-            const highStrength = isNonFace || isFaceMacroShot;
-            payload.strength = highStrength ? 0.92 : 0.65;
-            payload.ref_strength = highStrength ? 0.92 : 0.65;
+            payload.strength = 0.65;
+            payload.ref_strength = 0.65;
         }
     }
-
-    console.log(`[Gen] API Req | NonFace:${isNonFace} | Prompt: ${finalPrompt.substring(0, 50)}... | Neg: ${finalNegative.substring(0, 20)}...`);
 
     const response = await fetch(ARK_API_URL, {
       method: "POST",
@@ -279,7 +220,6 @@ export async function generateShotImage(
     
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || "Generation Failed");
-
     return processResponse(data, shotId, projectId);
 
   } catch (error: any) {

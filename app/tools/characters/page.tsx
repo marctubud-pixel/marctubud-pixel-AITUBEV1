@@ -1,421 +1,288 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { 
-  User, Plus, Trash2, Save, Image as ImageIcon, 
-  Loader2, Upload, MoreHorizontal, LayoutGrid, Ban 
+  User, Plus, Save, Image as ImageIcon, 
+  Loader2, Upload, X, Sparkles, ArrowLeft, ScanEye, Zap, Trash2
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Image from 'next/image';
+import Link from 'next/link';
+import { analyzeImageContent } from '@/app/actions/vision';
 
-// 类型定义
 type Character = {
   id: string;
   name: string;
   description: string;
-  negative_prompt: string | null; // [New] 负面提示词
+  negative_prompt: string | null;
   avatar_url: string | null;
 }
 
-type CharacterImage = {
-  id: string;
-  image_url: string;
-  description: string | null;
-  is_primary: boolean;
-}
-
 export default function CharacterPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+  
+  // State
   const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
-  const [gallery, setGallery] = useState<CharacterImage[]>([]);
-  
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // 表单状态
+  // Form State
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [negPrompt, setNegPrompt] = useState(''); // [New] 负面提示词状态
+  const [negPrompt, setNegPrompt] = useState('');
+  // 🟢 新增：专门用一个 state 来存当前的 avatarUrl，防止不同步
+  const [tempAvatarUrl, setTempAvatarUrl] = useState<string | null>(null);
+  
+  const isDark = true;
 
-  // 1. 初始化加载角色列表
-  useEffect(() => {
-    fetchCharacters();
-  }, []);
+  useEffect(() => { fetchCharacters(); }, []);
 
-  // 2. 当选中角色变化时，加载它的数据和图库
   useEffect(() => {
     if (selectedChar) {
       setName(selectedChar.name);
       setDesc(selectedChar.description || '');
-      setNegPrompt(selectedChar.negative_prompt || ''); // [New] 填充
-      fetchGallery(selectedChar.id);
+      setNegPrompt(selectedChar.negative_prompt || '');
+      setTempAvatarUrl(selectedChar.avatar_url); // 同步头像
     } else {
-      setName('');
-      setDesc('');
-      setNegPrompt('');
-      setGallery([]);
+      setName(''); setDesc(''); setNegPrompt(''); setTempAvatarUrl(null);
     }
   }, [selectedChar]);
 
   const fetchCharacters = async () => {
-    const { data, error } = await supabase
-      .from('characters')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) toast.error('加载角色失败');
-    else {
-      setCharacters(data as Character[] || []);
-      // 默认选中第一个
-      if (!selectedChar && data && data.length > 0) {
-        setSelectedChar(data[0] as Character);
-      }
-    }
+    const { data, error } = await supabase.from('characters').select('*').order('created_at', { ascending: false });
+    if (!error) setCharacters(data as Character[] || []);
     setIsLoading(false);
   };
 
-  const fetchGallery = async (charId: string) => {
-    const { data, error } = await supabase
-      .from('character_images')
-      .select('*')
-      .eq('character_id', charId)
-      .order('created_at', { ascending: false });
-    
-    if (!error) setGallery(data || []);
-  };
-
-  // --- 核心功能：创建/更新角色 ---
+  // 🟢 修复 1：保存逻辑必须包含 avatar_url
   const handleSaveCharacter = async () => {
-    if (!name.trim()) return toast.warning('名字不能为空');
-
+    if (!name.trim()) return toast.warning('Name required');
     const user = (await supabase.auth.getUser()).data.user;
-    if (!user) return toast.error('请先登录');
-
-    let newCharId = selectedChar?.id;
+    if (!user) return toast.error('Login required');
 
     try {
-      if (selectedChar) {
-        // 更新
-        const { error } = await supabase
-          .from('characters')
-          .update({ 
-            name, 
-            description: desc,
-            negative_prompt: negPrompt // [New] 保存字段
-          })
-          .eq('id', selectedChar.id);
-        if (error) throw error;
-        toast.success('更新成功');
-      } else {
-        // 新建
-        const { data, error } = await supabase
-          .from('characters')
-          .insert({
-            user_id: user.id,
-            name,
-            description: desc,
-            negative_prompt: negPrompt // [New] 保存字段
-          })
-          .select()
-          .single();
-        
-        if (error) throw error;
-        newCharId = data.id;
-        toast.success('角色创建成功');
-      }
+      // 构建 payload 时带上 avatar_url
+      const payload = { 
+          name, 
+          description: desc, 
+          negative_prompt: negPrompt, 
+          user_id: user.id,
+          avatar_url: tempAvatarUrl // 🔥 关键修复：写入头像 URL
+      };
 
-      await fetchCharacters();
-      // 如果是新建，自动选中它
-      if (newCharId && !selectedChar) {
-         const { data } = await supabase.from('characters').select('*').eq('id', newCharId).single();
-         if(data) setSelectedChar(data as Character);
+      let newId = selectedChar?.id;
+
+      if (selectedChar) {
+        await supabase.from('characters').update(payload).eq('id', selectedChar.id);
+        toast.success('Character Updated');
+      } else {
+        const { data, error } = await supabase.from('characters').insert(payload).select().single();
+        if (error) throw error;
+        newId = data.id;
+        toast.success('Character Created');
       }
-    } catch (e: any) {
-      toast.error('保存失败: ' + e.message);
-    }
+      
+      await fetchCharacters();
+      
+      // 刷新选中态
+      if (newId) {
+        const { data } = await supabase.from('characters').select('*').eq('id', newId).single();
+        if(data) setSelectedChar(data as Character);
+      }
+    } catch (e: any) { toast.error(e.message); }
   };
 
   const handleDeleteCharacter = async () => {
-    if (!selectedChar) return;
-    if (!confirm('确定删除该角色及其所有图片吗？此操作不可恢复。')) return;
-
-    const { error } = await supabase.from('characters').delete().eq('id', selectedChar.id);
-    if (error) return toast.error('删除失败');
-    
-    toast.success('已删除');
+    if (!selectedChar || !confirm('Delete this character?')) return;
+    await supabase.from('characters').delete().eq('id', selectedChar.id);
     setSelectedChar(null);
     fetchCharacters();
+    toast.success('Deleted');
   };
 
-  // --- 核心功能：上传画廊图片 (Assets 2.0) ---
-  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>, isAvatar: boolean = false) => {
-    if (!e.target.files || !e.target.files.length) return;
-    if (!selectedChar) return toast.warning('请先保存或选择一个角色');
-
+  // 🟢 修复 2：上传逻辑优化
+  const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
     const file = e.target.files[0];
     setIsUploading(true);
-    
+
     try {
       const user = (await supabase.auth.getUser()).data.user;
-      if (!user) throw new Error("未登录");
+      if (!user) throw new Error("No User");
 
-      // 1. 上传物理文件
-      // 路径策略: userId/charId/timestamp.png
+      // A. 视觉分析 (Vision)
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        const base64 = reader.result as string;
+        if (!desc.trim()) {
+            setIsAnalyzing(true);
+            try {
+                toast.info("AI Vision Analyzing...");
+                const result = await analyzeImageContent(base64);
+                setDesc(prev => prev || result.description);
+                if(!name) setName("New Character");
+                toast.success("Analysis Complete");
+            } catch (err) { console.error(err); } 
+            finally { setIsAnalyzing(false); }
+        }
+      };
+
+      // B. 上传文件 (Storage)
       const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${selectedChar.id}/${Date.now()}.${fileExt}`;
+      // 使用随机文件名，避免未创建 ID 时无法路径化
+      const fileName = `${user.id}/temp_${Date.now()}.${fileExt}`; 
       
-      const { error: uploadError } = await supabase.storage
-        .from('characters')
-        .upload(fileName, file);
-
+      const { error: uploadError } = await supabase.storage.from('characters').upload(fileName, file);
       if (uploadError) throw uploadError;
+      
+      const { data: { publicUrl } } = supabase.storage.from('characters').getPublicUrl(fileName);
+      
+      // 🔥 关键：只更新临时状态，不立即写库 (防止覆盖或ID丢失)
+      // 用户必须点击 "Save" 才能将此 URL 写入数据库
+      setTempAvatarUrl(publicUrl); 
+      
+      // 如果当前已经是编辑模式，可以顺手更新一下预览，但为了逻辑统一，建议统一走 Save
+      toast.success("Image Uploaded (Click Save to apply)");
 
-      // 2. 获取公开链接
-      const { data: { publicUrl } } = supabase.storage
-        .from('characters')
-        .getPublicUrl(fileName);
-
-      // 3. 写入数据库
-      if (isAvatar) {
-        // A. 如果是头像，更新 characters 主表
-        await supabase
-          .from('characters')
-          .update({ avatar_url: publicUrl })
-          .eq('id', selectedChar.id);
-        
-        // 更新本地状态
-        setSelectedChar({ ...selectedChar, avatar_url: publicUrl });
-        setCharacters(chars => chars.map(c => c.id === selectedChar.id ? { ...c, avatar_url: publicUrl } : c));
-        toast.success('头像更新成功');
-      } else {
-        // B. 如果是参考图，插入 character_images 子表
-        await supabase
-          .from('character_images')
-          .insert({
-            character_id: selectedChar.id,
-            image_url: publicUrl,
-            description: '参考图'
-          });
-        
-        await fetchGallery(selectedChar.id);
-        toast.success('参考图上传成功');
-      }
-
-    } catch (error: any) {
-      console.error(error);
-      toast.error('上传失败: ' + error.message);
-    } finally {
-      setIsUploading(false);
-    }
+    } catch (error: any) { toast.error(error.message); } 
+    finally { setIsUploading(false); }
   };
 
-  const handleDeleteGalleryImage = async (imgId: string) => {
-    const { error } = await supabase.from('character_images').delete().eq('id', imgId);
-    if (!error) {
-      setGallery(g => g.filter(i => i.id !== imgId));
-      toast.success('图片已删除');
-    }
-  };
-
-  // UI 渲染
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white p-6 font-sans flex gap-6">
-      <Toaster position="top-center" richColors />
+    <div className="min-h-screen bg-[#050505] text-white font-sans flex flex-col">
+      <Toaster position="top-center" richColors theme="dark" />
 
-      {/* === 左侧：角色列表 === */}
-      <div className="w-1/4 min-w-[250px] bg-[#111] rounded-2xl border border-white/10 p-4 flex flex-col h-[calc(100vh-3rem)]">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <User className="text-yellow-500" /> 角色库
-          </h2>
-          <button 
-            onClick={() => { setSelectedChar(null); setName(''); setDesc(''); setNegPrompt(''); }}
-            className="p-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-400 transition"
-          >
-            <Plus size={18} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-          {isLoading ? (
-             <div className="text-zinc-500 text-center py-10">加载中...</div>
-          ) : characters.map(char => (
-            <div 
-              key={char.id}
-              onClick={() => setSelectedChar(char)}
-              className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-all border ${
-                selectedChar?.id === char.id 
-                ? 'bg-zinc-800 border-yellow-500/50' 
-                : 'hover:bg-zinc-900 border-transparent'
-              }`}
-            >
-              <div className="w-10 h-10 rounded-full bg-zinc-700 overflow-hidden relative shrink-0">
-                {char.avatar_url ? (
-                  <Image src={char.avatar_url} alt={char.name} fill className="object-cover" />
-                ) : (
-                  <User className="w-full h-full p-2 text-zinc-500" />
-                )}
-              </div>
-              <div className="overflow-hidden">
-                <p className="font-bold text-sm truncate">{char.name}</p>
-                <p className="text-xs text-zinc-500 truncate">{char.description || '暂无描述'}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* Header */}
+      <div className="h-16 border-b border-white/10 flex items-center px-6 gap-4 bg-[#050505]/80 backdrop-blur-md sticky top-0 z-50">
+         <Link href="/tools/cineflow" className="p-2 hover:bg-zinc-800 rounded-full transition-colors"><ArrowLeft size={18} className="text-zinc-400"/></Link>
+         <h1 className="text-sm font-bold tracking-wider">ASSET LIBRARY</h1>
+         <div className="flex-1"></div>
       </div>
 
-      {/* === 右侧：详情编辑区 === */}
-      <div className="flex-1 bg-[#111] rounded-2xl border border-white/10 p-8 overflow-y-auto h-[calc(100vh-3rem)]">
-        
-        {/* 顶部标题栏 */}
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">{selectedChar ? '编辑角色' : '新建角色'}</h1>
-            <p className="text-zinc-500 text-sm">配置角色的外貌特征、参考图，以供 CineFlow 引擎调用。</p>
-          </div>
-          {selectedChar && (
-            <button 
-              onClick={handleDeleteCharacter}
-              className="text-red-500 hover:text-red-400 p-2 rounded-lg hover:bg-red-500/10 transition flex items-center gap-2 text-sm"
-            >
-              <Trash2 size={16} /> 删除角色
-            </button>
-          )}
-        </div>
-
-        <div className="flex gap-8">
-          {/* A. 基础信息卡片 */}
-          <div className="w-1/3 space-y-6">
-            {/* 头像上传 */}
-            <div className="flex flex-col items-center gap-4">
-               <div className="w-32 h-32 rounded-full bg-zinc-800 border-2 border-dashed border-zinc-600 flex items-center justify-center relative overflow-hidden group">
-                  {selectedChar?.avatar_url ? (
-                    <Image src={selectedChar.avatar_url} alt="Avatar" fill className="object-cover" />
-                  ) : (
-                    <User className="w-12 h-12 text-zinc-600" />
-                  )}
-                  {/* Hover Upload Mask */}
-                  {selectedChar && (
-                    <label className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer">
-                      <Upload className="w-6 h-6 text-white mb-1" />
-                      <span className="text-[10px] text-white">更换头像</span>
-                      <input type="file" className="hidden" accept="image/*" onChange={(e) => handleUploadImage(e, true)} disabled={isUploading} />
-                    </label>
-                  )}
-               </div>
-               <p className="text-xs text-zinc-500">建议上传正方形头像</p>
-            </div>
-
-            {/* 表单 */}
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-zinc-400 mb-1 block">角色姓名</label>
-                <input 
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 rounded-lg p-3 text-sm focus:border-yellow-500 outline-none"
-                  placeholder="例如：Jinx"
-                />
-              </div>
-
-              {/* 正面描述 */}
-              <div>
-                <label className="text-xs font-bold text-zinc-400 mb-1 block">
-                  外貌描述 (Prompt) <span className="text-yellow-500">*核心</span>
-                </label>
-                <textarea 
-                  value={desc}
-                  onChange={(e) => setDesc(e.target.value)}
-                  className="w-full h-32 bg-black/50 border border-white/10 rounded-lg p-3 text-sm focus:border-yellow-500 outline-none resize-none leading-relaxed"
-                  placeholder="详细描述角色的外貌特征，例如：Blue hair, double ponytails, red eyes, cyberpunk jacket..."
-                />
-              </div>
-
-              {/* [New] 负面提示词 */}
-              <div>
-                <label className="text-xs font-bold text-red-400 mb-1 flex items-center gap-1">
-                  <Ban size={12} /> 负面提示词 (Negative Prompt)
-                </label>
-                <textarea 
-                  value={negPrompt}
-                  onChange={(e) => setNegPrompt(e.target.value)}
-                  className="w-full h-20 bg-black/50 border border-red-900/30 focus:border-red-500/50 rounded-lg p-3 text-sm outline-none resize-none leading-relaxed text-zinc-300 placeholder-zinc-600"
-                  placeholder="想避免的特征，例如：glasses, hat, ugly, beard..."
-                />
-                <p className="text-[10px] text-zinc-500 mt-2">这些特征将在生成时被强制移除。</p>
-              </div>
-
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar List */}
+        <div className="w-72 border-r border-white/5 bg-[#0a0a0a] flex flex-col">
+           <div className="p-4">
               <button 
-                onClick={handleSaveCharacter}
-                className="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition flex items-center justify-center gap-2"
+                onClick={() => { setSelectedChar(null); setName(''); setDesc(''); setNegPrompt(''); setTempAvatarUrl(null); }}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all"
               >
-                <Save size={16} /> {selectedChar ? '保存修改' : '创建角色'}
+                <Plus size={16}/> New Character
               </button>
-            </div>
-          </div>
-
-          {/* B. 资产画廊 (仅在选中角色时显示) */}
-          {selectedChar ? (
-             <div className="flex-1 border-l border-white/10 pl-8">
-                <div className="flex justify-between items-center mb-6">
-                   <h3 className="text-lg font-bold flex items-center gap-2">
-                     <LayoutGrid className="text-purple-500" /> 参考图画廊 (Reference Gallery)
-                   </h3>
-                   <label className={`bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                      {isUploading ? <Loader2 className="animate-spin w-3 h-3"/> : <Plus className="w-3 h-3" />}
-                      上传参考图
-                      <input type="file" className="hidden" accept="image/*" multiple onChange={(e) => handleUploadImage(e, false)} disabled={isUploading} />
-                   </label>
+           </div>
+           
+           <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 custom-scrollbar">
+              {characters.map(char => (
+                <div 
+                  key={char.id}
+                  onClick={() => setSelectedChar(char)}
+                  className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-all border ${selectedChar?.id === char.id ? 'bg-zinc-800 border-zinc-700' : 'border-transparent hover:bg-zinc-900'}`}
+                >
+                   <div className="w-10 h-10 rounded-full bg-zinc-800 overflow-hidden relative shrink-0 border border-white/5">
+                      {char.avatar_url ? <Image src={char.avatar_url} alt={char.name} fill className="object-cover"/> : <User className="w-5 h-5 m-auto text-zinc-600"/>}
+                   </div>
+                   <div className="overflow-hidden">
+                      <p className="font-bold text-xs truncate text-zinc-200">{char.name}</p>
+                      <p className="text-[10px] text-zinc-500 truncate">{char.description ? 'Has description' : 'No description'}</p>
+                   </div>
                 </div>
-
-                {gallery.length === 0 ? (
-                  <div className="h-64 border-2 border-dashed border-zinc-800 rounded-xl flex flex-col items-center justify-center text-zinc-600">
-                     <ImageIcon className="w-10 h-10 mb-2 opacity-20" />
-                     <p className="text-sm">暂无参考图</p>
-                     <p className="text-xs opacity-50">上传三视图、表情包等素材</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                     {gallery.map(img => (
-                       <div key={img.id} className="relative aspect-square bg-zinc-900 rounded-xl overflow-hidden group border border-transparent hover:border-purple-500/50 transition-all">
-                          <Image src={img.image_url} alt="Ref" fill className="object-cover" />
-                          {/* 删除遮罩 */}
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-                             <button 
-                               onClick={() => window.open(img.image_url, '_blank')}
-                               className="p-2 bg-white/20 rounded-full hover:bg-white text-white hover:text-black transition"
-                             >
-                               <MoreHorizontal size={14} />
-                             </button>
-                             <button 
-                               onClick={() => handleDeleteGalleryImage(img.id)}
-                               className="p-2 bg-red-500/20 rounded-full hover:bg-red-500 text-white transition"
-                             >
-                               <Trash2 size={14} />
-                             </button>
-                          </div>
-                          {/* 标签 */}
-                          {img.is_primary && (
-                            <div className="absolute top-2 left-2 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full">主图</div>
-                          )}
-                       </div>
-                     ))}
-                  </div>
-                )}
-             </div>
-          ) : (
-            <div className="flex-1 border-l border-white/10 pl-8 flex items-center justify-center text-zinc-600">
-               <div className="text-center">
-                 <User className="w-16 h-16 mx-auto mb-4 opacity-10" />
-                 <p>请选择或创建一个角色</p>
-                 <p className="text-sm opacity-50">以管理其参考图资产</p>
-               </div>
-            </div>
-          )}
+              ))}
+           </div>
         </div>
 
+        {/* Main Edit Area */}
+        <div className="flex-1 overflow-y-auto p-8 bg-[#050505]">
+           <div className="max-w-4xl mx-auto flex gap-10">
+              
+              {/* Left Column: Avatar & Vision */}
+              <div className="w-64 shrink-0 space-y-6">
+                 {/* 🟢 使用 tempAvatarUrl 来显示预览 */}
+                 <div className="group relative w-64 h-64 rounded-3xl bg-zinc-900 border border-zinc-800 overflow-hidden flex items-center justify-center shadow-2xl">
+                    {tempAvatarUrl ? (
+                        <Image src={tempAvatarUrl} alt="Avatar" fill className="object-cover transition-transform duration-700 group-hover:scale-105"/>
+                    ) : (
+                        <div className="text-center p-6">
+                            <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4"><Upload className="text-zinc-600"/></div>
+                            <p className="text-xs text-zinc-500">Upload Image to<br/>Auto-Analyze</p>
+                        </div>
+                    )}
+                    
+                    {/* Upload Overlay */}
+                    <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer backdrop-blur-sm">
+                        {isAnalyzing ? <Loader2 className="animate-spin text-blue-500 w-8 h-8"/> : <ScanEye className="text-blue-500 w-8 h-8 mb-2"/>}
+                        <span className="text-xs font-bold text-white">{isAnalyzing ? 'Analyzing...' : 'Change & Analyze'}</span>
+                        <input type="file" className="hidden" accept="image/*" onChange={handleUploadAvatar} disabled={isUploading || isAnalyzing} />
+                    </label>
+                 </div>
+
+                 {selectedChar && (
+                    <button onClick={handleDeleteCharacter} className="w-full py-2 border border-red-900/30 text-red-500 hover:bg-red-900/10 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2">
+                        <Trash2 size={14}/> Delete Character
+                    </button>
+                 )}
+              </div>
+
+              {/* Right Column: Details */}
+              <div className="flex-1 space-y-6">
+                 <div>
+                    <h2 className="text-2xl font-black text-white mb-1">{selectedChar ? 'Edit Character' : 'Create Character'}</h2>
+                    <p className="text-xs text-zinc-500">Upload an image to let AI auto-generate the visual description.</p>
+                 </div>
+
+                 <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-zinc-500 mb-1.5 block">NAME</label>
+                        <input 
+                          value={name} 
+                          onChange={e => setName(e.target.value)} 
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm focus:border-blue-500 outline-none transition-all"
+                          placeholder="e.g. Jinx"
+                        />
+                    </div>
+
+                    <div className="relative">
+                        <div className="flex justify-between mb-1.5">
+                            <label className="text-xs font-bold text-zinc-500 block">VISUAL PROMPT (AI Description)</label>
+                            {isAnalyzing && <span className="text-[10px] text-blue-500 flex items-center gap-1"><Sparkles size={10}/> AI Writing...</span>}
+                        </div>
+                        <textarea 
+                          value={desc} 
+                          onChange={e => setDesc(e.target.value)} 
+                          className={`w-full h-40 bg-zinc-900 border rounded-xl p-4 text-sm outline-none resize-none leading-relaxed transition-all ${isAnalyzing ? 'border-blue-500/50 animate-pulse' : 'border-zinc-800 focus:border-blue-500'}`}
+                          placeholder="Upload an image to auto-fill, or type manually..."
+                        />
+                        <div className="absolute bottom-3 right-3">
+                             <Zap size={14} className={desc ? "text-yellow-500" : "text-zinc-700"} />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-zinc-500 mb-1.5 block">NEGATIVE PROMPT (Avoid)</label>
+                        <input 
+                          value={negPrompt} 
+                          onChange={e => setNegPrompt(e.target.value)} 
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm focus:border-red-500/50 outline-none transition-all text-zinc-400"
+                          placeholder="e.g. glasses, hat, beard..."
+                        />
+                    </div>
+
+                    <div className="pt-4">
+                        <button 
+                          onClick={handleSaveCharacter} 
+                          className="px-8 py-3 bg-white hover:bg-zinc-200 text-black font-bold rounded-xl shadow-lg shadow-white/5 transition-all flex items-center gap-2"
+                        >
+                           <Save size={16}/> Save Character
+                        </button>
+                    </div>
+                 </div>
+              </div>
+
+           </div>
+        </div>
       </div>
     </div>
   );

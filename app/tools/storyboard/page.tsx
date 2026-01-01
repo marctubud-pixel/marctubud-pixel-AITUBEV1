@@ -3,14 +3,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Clapperboard, Loader2, ArrowLeft, PenTool, Image as ImageIcon, Trash2, Plus, 
-  PlayCircle, Download, Upload, RefreshCw, FileText, Sparkles, GripVertical, Package, RotateCcw, Zap,
-  User, X, Check, Globe, Settings, ChevronRight, LayoutGrid, Palette
+  Download, RefreshCw, FileText, Sparkles, GripVertical, Package, RotateCcw, Zap,
+  User, X, Check, Globe, Settings, ChevronRight, LayoutGrid, Palette,
+  Sun, Moon, Paperclip, Ratio, Send, ChevronDown, MoreHorizontal, Flame, CloudRain, Zap as ZapIcon,
+  Maximize2, Eye, ArrowUp, ArrowDown, Repeat, Wand2, ChevronLeft
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
 import Image from 'next/image';
 import { analyzeScript } from '@/app/actions/director';
 import { generateShotImage } from '@/app/actions/generate';
+import { repaintShotWithCharacter } from '@/app/actions/repaint'; 
 import { createClient } from '@/utils/supabase/client';
 import { exportStoryboardPDF } from '@/utils/export-pdf';
 import { parseFileToText } from '@/utils/file-parsers';
@@ -36,37 +39,37 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// --- i18n 字典 ---
+// --- i18n ---
 const TRANSLATIONS = {
   zh: {
-    back: "返回工作台",
-    step1: "01 剧本 / SCRIPT",
-    step2: "02 筹备 / SETUP",
-    step3: "03 渲染 / RENDER",
-    mockOn: "测试模式 (MOCK)",
-    mockOff: "实战模式 (API)",
+    back: "返回",
+    step1: "剧本",
+    step2: "筹备",
+    step3: "渲染",
+    mockOn: "Mock On",
+    mockOff: "Real API",
     manageChars: "角色库",
-    scriptPlaceholder: "在此输入剧本或上传文件... (例如：赛博朋克侦探走入雨巷...)",
-    analyzeBtn: "AI 剧本拆解",
-    analyzing: "分析中...",
-    uploadScript: "导入文件",
+    scriptPlaceholder: "输入你的故事，或上传剧本文件...",
+    analyzeBtn: "拆解剧本",
+    analyzing: "AI 思考中...",
+    uploadScript: "上传文件",
     panelCount: "分镜数量",
-    ratio: "画幅比例",
-    auto: "智能自动",
-    style: "渲染风格",
+    ratio: "画幅",
+    auto: "自动",
+    style: "美术风格",
     scene: "场景/环境",
     character: "核心角色",
-    atmosphere: "全局氛围",
-    draftMode: "草图模式",
-    renderMode: "精绘模式",
-    startGen: "开始绘制分镜",
-    shotList: "分镜列表",
-    addShot: "新增镜头",
-    exportZip: "导出素材包 (ZIP)",
-    exportPdf: "导出通告单 (PDF)",
-    newProject: "新建项目",
-    waiting: "等待生成...",
-    delivery: "交付中心",
+    atmosphere: "氛围基调",
+    draftMode: "线稿模式 (Draft)",
+    renderMode: "精绘模式 (Render)",
+    startGen: "生成分镜",
+    shotList: "分镜表",
+    addShot: "加镜头",
+    exportZip: "素材包",
+    exportPdf: "通告单",
+    newProject: "新项目",
+    waiting: "待生成...",
+    delivery: "交付",
     exportTitle: "导出设置",
     exportDesc: "填写项目元数据以生成商业级 PDF",
     projName: "项目名称",
@@ -74,53 +77,57 @@ const TRANSLATIONS = {
     notes: "备注信息",
     confirmExport: "确认导出",
     injectChar: "注入角色",
-    noChar: "不指定"
+    noChar: "不指定",
+    cameraAngle: "拍摄角度",
+    casting: "选角替换" 
   },
   en: {
-    back: "Dashboard",
-    step1: "01 SCRIPT",
-    step2: "02 SETUP",
-    step3: "03 RENDER",
-    mockOn: "MOCK MODE",
-    mockOff: "REAL API",
-    manageChars: "Characters",
-    scriptPlaceholder: "Enter script or upload file... (e.g. A cyberpunk detective walks...)",
-    analyzeBtn: "Analyze Script",
-    analyzing: "Analyzing...",
-    uploadScript: "Import File",
-    panelCount: "Shot Count",
-    ratio: "Aspect Ratio",
+    back: "Back",
+    step1: "Script",
+    step2: "Setup",
+    step3: "Render",
+    mockOn: "Mock On",
+    mockOff: "Real API",
+    manageChars: "Library",
+    scriptPlaceholder: "Tell your story...",
+    analyzeBtn: "Analyze",
+    analyzing: "Thinking...",
+    uploadScript: "Upload",
+    panelCount: "Shots",
+    ratio: "Ratio",
     auto: "Auto",
-    style: "Style",
-    scene: "Scene/Env",
-    character: "Main Character",
-    atmosphere: "Atmosphere",
+    style: "Art Style",
+    scene: "Scene",
+    character: "Hero",
+    atmosphere: "Vibe",
     draftMode: "Draft Mode",
     renderMode: "Render Mode",
-    startGen: "Start Generation",
-    shotList: "Shot List",
+    startGen: "Generate",
+    shotList: "Shots",
     addShot: "Add Shot",
-    exportZip: "Export Assets (ZIP)",
-    exportPdf: "Export PDF (SOP)",
-    newProject: "New Project",
+    exportZip: "Assets",
+    exportPdf: "PDF (SOP)",
+    newProject: "New",
     waiting: "Waiting...",
-    delivery: "Delivery Center",
+    delivery: "Delivery",
     exportTitle: "Export Settings",
     exportDesc: "Metadata for professional PDF delivery",
     projName: "Project Name",
-    author: "Director/Author",
+    author: "Director",
     notes: "Notes",
-    confirmExport: "Confirm Export",
-    injectChar: "Inject Char",
-    noChar: "None"
+    confirmExport: "Export",
+    injectChar: "Inject",
+    noChar: "None",
+    cameraAngle: "Angle",
+    casting: "Casting"
   }
 };
 
-// --- 类型定义 ---
 type StoryboardPanel = {
   id: string;
   description: string; 
   shotType: string;    
+  cameraAngle?: string; 
   environment?: string; 
   prompt: string;      
   imageUrl?: string;   
@@ -133,8 +140,8 @@ type Character = { id: string; name: string; avatar_url: string | null; descript
 type CharacterImage = { id: string; image_url: string; description: string | null; }
 type WorkflowStep = 'input' | 'review' | 'generating' | 'done';
 type Lang = 'zh' | 'en';
+type Theme = 'light' | 'dark';
 
-// 导出元数据
 type ExportMeta = {
   projectName: string;
   author: string;
@@ -148,22 +155,35 @@ const CINEMATIC_SHOTS = [
   { value: "MID SHOT", label: "中景 (Mid)" },
   { value: "CLOSE-UP", label: "特写 (Close-Up)" },
   { value: "EXTREME CLOSE-UP", label: "大特写 (ECU)" },
-  { value: "LOW ANGLE", label: "仰视" },
-  { value: "HIGH ANGLE", label: "俯视" },
-  { value: "OVERHEAD SHOT", label: "上帝视角" },
-  { value: "DUTCH ANGLE", label: "荷兰倾斜" },
-  { value: "OVER-THE-SHOULDER SHOT", label: "过肩" },
+];
+
+const CAMERA_ANGLES = [
+  { value: "EYE LEVEL", label: "👁️ 平视 (Eye)", desc: "Neutral" },
+  { value: "LOW ANGLE", label: "⬆️ 仰视 (Low)", desc: "Powerful" },
+  { value: "HIGH ANGLE", label: "⬇️ 俯视 (High)", desc: "Vulnerable" },
+  { value: "OVERHEAD SHOT", label: "🚁 上帝视角 (Top)", desc: "Map View" },
+  { value: "DUTCH ANGLE", label: "📐 荷兰倾斜 (Dutch)", desc: "Unease" },
+  { value: "OVER-THE-SHOULDER", label: "👥 过肩 (OTS)", desc: "Dialog" },
 ];
 
 const STYLE_OPTIONS = [
-  { value: "realistic", label: "🎥 电影实拍 (Realistic)" },
-  { value: "anime_jp", label: "🇯🇵 日本动画 (Anime)" },
-  { value: "anime_us", label: "🇺🇸 美漫风格 (Comics)" },
-  { value: "cyberpunk", label: "🤖 赛博朋克 (Cyberpunk)" },
-  { value: "noir", label: "🕵️‍♂️ 黑色电影 (Noir)" },
-  { value: "pixar", label: "🧸 皮克斯 3D (Pixar)" },
-  { value: "watercolor", label: "🎨 水彩手绘 (Watercolor)" },
-  { value: "ink", label: "🖌️ 中国水墨 (Ink)" },
+  { value: "realistic", label: "电影实拍", sub: "Cinematic", color: "from-blue-900 to-slate-900" },
+  { value: "anime_jp", label: "日本动画", sub: "Ghibli", color: "from-pink-500 to-rose-500" },
+  { value: "anime_us", label: "美漫风格", sub: "Comics", color: "from-yellow-500 to-orange-600" },
+  { value: "cyberpunk", label: "赛博朋克", sub: "Neon", color: "from-purple-600 to-blue-600" },
+  { value: "noir", label: "黑色电影", sub: "B&W", color: "from-gray-800 to-black" },
+  { value: "pixar", label: "皮克斯3D", sub: "Cute", color: "from-blue-400 to-cyan-400" },
+  { value: "watercolor", label: "水彩手绘", sub: "Soft", color: "from-emerald-400 to-teal-500" },
+  { value: "ink", label: "中国水墨", sub: "Ink", color: "from-stone-500 to-stone-800" },
+];
+
+const ATMOSPHERE_TAGS = [
+    { label: "🔥 Cinematic", val: "cinematic lighting, dramatic atmosphere" },
+    { label: "🌑 Dark/Noir", val: "dark, moody, low key lighting, noir" },
+    { label: "☀️ Warm/Happy", val: "warm lighting, sunny, happy atmosphere" },
+    { label: "🤖 Cyberpunk", val: "neon lights, futuristic, cyberpunk atmosphere" },
+    { label: "👻 Horror", val: "foggy, scary, horror atmosphere, dim light" },
+    { label: "🌫️ Dreamy", val: "soft focus, dreamy, ethereal, glow" },
 ];
 
 const ASPECT_RATIOS = [
@@ -174,82 +194,86 @@ const ASPECT_RATIOS = [
   { value: "9:16", label: "9:16 Vertical", cssClass: "aspect-[9/16]" },
 ];
 
-// --- Sub-Components ---
-const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, onOpenCharModal, step, isOverlay, t, ...props }, ref) => {
-    const baseClass = isOverlay 
-        ? "ring-2 ring-amber-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" 
-        : "border-white/5 hover:border-white/10";
+// --- PanelCard ---
+const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, onOpenCharModal, onImageClick, step, isOverlay, t, isDark, ...props }, ref) => {
+    const cardBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
+    const cardBorder = isDark ? "border-zinc-800" : "border-gray-100";
+    const textColor = isDark ? "text-gray-200" : "text-gray-800";
+    const subTextColor = isDark ? "text-zinc-500" : "text-gray-400";
+    const baseClass = isOverlay ? "ring-2 ring-blue-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" : `${cardBorder} hover:shadow-md transition-shadow duration-300`;
 
-    // 渲染模式 (Grid View)
     if (step === 'generating' || step === 'done') {
         return (
-            <div ref={ref} {...props} className={`relative bg-[#050505] rounded-lg overflow-hidden border transition-all group ${currentRatioClass} ${baseClass}`}>
-                <div className="absolute top-2 right-2 z-40 p-1.5 bg-black/60 hover:bg-amber-500 text-white/70 hover:text-black rounded cursor-grab active:cursor-grabbing backdrop-blur-md border border-white/10 transition-colors">
+            <div ref={ref} {...props} className={`relative ${cardBg} rounded-2xl overflow-hidden border ${baseClass} ${currentRatioClass} group`}>
+                <div className={`absolute top-2 right-2 z-40 p-1.5 rounded-full cursor-grab active:cursor-grabbing backdrop-blur-md transition-colors ${isDark ? 'bg-black/50 hover:bg-blue-500 text-white' : 'bg-white/50 hover:bg-blue-500 text-black hover:text-white'}`}>
                      <GripVertical size={14} />
                 </div>
-                {panel.isLoading ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/50 backdrop-blur-sm z-10">
-                        <Loader2 className="animate-spin w-8 h-8 text-amber-500" />
-                    </div>
-                ) : panel.imageUrl ? (
-                    <img src={panel.imageUrl} className="w-full h-full object-cover" draggable={false} />
-                ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-[#111] text-zinc-600">
-                        <ImageIcon size={24} className="mb-2 opacity-20"/><span className="text-[10px]">{t.waiting}</span>
-                    </div>
-                )}
+                
+                {/* 🟢 Click index instead of panel object */}
+                <div className="w-full h-full cursor-pointer" onDoubleClick={() => onImageClick(idx)}>
+                    {panel.isLoading ? (
+                        <div className={`absolute inset-0 flex flex-col items-center justify-center backdrop-blur-sm z-10 ${isDark ? 'bg-zinc-900/50' : 'bg-white/50'}`}>
+                            <Loader2 className="animate-spin w-8 h-8 text-blue-500" />
+                        </div>
+                    ) : panel.imageUrl ? (
+                        <img src={panel.imageUrl} className="w-full h-full object-cover" draggable={false} />
+                    ) : (
+                        <div className={`w-full h-full flex flex-col items-center justify-center ${isDark ? 'bg-[#111]' : 'bg-gray-50'}`}>
+                            <ImageIcon size={24} className={`${isDark ? 'text-zinc-700' : 'text-gray-300'} mb-2`}/><span className="text-[10px] text-zinc-500">{t.waiting}</span>
+                        </div>
+                    )}
+                </div>
                 
                 {panel.characterAvatar && (
-                    <div className="absolute top-2 right-10 z-20 w-6 h-6 rounded-full border border-white/20 overflow-hidden shadow-lg">
+                    <div className="absolute top-2 right-10 z-20 w-6 h-6 rounded-full border-2 border-white/20 overflow-hidden shadow-lg">
                         <Image src={panel.characterAvatar} alt="Char" fill className="object-cover" />
                     </div>
                 )}
                 
-                <div className="absolute top-2 left-2 z-20 pointer-events-none">
-                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase">{CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0] || panel.shotType}</span>
+                <div className="absolute top-2 left-2 z-20 pointer-events-none flex gap-1">
+                    <span className="bg-black/50 backdrop-blur-md text-white text-[9px] font-bold px-2 py-1 rounded-full uppercase">{CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0] || panel.shotType}</span>
+                    {panel.cameraAngle && panel.cameraAngle !== 'EYE LEVEL' && (
+                        <span className="bg-blue-600/80 backdrop-blur-md text-white text-[9px] font-bold px-2 py-1 rounded-full uppercase">{CAMERA_ANGLES.find(a => a.value === panel.cameraAngle)?.label.split(' ')[1] || panel.cameraAngle}</span>
+                    )}
                 </div>
                 
                 {!panel.isLoading && !isOverlay && (
-                    <div className="absolute top-10 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button onClick={() => onRegenerate(panel.id)} className="p-1.5 bg-black/60 hover:bg-white text-white hover:text-black rounded backdrop-blur-md border border-white/10 transition-all"><RefreshCw size={14} /></button>
+                    <div className="absolute top-10 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
+                         <button onClick={() => onRegenerate(panel.id)} className="p-1.5 bg-black/60 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md transition-all"><RefreshCw size={14} /></button>
+                         <button onClick={() => onImageClick(idx)} className="p-1.5 bg-black/60 hover:bg-white text-white hover:text-black rounded-full backdrop-blur-md transition-all"><Maximize2 size={14} /></button>
                     </div>
                 )}
                 
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-3 pt-8 text-white z-20 pointer-events-none">
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white z-20 pointer-events-none">
                     <div className="flex items-start gap-2">
-                        <span className="text-[10px] font-bold bg-amber-500 text-black px-1.5 py-0.5 rounded font-mono mt-0.5">#{String(idx + 1).padStart(2, '0')}</span>
-                        <p className="text-[10px] text-zinc-300 line-clamp-2 leading-relaxed opacity-80">{panel.description}</p>
+                        <span className="text-[10px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded font-mono mt-0.5">#{String(idx + 1).padStart(2, '0')}</span>
+                        <p className="text-[10px] text-zinc-100 line-clamp-2 leading-relaxed opacity-90 font-medium">{panel.description}</p>
                     </div>
                 </div>
             </div>
         );
     }
 
-    // 编辑模式 (List View)
     return (
-        <div ref={ref} {...props} className={`bg-[#111] p-4 rounded-xl border flex flex-col md:flex-row gap-4 relative group ${baseClass}`}>
-            <div className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing z-20"><GripVertical size={20} /></div>
+        <div ref={ref} {...props} className={`${cardBg} p-4 rounded-2xl border ${cardBorder} flex flex-col md:flex-row gap-4 relative group hover:border-blue-500/30 transition-all shadow-sm`}>
+            <div className={`absolute left-2 top-1/2 -translate-y-1/2 p-2 cursor-grab active:cursor-grabbing z-20 ${subTextColor} hover:text-blue-500`}><GripVertical size={20} /></div>
             
             <div className="flex items-start gap-3 md:w-48 shrink-0 ml-8">
-                <div className="w-6 h-6 bg-zinc-900 rounded-full flex items-center justify-center font-mono text-xs text-zinc-500 font-bold mt-1">{String(idx + 1).padStart(2, '0')}</div>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-xs font-bold mt-1 ${isDark ? 'bg-zinc-800 text-zinc-400' : 'bg-gray-100 text-gray-500'}`}>{String(idx + 1).padStart(2, '0')}</div>
                 <div className="flex flex-col gap-2 w-full">
-                    <select value={panel.shotType} onChange={(e) => onUpdate(panel.id, 'shotType', e.target.value)} className="bg-black border border-zinc-800 text-amber-500 text-[10px] font-bold px-2 py-1.5 rounded outline-none focus:border-amber-500 uppercase tracking-wide">
-                        {CINEMATIC_SHOTS.map(shot => <option key={shot.value} value={shot.value}>{shot.label}</option>)}
-                    </select>
-                    
-                    {!isOverlay && (
-                      <button 
-                        onClick={() => onOpenCharModal(panel.id)}
-                        className={`text-[10px] flex items-center gap-1.5 px-2 py-1.5 rounded border transition-all ${panel.characterId ? 'bg-blue-500/10 border-blue-500 text-blue-400' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-300'}`}
-                      >
-                         {panel.characterAvatar ? (
-                           <div className="w-3 h-3 rounded-full overflow-hidden relative"><Image src={panel.characterAvatar} alt="C" fill className="object-cover"/></div>
-                         ) : <User size={10} />}
-                         {panel.characterId ? t.injectChar : t.injectChar}
-                      </button>
-                    )}
-
-                    {!isOverlay && (<button onClick={() => onDelete(panel.id)} className="text-zinc-600 hover:text-red-500 text-xs flex items-center gap-1 self-start ml-1 mt-1"><Trash2 size={10}/> Delete</button>)}
+                    <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-zinc-500 uppercase">Shot Size</label>
+                        <select value={panel.shotType} onChange={(e) => onUpdate(panel.id, 'shotType', e.target.value)} className={`w-full bg-transparent border ${isDark ? 'border-zinc-700 text-blue-400' : 'border-gray-200 text-blue-600'} text-[10px] font-bold px-2 py-1.5 rounded-lg outline-none focus:border-blue-500 uppercase tracking-wide`}>
+                            {CINEMATIC_SHOTS.map(shot => <option key={shot.value} value={shot.value}>{shot.label}</option>)}
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-zinc-500 uppercase">Angle</label>
+                        <select value={panel.cameraAngle || 'EYE LEVEL'} onChange={(e) => onUpdate(panel.id, 'cameraAngle', e.target.value)} className={`w-full bg-transparent border ${isDark ? 'border-zinc-700 text-purple-400' : 'border-gray-200 text-purple-600'} text-[10px] font-bold px-2 py-1.5 rounded-lg outline-none focus:border-purple-500 uppercase tracking-wide`}>
+                            {CAMERA_ANGLES.map(angle => <option key={angle.value} value={angle.value}>{angle.label}</option>)}
+                        </select>
+                    </div>
+                    {!isOverlay && (<button onClick={() => onDelete(panel.id)} className="text-zinc-400 hover:text-red-500 text-xs flex items-center gap-1 self-start ml-1 mt-1"><Trash2 size={12}/> Delete</button>)}
                 </div>
             </div>
 
@@ -257,17 +281,19 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                 <textarea 
                   value={panel.description} 
                   onChange={(e) => onUpdate(panel.id, 'description', e.target.value)} 
-                  className="w-full bg-transparent text-sm text-white placeholder-zinc-700 border-none focus:ring-0 p-0 resize-none leading-relaxed font-medium" 
+                  className={`w-full bg-transparent text-sm ${textColor} placeholder-zinc-500 border-none focus:ring-0 p-0 resize-none leading-relaxed font-medium`}
                   rows={2} 
+                  placeholder="Describe the action..."
                 />
-                <div className="w-full h-[1px] bg-white/5"></div>
+                <div className={`w-full h-[1px] ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}></div>
                 <div className="flex gap-2">
-                   <span className="text-[10px] text-zinc-600 font-bold uppercase pt-1">PROMPT:</span>
+                   <span className="text-[10px] text-zinc-500 font-bold uppercase pt-1">PROMPT:</span>
                    <textarea 
                      value={panel.prompt} 
                      onChange={(e) => onUpdate(panel.id, 'prompt', e.target.value)} 
-                     className="w-full bg-transparent text-xs text-zinc-400 placeholder-zinc-700 border-none focus:ring-0 p-0 resize-none leading-relaxed font-mono" 
+                     className="w-full bg-transparent text-xs text-zinc-500 placeholder-zinc-600 border-none focus:ring-0 p-0 resize-none leading-relaxed font-mono" 
                      rows={2} 
+                     placeholder="AI visual details..."
                    />
                 </div>
             </div>
@@ -284,41 +310,44 @@ function SortablePanelItem(props: any) {
 
 // --- Main Page ---
 export default function StoryboardPage() {
-  // State
+  const [theme, setTheme] = useState<Theme>('light');
+  const isDark = theme === 'dark';
   const [lang, setLang] = useState<Lang>('zh');
   const t = TRANSLATIONS[lang];
 
   const [script, setScript] = useState('');
   const [globalAtmosphere, setGlobalAtmosphere] = useState('');
+  
   const [sceneDescription, setSceneDescription] = useState(''); 
-  const [sceneImageUrl, setSceneImageUrl] = useState<string | null>(null); 
   const [step, setStep] = useState<WorkflowStep>('input');
   const [panels, setPanels] = useState<StoryboardPanel[]>([]);
   const [mode, setMode] = useState<'draft' | 'render'>('draft'); 
   const [stylePreset, setStylePreset] = useState<string>('realistic');
   const [aspectRatio, setAspectRatio] = useState<string>('16:9');
-  const [panelCountMode, setPanelCountMode] = useState<'auto' | number>('auto'); // New
-
+  
+  const [showRatioMenu, setShowRatioMenu] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [isDrawing, setIsDrawing] = useState(false);     
   const [isExporting, setIsExporting] = useState(false);
   const [characters, setCharacters] = useState<Character[]>([]); 
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null); 
-  const [refImages, setRefImages] = useState<CharacterImage[]>([]);
-  const [selectedRefImage, setSelectedRefImage] = useState<string | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [isMockMode, setIsMockMode] = useState(false);
+  
+  // 🟢 Lightbox & Casting State
+  // 🔥 Change: Store 'index' not 'object' to allow next/prev
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isRepainting, setIsRepainting] = useState(false);
+  const [showCastingModal, setShowCastingModal] = useState(false);
 
   // Modals
   const [showCharModal, setShowCharModal] = useState(false);
   const [activePanelIdForModal, setActivePanelIdForModal] = useState<string | null>(null);
-  
-  // 🟢 Export Meta Modal
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportMeta, setExportMeta] = useState<ExportMeta>({ projectName: '', author: '', notes: '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const supabase = useMemo(() => createClient(), []); // Singleton fix
+  const supabase = useMemo(() => createClient(), []); 
   const tempProjectId = "temp_workspace"; 
 
   const sensors = useSensors(
@@ -326,7 +355,6 @@ export default function StoryboardPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // --- Effects ---
   const handleDragStart = (event: DragStartEvent) => { setActiveDragId(event.active.id as string); };
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -348,7 +376,18 @@ export default function StoryboardPage() {
     fetchCharacters();
   }, []);
 
-  // --- Handlers ---
+  // 🟢 Keyboard Navigation for Lightbox
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (lightboxIndex === null) return;
+      if (e.key === 'ArrowLeft') setLightboxIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
+      if (e.key === 'ArrowRight') setLightboxIndex(prev => (prev !== null && prev < panels.length - 1 ? prev + 1 : prev));
+      if (e.key === 'Escape') setLightboxIndex(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxIndex, panels.length]);
+
   const handleScriptFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -373,6 +412,7 @@ export default function StoryboardPage() {
         id: crypto.randomUUID(), 
         description: p.description,
         shotType: p.shotType || 'MID SHOT',
+        cameraAngle: 'EYE LEVEL', 
         environment: '', prompt: p.visualPrompt, isLoading: false, 
       }));
       setPanels(initialPanels);
@@ -390,15 +430,11 @@ export default function StoryboardPage() {
   };
   const handleAddPanel = () => {
     setPanels(current => [...current, {
-        id: crypto.randomUUID(), description: "New shot...", shotType: "MID SHOT", environment: "", prompt: "", isLoading: false
+        id: crypto.randomUUID(), description: "New shot...", shotType: "MID SHOT", cameraAngle: "EYE LEVEL", environment: "", prompt: "", isLoading: false
     }]);
   };
 
-  // Character Injection
-  const handleOpenCharModal = (panelId: string) => {
-    setActivePanelIdForModal(panelId);
-    setShowCharModal(true);
-  }
+  const handleOpenCharModal = (panelId: string) => { setActivePanelIdForModal(panelId); setShowCharModal(true); }
   const handleInjectCharacter = (char: Character) => {
     if (!activePanelIdForModal) return;
     setPanels(current => current.map(p => {
@@ -420,13 +456,21 @@ export default function StoryboardPage() {
     setShowCharModal(false);
   }
 
-  // Generation Logic
+  const toggleAtmosphere = (tag: string) => {
+      if (globalAtmosphere.includes(tag)) {
+          setGlobalAtmosphere(prev => prev.replace(tag, "").replace(/,\s*,/g, ",").replace(/^,|,$/g, ""));
+      } else {
+          setGlobalAtmosphere(prev => prev ? `${prev}, ${tag}` : tag);
+      }
+  };
+
   const buildActionPrompt = (panel: StoryboardPanel) => {
     const effectiveEnv = panel.environment?.trim() || sceneDescription;
     const scenePart = effectiveEnv ? `(Environment: ${effectiveEnv}), ` : '';
     const atmospherePart = globalAtmosphere.trim() ? `(Atmosphere: ${globalAtmosphere}), ` : '';
-    if (panel.prompt && panel.prompt.length > 10) return `${atmospherePart}${panel.prompt}`;
-    return `${atmospherePart}${scenePart}${panel.description}`;
+    const anglePart = panel.cameraAngle && panel.cameraAngle !== 'EYE LEVEL' ? `(Camera Angle: ${panel.cameraAngle}), ` : '';
+    if (panel.prompt && panel.prompt.length > 10) return `${atmospherePart}${anglePart}${panel.prompt}`;
+    return `${atmospherePart}${scenePart}${anglePart}${panel.description}`;
   };
 
   const handleGenerateSingleImage = async (panelId: string) => {
@@ -439,7 +483,8 @@ export default function StoryboardPage() {
         const effectiveCharId = panel.characterId || selectedCharacterId || undefined;
         const res = await generateShotImage(
             tempShotId, actionPrompt, tempProjectId, mode === 'draft', stylePreset, aspectRatio, panel.shotType, 
-            effectiveCharId, undefined, undefined, isMockMode 
+            effectiveCharId, undefined, undefined, isMockMode, 
+            panel.cameraAngle || 'EYE LEVEL'
         );
         if (res.success) {
             setPanels(current => current.map(p => p.id === panelId ? { ...p, imageUrl: (res as any).url, isLoading: false } : p));
@@ -459,7 +504,8 @@ export default function StoryboardPage() {
             const effectiveCharId = panel.characterId || selectedCharacterId || undefined;
             const res = await generateShotImage(
               tempShotId, actionPrompt, tempProjectId, mode === 'draft', stylePreset, aspectRatio, panel.shotType, 
-              effectiveCharId, undefined, undefined, isMockMode
+              effectiveCharId, undefined, undefined, isMockMode,
+              panel.cameraAngle || 'EYE LEVEL'
             );
             if (res.success) {
               setPanels(current => current.map(p => p.id === panel.id ? { ...p, imageUrl: (res as any).url, isLoading: false } : p));
@@ -476,30 +522,59 @@ export default function StoryboardPage() {
     toast.success('Batch generation complete');
   };
 
-  // 🟢 Fixed: Export Logic
+  // ... 在 page.tsx 文件中找到这个函数 ...
+
+  const handleCastingSelect = async (char: Character) => {
+    if (lightboxIndex === null) return;
+    const currentPanel = panels[lightboxIndex];
+    if (!currentPanel || !currentPanel.imageUrl) return;
+    
+    setIsRepainting(true);
+    setShowCastingModal(false);
+    // 🟢 提示信息区分模式
+    const toastMsg = mode === 'draft' ? `Redrawing inject ${char.name} as sketch...` : `Injecting ${char.name} into shot...`;
+    const toastId = toast.loading(toastMsg);
+
+    try {
+        const actionPrompt = buildActionPrompt(currentPanel);
+        const res = await repaintShotWithCharacter(
+            currentPanel.id,
+            currentPanel.imageUrl,
+            char.id,
+            actionPrompt,
+            tempProjectId,
+            aspectRatio,
+            mode === 'draft' // 🟢 核心修复：传入当前是否为 Draft 模式
+        );
+
+        if (res.success) {
+            setPanels(current => current.map(p => p.id === currentPanel.id ? { ...p, imageUrl: (res as any).url, characterId: char.id, characterAvatar: char.avatar_url || undefined } : p));
+            toast.success("Character Injected Successfully", { id: toastId });
+        } else {
+            throw new Error((res as any).message);
+        }
+    } catch (e: any) {
+        toast.error(e.message, { id: toastId });
+    } finally {
+        setIsRepainting(false);
+    }
+};
+
+// ... 函数结束 ...
+
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
       toast.info('Generating PDF...');
-      
-      // 构建完整的元数据对象
       const metaData = {
           projectName: exportMeta.projectName || "Untitled Project",
           author: exportMeta.author || "Director",
           notes: exportMeta.notes || ""
       };
-
-      // 传入 metaData 对象
       await exportStoryboardPDF(metaData, panels);
-      
       toast.success('PDF Exported');
       setShowExportModal(false);
-    } catch (error: any) { 
-        console.error(error);
-        toast.error('Export failed'); 
-    } finally { 
-        setIsExporting(false); 
-    }
+    } catch (error: any) { console.error(error); toast.error('Export failed'); } finally { setIsExporting(false); }
   };
 
   const handleExportZIP = async () => {
@@ -511,31 +586,101 @@ export default function StoryboardPage() {
     } catch (error) { toast.error('Export failed'); } finally { setIsExporting(false); }
   };
 
-  // CSS for Grid
   const currentRatioClass = ASPECT_RATIOS.find(r => r.value === aspectRatio)?.cssClass || "aspect-video";
   const activePanel = activeDragId ? panels.find(p => p.id === activeDragId) : null;
+  const pageBg = isDark ? "bg-[#131314] text-white" : "bg-[#f0f4f9] text-gray-900";
+  const containerBg = isDark ? "bg-[#1e1e1e] border-zinc-800" : "bg-white border-white shadow-sm";
+  const headerBg = isDark ? "bg-[#131314]/80 border-white/5" : "bg-[#f0f4f9]/80 border-black/5";
+  const inputBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
+  const buttonBg = isDark ? "bg-[#2d2d2d] hover:bg-[#3d3d3d]" : "bg-[#e3e3e3] hover:bg-[#d3d3d3] text-black";
+
+  // Helper to get current panel from index
+  const currentLightboxPanel = lightboxIndex !== null ? panels[lightboxIndex] : null;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-amber-500/30">
-      <Toaster position="top-center" richColors theme="dark"/>
+    <div className={`min-h-screen ${pageBg} font-sans transition-colors duration-300`}>
+      <Toaster position="top-center" richColors theme={isDark ? "dark" : "light"}/>
       
-      {/* 🟢 Modals */}
+      {/* 🟢 Improved Lightbox Navigation */}
+      {currentLightboxPanel && currentLightboxPanel.imageUrl && (
+          <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+              <button onClick={() => setLightboxIndex(null)} className="absolute top-6 right-6 text-white/50 hover:text-white p-2 z-50"><X size={32} /></button>
+              
+              {/* Prev Button */}
+              {lightboxIndex !== null && lightboxIndex > 0 && (
+                  <button onClick={() => setLightboxIndex(lightboxIndex - 1)} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-4 z-50 transition-colors">
+                      <ChevronLeft size={48} />
+                  </button>
+              )}
+              {/* Next Button */}
+              {lightboxIndex !== null && lightboxIndex < panels.length - 1 && (
+                  <button onClick={() => setLightboxIndex(lightboxIndex + 1)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white p-4 z-50 transition-colors">
+                      <ChevronRight size={48} />
+                  </button>
+              )}
+
+              <div className="relative w-full h-[80vh] flex items-center justify-center">
+                  <img src={currentLightboxPanel.imageUrl} className="max-w-full max-h-full object-contain shadow-2xl scale-100 animate-in zoom-in-95 duration-200 rounded-lg" />
+                  {isRepainting && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm rounded-lg">
+                          <Loader2 className="animate-spin text-white w-12 h-12 mb-4" />
+                          <p className="text-white font-bold tracking-wider">REPAINTING SCENE...</p>
+                      </div>
+                  )}
+              </div>
+
+              <div className="mt-6 flex gap-4">
+                  <button 
+                    onClick={() => setShowCastingModal(true)} 
+                    disabled={isRepainting}
+                    className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold rounded-full flex items-center gap-2 shadow-lg hover:shadow-blue-500/50 transition-all"
+                  >
+                      {isRepainting ? <Loader2 className="animate-spin w-5 h-5"/> : <Wand2 size={20} />}
+                      {t.casting} (Inject Character)
+                  </button>
+              </div>
+          </div>
+      )}
+
+      {/* 🟢 Casting Modal */}
+      {showCastingModal && (
+          <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
+              <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[70vh]`}>
+                  <div className="p-4 border-b border-white/10 flex justify-between items-center">
+                      <h3 className="font-bold flex items-center gap-2 text-white"><User size={18} /> Select Character to Inject</h3>
+                      <button onClick={() => setShowCastingModal(false)}><X size={20} className="text-white/50 hover:text-white"/></button>
+                  </div>
+                  <div className="p-6 grid grid-cols-3 sm:grid-cols-4 gap-4 overflow-y-auto custom-scrollbar">
+                      {characters.map(char => (
+                          <button key={char.id} onClick={() => handleCastingSelect(char)} className="group relative aspect-square rounded-2xl border border-white/10 overflow-hidden hover:border-blue-500 transition-all">
+                              {char.avatar_url ? <Image src={char.avatar_url} alt={char.name} fill className="object-cover group-hover:scale-110 transition-transform duration-500"/> : <User className="text-zinc-700 m-auto"/>}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
+                                  <span className="text-xs font-bold text-white truncate">{char.name}</span>
+                              </div>
+                          </button>
+                      ))}
+                  </div>
+              </div>
+          </div>
+      )}
+      
+      {/* ... Rest of UI (Modals, Header) Unchanged ... */}
       {showCharModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-              <div className="bg-[#111] w-full max-w-2xl rounded-2xl border border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-                  <div className="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-900">
-                      <h3 className="font-bold flex items-center gap-2 text-sm"><User size={16} className="text-amber-500" /> {t.injectChar}</h3>
-                      <button onClick={() => setShowCharModal(false)}><X size={18} className="text-zinc-500 hover:text-white"/></button>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+              <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]`}>
+                  <div className={`p-4 border-b ${isDark ? 'border-zinc-800' : 'border-gray-100'} flex justify-between items-center`}>
+                      <h3 className="font-bold flex items-center gap-2 text-sm"><User size={16} className="text-blue-500" /> {t.injectChar}</h3>
+                      <button onClick={() => setShowCharModal(false)}><X size={18} className="text-zinc-500 hover:text-red-500"/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-                          <button onClick={handleRemoveCharacter} className="aspect-square rounded-xl bg-zinc-900 border border-zinc-800 hover:border-red-500 flex flex-col items-center justify-center gap-2 group">
-                              <X className="text-zinc-600 group-hover:text-red-500" /> <span className="text-xs text-zinc-500">{t.noChar}</span>
+                          <button onClick={handleRemoveCharacter} className={`aspect-square rounded-2xl border flex flex-col items-center justify-center gap-2 group transition-all ${isDark ? 'bg-zinc-900 border-zinc-800 hover:border-red-500' : 'bg-gray-50 border-gray-100 hover:border-red-500'}`}>
+                              <X className="text-zinc-500 group-hover:text-red-500" /> <span className="text-xs text-zinc-500">{t.noChar}</span>
                           </button>
                           {characters.map(char => (
-                              <button key={char.id} onClick={() => handleInjectCharacter(char)} className="relative aspect-square rounded-xl bg-zinc-900 border border-zinc-800 hover:border-blue-500 overflow-hidden group">
+                              <button key={char.id} onClick={() => handleInjectCharacter(char)} className={`relative aspect-square rounded-2xl border overflow-hidden group transition-all ${isDark ? 'bg-zinc-900 border-zinc-800 hover:border-blue-500' : 'bg-gray-50 border-gray-100 hover:border-blue-500'}`}>
                                   {char.avatar_url ? <Image src={char.avatar_url} alt={char.name} fill className="object-cover"/> : <User className="text-zinc-700"/>}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-2"><span className="text-xs font-bold truncate">{char.name}</span></div>
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3"><span className="text-xs font-bold text-white truncate">{char.name}</span></div>
                               </button>
                           ))}
                       </div>
@@ -545,29 +690,29 @@ export default function StoryboardPage() {
       )}
 
       {showExportModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in">
-           <div className="bg-[#111] w-full max-w-md rounded-2xl border border-white/10 p-6 space-y-6">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in">
+           <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-md rounded-3xl border p-6 space-y-6 shadow-2xl`}>
               <div>
-                <h3 className="text-xl font-bold text-white mb-1">{t.exportTitle}</h3>
+                <h3 className={`text-xl font-bold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>{t.exportTitle}</h3>
                 <p className="text-sm text-zinc-500">{t.exportDesc}</p>
               </div>
               <div className="space-y-4">
                  <div>
                     <label className="text-xs font-bold text-zinc-500 mb-1 block">{t.projName}</label>
-                    <input value={exportMeta.projectName} onChange={e => setExportMeta({...exportMeta, projectName: e.target.value})} className="w-full bg-black border border-zinc-800 rounded-lg p-3 text-sm focus:border-amber-500 outline-none" placeholder="My Awesome Movie" />
+                    <input value={exportMeta.projectName} onChange={e => setExportMeta({...exportMeta, projectName: e.target.value})} className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none`} placeholder="Project Name" />
                  </div>
                  <div>
                     <label className="text-xs font-bold text-zinc-500 mb-1 block">{t.author}</label>
-                    <input value={exportMeta.author} onChange={e => setExportMeta({...exportMeta, author: e.target.value})} className="w-full bg-black border border-zinc-800 rounded-lg p-3 text-sm focus:border-amber-500 outline-none" placeholder="Director Name" />
+                    <input value={exportMeta.author} onChange={e => setExportMeta({...exportMeta, author: e.target.value})} className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none`} placeholder="Director Name" />
                  </div>
                  <div>
                     <label className="text-xs font-bold text-zinc-500 mb-1 block">{t.notes}</label>
-                    <textarea value={exportMeta.notes} onChange={e => setExportMeta({...exportMeta, notes: e.target.value})} className="w-full bg-black border border-zinc-800 rounded-lg p-3 text-sm focus:border-amber-500 outline-none h-20 resize-none" placeholder="Confidential info..." />
+                    <textarea value={exportMeta.notes} onChange={e => setExportMeta({...exportMeta, notes: e.target.value})} className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none h-20 resize-none`} placeholder="Notes..." />
                  </div>
               </div>
               <div className="flex gap-3 pt-2">
-                 <button onClick={() => setShowExportModal(false)} className="flex-1 py-3 bg-zinc-900 hover:bg-zinc-800 rounded-lg text-sm font-bold transition-colors">Cancel</button>
-                 <button onClick={handleExportPDF} disabled={isExporting} className="flex-1 py-3 bg-white text-black hover:bg-zinc-200 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
+                 <button onClick={() => setShowExportModal(false)} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${buttonBg}`}>Cancel</button>
+                 <button onClick={handleExportPDF} disabled={isExporting} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2">
                     {isExporting ? <Loader2 className="animate-spin w-4 h-4"/> : <Check size={16}/>} {t.confirmExport}
                  </button>
               </div>
@@ -575,210 +720,245 @@ export default function StoryboardPage() {
         </div>
       )}
 
-      {/* 🟢 Header / Navbar */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-[#050505]/80 backdrop-blur-md border-b border-white/5 h-16 flex items-center justify-between px-6">
+      {/* Header */}
+      <div className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b h-16 flex items-center justify-between px-6 transition-colors duration-300 ${headerBg}`}>
         <div className="flex items-center gap-6">
-           <Link href="/tools" className="flex items-center text-zinc-500 hover:text-white transition-colors text-sm font-bold gap-2"><ArrowLeft size={16}/> {t.back}</Link>
-           <div className="h-4 w-[1px] bg-white/10"></div>
-           {/* Steps Indicator */}
-           <div className="flex items-center gap-4 text-xs font-mono font-bold tracking-wider">
-               <span className={`${step === 'input' ? 'text-amber-500' : 'text-zinc-600'}`}>{t.step1}</span>
-               <span className="text-zinc-800">/</span>
-               <span className={`${step === 'review' ? 'text-amber-500' : 'text-zinc-600'}`}>{t.step2}</span>
-               <span className="text-zinc-800">/</span>
-               <span className={`${step === 'generating' || step === 'done' ? 'text-amber-500' : 'text-zinc-600'}`}>{t.step3}</span>
+           <Link href="/tools" className="flex items-center text-zinc-500 hover:text-blue-500 transition-colors text-sm font-bold gap-2"><ArrowLeft size={18}/> {t.back}</Link>
+           <div className="flex items-center gap-2 text-xs font-bold">
+               <span className={`px-3 py-1 rounded-full ${step === 'input' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-zinc-500'}`}>{t.step1}</span>
+               <span className="text-zinc-300 dark:text-zinc-700">/</span>
+               <span className={`px-3 py-1 rounded-full ${step === 'review' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-zinc-500'}`}>{t.step2}</span>
+               <span className="text-zinc-300 dark:text-zinc-700">/</span>
+               <span className={`px-3 py-1 rounded-full ${step === 'generating' || step === 'done' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-zinc-500'}`}>{t.step3}</span>
            </div>
         </div>
         
-        <div className="flex items-center gap-3">
-             {/* Mock Toggle */}
-             <button onClick={() => setIsMockMode(!isMockMode)} className={`text-[10px] px-3 py-1.5 rounded-full font-bold border transition-all flex items-center gap-1.5 ${isMockMode ? 'bg-green-500/10 border-green-500 text-green-500' : 'bg-zinc-900 border-zinc-800 text-zinc-600'}`}>
+        <div className="flex items-center gap-2">
+             <button onClick={() => setIsMockMode(!isMockMode)} className={`text-[10px] px-3 py-1.5 rounded-full font-bold border transition-all flex items-center gap-1.5 ${isMockMode ? 'bg-green-500/10 border-green-500 text-green-500' : `${isDark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-gray-200'} text-zinc-500`}`}>
                 <Zap size={10} fill={isMockMode ? "currentColor" : "none"}/> {isMockMode ? t.mockOn : t.mockOff}
              </button>
-             {/* Lang Toggle */}
-             <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className="p-2 text-zinc-500 hover:text-white transition-colors" title="Switch Language">
+             <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')} className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
+                {isDark ? <Moon size={18}/> : <Sun size={18}/>}
+             </button>
+             <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
                 <Globe size={18}/>
              </button>
-             {/* Character Library Link */}
-             <Link href="/tools/characters" className="p-2 text-zinc-500 hover:text-amber-500 transition-colors" title={t.manageChars}>
+             <Link href="/tools/characters" className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
                 <User size={18}/>
              </Link>
         </div>
       </div>
 
-      {/* 🟢 Main Content Area */}
+      {/* Main Content */}
       <div className="pt-24 pb-12 px-6 min-h-screen">
-        
-        {/* === STEP 1: SCRIPT (Minimalist Center) === */}
         {step === 'input' && (
-           <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 flex flex-col items-center justify-center min-h-[70vh]">
-              <div className="w-full space-y-8">
-                 <div className="text-center space-y-2">
-                    <h1 className="text-4xl font-black text-white tracking-tighter">CINEFLOW <span className="text-amber-500">ENGINE</span></h1>
-                    <p className="text-zinc-500 text-sm">AI-Powered Storyboard Generation System V3.1</p>
+           <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 flex flex-col items-center justify-center min-h-[70vh]">
+              <div className="w-full space-y-6">
+                 <div className="text-center space-y-1 mb-8">
+                    <h1 className={`text-4xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        CineFlow <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500">Evolution</span>
+                    </h1>
+                    <p className="text-zinc-500 text-sm">AI-Powered Storyboard Generation V4.0</p>
                  </div>
                  
-                 <div className="relative group">
+                 <div className={`relative w-full rounded-3xl shadow-xl transition-all duration-300 ${isDark ? 'bg-[#1e1e1e] shadow-black/50 border border-zinc-800' : 'bg-white shadow-blue-900/5 border border-white'}`}>
                     <textarea 
-                      className="w-full h-64 bg-[#111] border border-white/10 rounded-2xl p-6 text-lg text-gray-200 focus:outline-none focus:border-amber-500/50 transition-all resize-none shadow-2xl leading-relaxed custom-scrollbar placeholder:text-zinc-700" 
+                      className={`w-full min-h-[240px] p-8 text-lg bg-transparent border-none resize-none outline-none leading-relaxed custom-scrollbar ${isDark ? 'text-gray-200 placeholder-zinc-600' : 'text-gray-800 placeholder-gray-300'}`}
                       placeholder={t.scriptPlaceholder}
                       value={script} 
                       onChange={(e) => setScript(e.target.value)}
                     />
-                    <div className="absolute bottom-4 right-4 flex gap-2">
-                         <input type="file" ref={fileInputRef} onChange={handleScriptFileUpload} className="hidden" accept=".txt,.md,.docx,.xlsx" />
-                         <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-white border border-white/5 transition-colors" title={t.uploadScript}><FileText size={16}/></button>
+                    
+                    <div className="flex items-center justify-between p-4 pl-6">
+                        <div className="flex items-center gap-2">
+                             <div className="relative">
+                                 <button 
+                                   onClick={() => setShowRatioMenu(!showRatioMenu)}
+                                   className={`p-2.5 rounded-full transition-all flex items-center gap-2 text-xs font-bold ${isDark ? 'hover:bg-zinc-800 text-zinc-400 bg-zinc-900' : 'hover:bg-gray-100 text-gray-500 bg-gray-50'}`}
+                                   title={t.ratio}
+                                 >
+                                     <Ratio size={18} />
+                                     <span>{ASPECT_RATIOS.find(r => r.value === aspectRatio)?.label.split(' ')[0]}</span>
+                                 </button>
+                                 
+                                 {showRatioMenu && (
+                                     <div className={`absolute bottom-12 left-0 w-40 rounded-2xl p-1 shadow-xl border z-50 flex flex-col gap-1 ${isDark ? 'bg-[#1e1e1e] border-zinc-800' : 'bg-white border-gray-100'}`}>
+                                         {ASPECT_RATIOS.map(r => (
+                                             <button 
+                                                key={r.value} 
+                                                onClick={() => { setAspectRatio(r.value); setShowRatioMenu(false); }} 
+                                                className={`text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors ${aspectRatio === r.value ? 'bg-blue-500 text-white' : isDark ? 'text-zinc-400 hover:bg-zinc-800' : 'text-gray-600 hover:bg-gray-100'}`}
+                                             >
+                                                 {r.label}
+                                             </button>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
+
+                             <div className="relative">
+                                 <input type="file" ref={fileInputRef} onChange={handleScriptFileUpload} className="hidden" accept=".txt,.md,.docx,.xlsx" />
+                                 <button 
+                                    onClick={() => fileInputRef.current?.click()} 
+                                    className={`p-2.5 rounded-full transition-all ${isDark ? 'hover:bg-zinc-800 text-zinc-400 bg-zinc-900' : 'hover:bg-gray-100 text-gray-500 bg-gray-50'}`} 
+                                    title={t.uploadScript}
+                                 >
+                                     <Paperclip size={18}/>
+                                 </button>
+                             </div>
+                        </div>
+
+                        <button 
+                            onClick={handleAnalyzeScript} 
+                            disabled={isAnalyzing || !script.trim()} 
+                            className={`px-6 py-3 rounded-full font-bold text-sm transition-all shadow-lg flex items-center gap-2 
+                            ${isAnalyzing || !script.trim() 
+                                ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed dark:bg-zinc-800 dark:text-zinc-600' 
+                                : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-blue-500/30 hover:scale-105 active:scale-95'}`}
+                        >
+                            {isAnalyzing ? <Loader2 className="animate-spin w-4 h-4" /> : <Sparkles size={16} />}
+                            {t.analyzeBtn}
+                        </button>
                     </div>
                  </div>
-
-                 <div className="flex gap-4 p-4 bg-[#111] rounded-xl border border-white/5">
-                     <div className="flex-1">
-                        <label className="text-[10px] font-bold text-zinc-500 mb-2 block uppercase tracking-wider">{t.ratio}</label>
-                        <div className="flex gap-1">
-                            {ASPECT_RATIOS.slice(0,3).map(r => (
-                                <button key={r.value} onClick={() => setAspectRatio(r.value)} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${aspectRatio === r.value ? 'bg-amber-500 text-black' : 'bg-black text-zinc-600 hover:bg-zinc-900'}`}>{r.label.split(' ')[0]}</button>
-                            ))}
-                        </div>
-                     </div>
-                     <div className="flex-1">
-                        <label className="text-[10px] font-bold text-zinc-500 mb-2 block uppercase tracking-wider">{t.panelCount}</label>
-                        <div className="flex gap-1 bg-black rounded-md p-1">
-                           <button onClick={() => setPanelCountMode('auto')} className={`flex-1 py-1 text-xs font-bold rounded transition-all ${panelCountMode === 'auto' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>{t.auto}</button>
-                           {[6, 9, 12].map(n => (
-                               <button key={n} onClick={() => setPanelCountMode(n)} className={`flex-1 py-1 text-xs font-bold rounded transition-all ${panelCountMode === n ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>{n}</button>
-                           ))}
-                        </div>
-                     </div>
-                 </div>
-
-                 <button onClick={handleAnalyzeScript} disabled={isAnalyzing || !script.trim()} className="w-full py-5 bg-white hover:bg-gray-200 text-black font-black text-lg rounded-full transition-all shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                     {isAnalyzing ? <Loader2 className="animate-spin" /> : <Sparkles className="fill-black" />} {t.analyzeBtn}
-                 </button>
+                 <p className="text-center text-xs text-zinc-400 font-medium opacity-60">CineFlow V4.0 Gemini Evolution</p>
               </div>
            </div>
         )}
 
-        {/* === STEP 2: SETUP (Director Console) === */}
         {step === 'review' && (
            <div className="max-w-[1600px] mx-auto flex gap-8 animate-in fade-in">
-              {/* Left Console (Sticky) */}
-              <div className="w-80 shrink-0 space-y-6 h-fit sticky top-24">
-                 <div className="bg-[#111] p-5 rounded-2xl border border-white/5 space-y-6">
+              <div className="w-[340px] shrink-0 space-y-6 h-fit sticky top-24">
+                 <div className={`${containerBg} p-5 rounded-3xl space-y-6`}>
                     <h2 className="text-xs font-black text-zinc-400 flex items-center gap-2 uppercase tracking-widest"><Settings size={12}/> Global Settings</h2>
                     
-                    {/* Atmosphere */}
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-bold text-zinc-500 uppercase">{t.atmosphere}</label>
-                       <div className="flex items-center gap-2 bg-black border border-zinc-800 p-2 rounded-lg focus-within:border-amber-500 transition-colors">
-                          <Sparkles size={14} className="text-purple-500 shrink-0"/>
-                          <input value={globalAtmosphere} onChange={(e) => setGlobalAtmosphere(e.target.value)} placeholder="Cinematic, Dark..." className="bg-transparent text-xs text-white placeholder-zinc-700 outline-none w-full font-bold"/>
-                       </div>
+                    <div className={`flex ${isDark ? 'bg-black' : 'bg-gray-100'} p-1 rounded-xl mb-4`}>
+                        <button onClick={() => setMode('draft')} className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold transition-all ${mode === 'draft' ? 'bg-white text-black shadow-sm' : 'text-zinc-500'}`}>{t.draftMode}</button>
+                        <button onClick={() => setMode('render')} className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold transition-all ${mode === 'render' ? 'bg-blue-600 text-white shadow-sm' : 'text-zinc-500'}`}>{t.renderMode}</button>
                     </div>
 
-                    {/* Scene */}
+                    {mode === 'render' && (
+                        <div className="space-y-3 animate-in fade-in slide-in-from-left-2">
+                           <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-2">
+                               {t.atmosphere} <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded">Multi-Select</span>
+                           </label>
+                           <div className="flex flex-wrap gap-2">
+                               {ATMOSPHERE_TAGS.map(tag => {
+                                   const isActive = globalAtmosphere.includes(tag.val);
+                                   return (
+                                       <button 
+                                         key={tag.label} 
+                                         onClick={() => toggleAtmosphere(tag.val)}
+                                         className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${isActive ? 'bg-blue-500 border-blue-500 text-white' : `${isDark ? 'border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800' : 'border-gray-200 bg-white hover:bg-gray-50'} text-zinc-500`}`}
+                                       >
+                                           {tag.label}
+                                       </button>
+                                   )
+                               })}
+                           </div>
+                           <div className={`flex items-center gap-2 ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} p-2.5 rounded-xl focus-within:border-blue-500 transition-colors`}>
+                              <Sparkles size={14} className="text-purple-500 shrink-0"/>
+                              <input value={globalAtmosphere} onChange={(e) => setGlobalAtmosphere(e.target.value)} placeholder="Or type custom atmosphere..." className={`bg-transparent text-xs ${isDark ? 'text-white' : 'text-gray-900'} placeholder-zinc-500 outline-none w-full font-bold`}/>
+                           </div>
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                        <label className="text-[10px] font-bold text-zinc-500 uppercase">{t.scene}</label>
-                       <div className="flex items-center gap-2 bg-black border border-zinc-800 p-2 rounded-lg focus-within:border-green-500 transition-colors">
+                       <div className={`flex items-center gap-2 ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} p-2.5 rounded-xl focus-within:border-blue-500 transition-colors`}>
                           <LayoutGrid size={14} className="text-green-500 shrink-0"/>
-                          <input value={sceneDescription} onChange={(e) => setSceneDescription(e.target.value)} placeholder="Rainy street..." className="bg-transparent text-xs text-white placeholder-zinc-700 outline-none w-full font-bold"/>
-                       </div>
-                    </div>
-
-                    {/* Character */}
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-bold text-zinc-500 uppercase flex justify-between">{t.character} <Link href="/tools/characters" className="text-amber-500 hover:underline">Edit</Link></label>
-                       <div className="relative">
-                           <select value={selectedCharacterId || ''} onChange={(e) => setSelectedCharacterId(e.target.value || null)} className="w-full bg-black border border-zinc-800 rounded-lg p-2 text-xs text-white focus:border-blue-500 outline-none appearance-none font-bold">
-                               <option value="">-- {t.noChar} --</option>
-                               {characters.map(char => <option key={char.id} value={char.id}>{char.name}</option>)}
-                           </select>
-                           <User size={14} className="absolute right-3 top-2.5 text-zinc-500 pointer-events-none"/>
+                          <input value={sceneDescription} onChange={(e) => setSceneDescription(e.target.value)} placeholder="Describe environment..." className={`bg-transparent text-xs ${isDark ? 'text-white' : 'text-gray-900'} placeholder-zinc-500 outline-none w-full font-bold`}/>
                        </div>
                     </div>
                     
-                    {/* Style & Mode */}
-                    <div className="pt-4 border-t border-white/5 space-y-4">
-                        <div className="flex bg-black p-1 rounded-lg">
-                            <button onClick={() => setMode('draft')} className={`flex-1 py-2 rounded text-[10px] font-bold transition-all ${mode === 'draft' ? 'bg-amber-500 text-black' : 'text-zinc-500'}`}>{t.draftMode}</button>
-                            <button onClick={() => setMode('render')} className={`flex-1 py-2 rounded text-[10px] font-bold transition-all ${mode === 'render' ? 'bg-purple-600 text-white' : 'text-zinc-500'}`}>{t.renderMode}</button>
-                        </div>
-                        {mode === 'render' && (
-                            <div className="animate-in slide-in-from-top-2">
-                                <label className="text-[10px] font-bold text-zinc-500 mb-2 block uppercase">{t.style}</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {STYLE_OPTIONS.map(opt => (
-                                        <button key={opt.value} onClick={() => setStylePreset(opt.value)} className={`text-[9px] py-1.5 border rounded px-2 truncate transition-all ${stylePreset === opt.value ? 'border-purple-500 text-purple-400 bg-purple-900/10' : 'border-zinc-800 text-zinc-600 hover:border-zinc-600'}`}>{opt.label.split(' ')[1] || opt.label}</button>
-                                    ))}
-                                </div>
+                    {/* Style Section (Only for Render) */}
+                    {mode === 'render' && (
+                        <div className={`pt-4 border-t ${isDark ? 'border-white/5' : 'border-gray-100'} space-y-4 animate-in slide-in-from-right-2`}>
+                            <label className="text-[10px] font-bold text-zinc-500 mb-2 block uppercase">{t.style}</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {STYLE_OPTIONS.map(opt => {
+                                    const isActive = stylePreset === opt.value;
+                                    return (
+                                        <button 
+                                            key={opt.value} 
+                                            onClick={() => setStylePreset(opt.value)} 
+                                            className={`relative h-14 rounded-xl border transition-all overflow-hidden group text-left p-2 flex flex-col justify-end ${isActive ? 'border-blue-500 ring-1 ring-blue-500' : `${isDark ? 'border-zinc-800' : 'border-gray-200'}`}`}
+                                        >
+                                            <div className={`absolute inset-0 bg-gradient-to-br ${opt.color} opacity-40 group-hover:opacity-60 transition-opacity`}></div>
+                                            <div className="relative z-10">
+                                                <span className={`text-[10px] font-bold block ${isDark || isActive ? 'text-white' : 'text-gray-800'}`}>{opt.label}</span>
+                                                <span className="text-[8px] text-white/70 uppercase tracking-wider">{opt.sub}</span>
+                                            </div>
+                                            {isActive && <div className="absolute top-1 right-1 bg-blue-500 text-white p-0.5 rounded-full"><Check size={8}/></div>}
+                                        </button>
+                                    )
+                                })}
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
-                    <button onClick={handleGenerateImages} className="w-full py-4 bg-white hover:bg-zinc-200 text-black font-black rounded-xl shadow-lg hover:shadow-white/10 transition-all flex items-center justify-center gap-2">
+                    <button onClick={handleGenerateImages} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-blue-500/25 hover:shadow-lg text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-2">
                         {mode === 'draft' ? <PenTool size={18}/> : <Palette size={18}/>} {t.startGen}
                     </button>
                  </div>
               </div>
 
-              {/* Right Panel List */}
               <div className="flex-1 space-y-4">
-                 <div className="flex justify-between items-center mb-4">
+                 <div className="flex justify-between items-center mb-2">
                     <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-widest">{t.shotList} ({panels.length})</h3>
-                    <button onClick={handleAddPanel} className="text-xs bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg border border-white/5 transition-colors flex items-center gap-2"><Plus size={14}/> {t.addShot}</button>
+                    <button onClick={handleAddPanel} className={`text-xs ${buttonBg} px-3 py-1.5 rounded-full transition-colors flex items-center gap-2`}><Plus size={14}/> {t.addShot}</button>
                  </div>
                  
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                     <SortableContext items={panels.map(p => p.id)} strategy={rectSortingStrategy}>
-                        <div className="grid gap-3">
+                        <div className="grid gap-4">
                             {panels.map((panel, idx) => (
-                                <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} onDelete={handleDeletePanel} onUpdate={handleUpdatePanel} onOpenCharModal={handleOpenCharModal} t={t}/>
+                                <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} onDelete={handleDeletePanel} onUpdate={handleUpdatePanel} onOpenCharModal={handleOpenCharModal} onImageClick={setLightboxIndex} t={t} isDark={isDark}/>
                             ))}
                         </div>
                     </SortableContext>
                     <DragOverlay>
-                        {activePanel ? <PanelCard panel={activePanel} idx={panels.findIndex(p => p.id === activePanel.id)} step={step} isOverlay={true} t={t}/> : null}
+                        {activePanel ? <PanelCard panel={activePanel} idx={panels.findIndex(p => p.id === activePanel.id)} step={step} isOverlay={true} t={t} isDark={isDark}/> : null}
                     </DragOverlay>
                  </DndContext>
               </div>
            </div>
         )}
 
-        {/* === STEP 3: RENDER (Wide Grid) === */}
         {(step === 'generating' || step === 'done') && (
             <div className="max-w-[1920px] mx-auto animate-in fade-in space-y-8">
                  <div className="flex justify-between items-center px-4">
-                     <button onClick={() => setStep('review')} className="text-xs font-bold text-zinc-500 hover:text-white flex items-center gap-2 transition-colors"><ArrowLeft size={14}/> Back to Setup</button>
+                     <button onClick={() => setStep('review')} className="text-xs font-bold text-zinc-500 hover:text-blue-500 flex items-center gap-2 transition-colors"><ArrowLeft size={14}/> Back to Setup</button>
                      <div className="flex items-center gap-4">
-                         <div className="text-xs font-mono text-zinc-600">
-                             TOTAL: <span className="text-white">{panels.length}</span> SHOTS | RATIO: <span className="text-white">{aspectRatio}</span>
+                         <div className="text-xs font-mono text-zinc-500">
+                             TOTAL: <span className={isDark ? "text-white" : "text-black"}>{panels.length}</span> SHOTS | RATIO: <span className={isDark ? "text-white" : "text-black"}>{aspectRatio}</span>
                          </div>
                      </div>
                  </div>
 
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
                     <SortableContext items={panels.map(p => p.id)} strategy={rectSortingStrategy}>
-                        <div className={`grid gap-4 px-4 ${aspectRatio === '9:16' ? 'grid-cols-3 lg:grid-cols-5 xl:grid-cols-6' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
+                        <div className={`grid gap-6 px-4 ${aspectRatio === '9:16' ? 'grid-cols-3 lg:grid-cols-5 xl:grid-cols-6' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
                             {panels.map((panel, idx) => (
-                                <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} currentRatioClass={currentRatioClass} onRegenerate={handleGenerateSingleImage} t={t}/>
+                                <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} currentRatioClass={currentRatioClass} onRegenerate={handleGenerateSingleImage} onImageClick={setLightboxIndex} t={t} isDark={isDark}/>
                             ))}
                         </div>
                     </SortableContext>
                     <DragOverlay>
-                        {activePanel ? <PanelCard panel={activePanel} idx={panels.findIndex(p => p.id === activePanel.id)} step={step} currentRatioClass={currentRatioClass} isOverlay={true} t={t}/> : null}
+                        {activePanel ? <PanelCard panel={activePanel} idx={panels.findIndex(p => p.id === activePanel.id)} step={step} currentRatioClass={currentRatioClass} isOverlay={true} t={t} isDark={isDark}/> : null}
                     </DragOverlay>
                  </DndContext>
 
-                 {/* Bottom Delivery Bar */}
                  {step === 'done' && (
-                     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[#111]/90 backdrop-blur-xl border border-white/10 p-2 rounded-2xl flex gap-2 shadow-2xl animate-in slide-in-from-bottom-10 z-40">
-                         <button onClick={() => setShowExportModal(true)} disabled={isExporting} className="px-6 py-3 bg-white hover:bg-gray-200 text-black font-black rounded-xl text-xs flex items-center gap-2 transition-all">
+                     <div className={`fixed bottom-8 left-1/2 -translate-x-1/2 backdrop-blur-xl border p-2 rounded-full flex gap-2 shadow-2xl animate-in slide-in-from-bottom-10 z-40 ${isDark ? 'bg-[#111]/90 border-white/10' : 'bg-white/90 border-gray-200'}`}>
+                         <button onClick={() => setShowExportModal(true)} disabled={isExporting} className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-full text-xs flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20">
                              {isExporting ? <Loader2 className="animate-spin w-4 h-4"/> : <Download size={16}/>} {t.exportPdf}
                          </button>
-                         <div className="w-[1px] bg-white/10 mx-1"></div>
-                         <button onClick={handleExportZIP} disabled={isExporting} className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 transition-all">
+                         <div className={`w-[1px] mx-1 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}></div>
+                         <button onClick={handleExportZIP} disabled={isExporting} className={`px-6 py-3 font-bold rounded-full text-xs flex items-center gap-2 transition-all ${isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}>
                              {isExporting ? <Loader2 className="animate-spin w-4 h-4"/> : <Package size={16}/>} {t.exportZip}
                          </button>
-                         <button onClick={() => { setStep('input'); setScript(''); setPanels([]); }} className="px-4 py-3 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-xl transition-all">
+                         <button onClick={() => { setStep('input'); setScript(''); setPanels([]); }} className={`px-4 py-3 rounded-full transition-all ${isDark ? 'hover:bg-zinc-800 text-zinc-500' : 'hover:bg-gray-100 text-gray-500'}`}>
                              <RotateCcw size={16}/>
                          </button>
                      </div>
