@@ -94,3 +94,23 @@ AI Engine: Doubao-Seedream-4.5 (Vision) + Seedream-3.0 (T2I) + 智能提示词�
 SOP 导出优化：不仅导出图片，还要能一键生成包含“提示词 + 参数”的 PDF 文档（作为 9.9元 引流产品）。
 
 案例库页面：开发 /cases 路由，用于展示我们用 CineFlow 生成的精美视频/分镜案例。
+
+🚀 实时更新、 开发进度追踪 (Progress Tracker)
+
+✅ 已完成 (Completed)
+1. CineFlow 核心引擎 V3.1 (The "Hallucination Killer") [已验收]
+   - Subject Scrubbing: 正则逻辑升级，成功在特写镜头中物理移除人脸幻觉。
+   - Shot Definitions: 动态切换 OBJECT_SHOT_PROMPTS，非人脸物体特写不再出现五官。
+2. 角色注入系统 (Character Injection) [已验收]
+   - 数据库: negative_prompt 字段实装。
+   - 前端: 编辑器支持弹窗选择角色，自动挂载 Avatar 和 Prompt。
+   - 后端: 自动合并 "全局角色" 与 "分镜级角色"，负面词生效。
+3. 稳定性修复 [已验收]
+   - 修复 Supabase Client 多实例导致的内存泄漏与卡顿，改用 Singleton 模式。
+
+🚩 下一步计划 (Next Steps)
+[本周目标] 商业化闭环 (Monetization Setup)
+1. SOP 交付级导出 (The "9.9 RMB" Product):
+   - 升级现有的 PDF 导出功能。
+   - 不仅导出图片，要在每张图旁边附带：Prompt (中英对照)、Negative Prompt、Seed、参数配置。
+   - 打造一份可以直接卖给甲方的 "AI 导演执行手册"。
