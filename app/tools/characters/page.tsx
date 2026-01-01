@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { 
   User, Plus, Trash2, Save, Image as ImageIcon, 
-  Loader2, Upload, X, MoreHorizontal, LayoutGrid 
+  Loader2, Upload, MoreHorizontal, LayoutGrid, Ban 
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Image from 'next/image';
@@ -14,6 +14,7 @@ type Character = {
   id: string;
   name: string;
   description: string;
+  negative_prompt: string | null; // [New] 负面提示词
   avatar_url: string | null;
 }
 
@@ -36,22 +37,24 @@ export default function CharacterPage() {
   // 表单状态
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [isEditing, setIsEditing] = useState(false); // 新建或编辑模式
+  const [negPrompt, setNegPrompt] = useState(''); // [New] 负面提示词状态
 
   // 1. 初始化加载角色列表
   useEffect(() => {
     fetchCharacters();
   }, []);
 
-  // 2. 当选中角色变化时，加载它的图库
+  // 2. 当选中角色变化时，加载它的数据和图库
   useEffect(() => {
     if (selectedChar) {
       setName(selectedChar.name);
-      setDesc(selectedChar.description);
+      setDesc(selectedChar.description || '');
+      setNegPrompt(selectedChar.negative_prompt || ''); // [New] 填充
       fetchGallery(selectedChar.id);
     } else {
       setName('');
       setDesc('');
+      setNegPrompt('');
       setGallery([]);
     }
   }, [selectedChar]);
@@ -63,10 +66,10 @@ export default function CharacterPage() {
       .order('created_at', { ascending: false });
     if (error) toast.error('加载角色失败');
     else {
-      setCharacters(data || []);
+      setCharacters(data as Character[] || []);
       // 默认选中第一个
       if (!selectedChar && data && data.length > 0) {
-        setSelectedChar(data[0]);
+        setSelectedChar(data[0] as Character);
       }
     }
     setIsLoading(false);
@@ -91,36 +94,45 @@ export default function CharacterPage() {
 
     let newCharId = selectedChar?.id;
 
-    if (selectedChar) {
-      // 更新
-      const { error } = await supabase
-        .from('characters')
-        .update({ name, description: desc })
-        .eq('id', selectedChar.id);
-      if (error) throw error;
-      toast.success('更新成功');
-    } else {
-      // 新建
-      const { data, error } = await supabase
-        .from('characters')
-        .insert({
-          user_id: user.id,
-          name,
-          description: desc,
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      newCharId = data.id;
-      toast.success('角色创建成功');
-    }
+    try {
+      if (selectedChar) {
+        // 更新
+        const { error } = await supabase
+          .from('characters')
+          .update({ 
+            name, 
+            description: desc,
+            negative_prompt: negPrompt // [New] 保存字段
+          })
+          .eq('id', selectedChar.id);
+        if (error) throw error;
+        toast.success('更新成功');
+      } else {
+        // 新建
+        const { data, error } = await supabase
+          .from('characters')
+          .insert({
+            user_id: user.id,
+            name,
+            description: desc,
+            negative_prompt: negPrompt // [New] 保存字段
+          })
+          .select()
+          .single();
+        
+        if (error) throw error;
+        newCharId = data.id;
+        toast.success('角色创建成功');
+      }
 
-    await fetchCharacters();
-    // 如果是新建，自动选中它
-    if (newCharId && !selectedChar) {
-       const { data } = await supabase.from('characters').select('*').eq('id', newCharId).single();
-       if(data) setSelectedChar(data);
+      await fetchCharacters();
+      // 如果是新建，自动选中它
+      if (newCharId && !selectedChar) {
+         const { data } = await supabase.from('characters').select('*').eq('id', newCharId).single();
+         if(data) setSelectedChar(data as Character);
+      }
+    } catch (e: any) {
+      toast.error('保存失败: ' + e.message);
     }
   };
 
@@ -218,7 +230,7 @@ export default function CharacterPage() {
             <User className="text-yellow-500" /> 角色库
           </h2>
           <button 
-            onClick={() => { setSelectedChar(null); setName(''); setDesc(''); }}
+            onClick={() => { setSelectedChar(null); setName(''); setDesc(''); setNegPrompt(''); }}
             className="p-2 bg-yellow-500 text-black rounded-lg hover:bg-yellow-400 transition"
           >
             <Plus size={18} />
@@ -307,9 +319,11 @@ export default function CharacterPage() {
                   placeholder="例如：Jinx"
                 />
               </div>
+
+              {/* 正面描述 */}
               <div>
                 <label className="text-xs font-bold text-zinc-400 mb-1 block">
-                  外貌描述 (Prompt) <span className="text-red-500">*核心</span>
+                  外貌描述 (Prompt) <span className="text-yellow-500">*核心</span>
                 </label>
                 <textarea 
                   value={desc}
@@ -317,8 +331,22 @@ export default function CharacterPage() {
                   className="w-full h-32 bg-black/50 border border-white/10 rounded-lg p-3 text-sm focus:border-yellow-500 outline-none resize-none leading-relaxed"
                   placeholder="详细描述角色的外貌特征，例如：Blue hair, double ponytails, red eyes, cyberpunk jacket..."
                 />
-                <p className="text-[10px] text-zinc-500 mt-2">这段描述将直接注入到 AI 绘画引擎中，越详细一致性越高。</p>
               </div>
+
+              {/* [New] 负面提示词 */}
+              <div>
+                <label className="text-xs font-bold text-red-400 mb-1 flex items-center gap-1">
+                  <Ban size={12} /> 负面提示词 (Negative Prompt)
+                </label>
+                <textarea 
+                  value={negPrompt}
+                  onChange={(e) => setNegPrompt(e.target.value)}
+                  className="w-full h-20 bg-black/50 border border-red-900/30 focus:border-red-500/50 rounded-lg p-3 text-sm outline-none resize-none leading-relaxed text-zinc-300 placeholder-zinc-600"
+                  placeholder="想避免的特征，例如：glasses, hat, ugly, beard..."
+                />
+                <p className="text-[10px] text-zinc-500 mt-2">这些特征将在生成时被强制移除。</p>
+              </div>
+
               <button 
                 onClick={handleSaveCharacter}
                 className="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition flex items-center justify-center gap-2"
