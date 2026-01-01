@@ -1,5 +1,5 @@
 🛰️ AI.Tube 项目 Master 开发规划与真理文档
-(2025-12-30 23:59 封板归档版)
+(2026-01-01 23:59 封板归档版)
 
 🛠️ 一、 协作铁律 (The Iron Rules)
 单文件修改：必须由用户发送完整代码 -> AI 确认后回复修改后的完整代码。
@@ -98,23 +98,59 @@ SOP 导出优化：不仅导出图片，还要能一键生成包含“提示词 
 🚀 实时更新、 开发进度追踪 (Progress Tracker)
 🚀 六、 开发进度追踪 (Progress Tracker) - V3.1 商业版
 
-✅ 已完成 (Completed)
-1. 核心引擎 (Engine Layer):
-   - CineFlow V3.1 "Hallucination Killer" (幻觉清洗 + 动态景别定义).
-   - 角色注入系统 (Character Injection) + 负面提示词挂载.
-   - 后端 Mock Mode (省钱开发模式).
+🚀 六、 开发进度追踪 (Progress Tracker) - V5.3 进化版
+✅ 今日完成工作 (Milestones - 2026/01/01)
+1. 核心引擎升级：Draft Mode 物理去色 (The "Grayscale Lock")
 
-2. 交互与界面 (UI/UX Layer):
-   - 全新三步走工作流: Script (极简) -> Setup (控制台) -> Render (宽屏).
-   - i18n 架构: 支持中/英文一键切换.
-   - 响应式 Grid: 宽屏模式下支持 5-6 列分镜展示.
+痛点：线稿模式下，换人（Casting）会导致人物带颜色，且背景被角色描述污染（如城堡变城市）。
 
-3. 商业化交付 (Delivery Layer):
-   - SOP PDF 导出: 工业级排版 (封面/页眉/参数表/SOP指令), 支持元数据录入.
-   - Asset ZIP 导出: 结构化工程包 (assets文件夹 + script.txt + project.json).
-   - 中文字体集成: 解决 PDF 中文乱码问题.
+解决方案：
 
-🚩 下一步计划 (Next Steps)
-[待定] 运营与变现验证
-   - 实测 PDF 交付物对目标客户（如广告公司、短视频编导）的吸引力.
-   - 考虑是否增加 "导入 Project.json" 功能，实现项目存档恢复.
+物理去色：在 repaint.ts 中引入 Sharp，强制将输入的原图和参考图转为灰度 (Grayscale)，从物理层面切断色度信息。
+
+语义清洗：引入 cleanCharacterDescription 函数，在 Draft 模式下自动剔除 Prompt 中的颜色词（Blue, Pink）和环境词（City, Neon），实现“语义隔离”。
+
+成果：线稿换人现在完美保持黑白素描风格，背景零污染。
+
+2. UI/UX 终极精修 (The "Polish" Update)
+
+Step 2 剧本卡片回归：
+
+布局：回归宽幅长方形大卡片，大屏下一行两列 (grid-cols-2)，彻底解决信息拥挤问题。
+
+交互：新增“删除模式” (Minus 按钮触发)，平时隐藏删除键，防止误触。
+
+排版：信息层级重构 -> 文字描述置顶，Prompt 默认折叠，参数栏置底并图标化。
+
+首页 (Landing) 重构：
+
+视觉：主标题字号加大加粗 (text-6xl)，整体内容下移 (pt-40) 增加呼吸感。
+
+细节：按钮样式分级（浅色模式改为白底加边框），调整“上传脚本”与“自动画幅”的按钮顺序。
+
+大图模式 (Lightbox) 2.0：
+
+沉浸式体验：回归全屏沉浸布局，移除侧边栏，信息悬浮于底部。
+
+交互增强：支持键盘左右键 (←/→) 切换图片，Enter/Esc 关闭。
+
+角色替换：按钮固定于右下角，弹窗采用 iOS 风格毛玻璃效果。
+
+🚩 下一步核心攻坚 (V6.0 Roadmap)
+1. 画质革命 (Visual Revolution)
+
+目标：解决“换人不像”、“画风崩坏”的问题。
+
+行动：接入 InstantID (via Replicate) 模型。这是目前最强的零样本 ID 保持技术，实现“一张头像，完美复刻脸型”。
+
+2. 魔法编辑 (Magic Edit)
+
+目标：解决“站位无法调整”、“多余物体无法删除”的问题。
+
+行动：在大图模式开发 Inpaint (局部重绘) 和 Pose Control (姿态控制) 功能。
+
+3. 导演辅助 (Director Mode)
+
+目标：解决 Step 2 文字脚本太干瘪的问题。
+
+行动：集成 Unsplash/Pexels API，根据脚本关键词自动推荐参考图。
