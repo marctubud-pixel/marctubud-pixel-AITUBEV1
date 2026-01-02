@@ -23,7 +23,7 @@ const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations
 const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
 const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
 
-// --- [常量配置保持不变] ---
+// --- [常量配置] ---
 
 const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME WIDE SHOT": "(tiny figure:1.5), (massive environment:2.0), wide angle lens, aerial view, <subject> only occupies 5% of frame, (no close up:2.0), (no portrait:2.0)",
@@ -61,7 +61,9 @@ const STYLE_PRESETS: Record<string, string> = {
   "noir": "film noir, black and white photography, dramatic shadows, high contrast, grainy",
   "pixar": "pixar 3d animation style, disney, unreal engine 5 render, cute, 3d character",
   "watercolor": "watercolor painting, artistic, soft edges, dreamy atmosphere",
-  "ink": "traditional chinese ink painting, sumi-e, artistic, brush strokes"
+  "ink": "traditional chinese ink painting, sumi-e, artistic, brush strokes",
+  // 🟢 兼容前端新加的 sketch value (如果前端传了 sketch 但这里没有 key，会 fallback 到 default)
+  "sketch": "rough storyboard sketch, architectural line drawing, black and white, ink lines, comic style, high contrast, professional composition"
 };
 
 const RATIO_MAP: Record<string, string> = {
@@ -136,7 +138,9 @@ export async function generateShotImage(
   sceneImageUrl?: string,
   useMock: boolean = false,
   cameraAngle: string = 'EYE LEVEL',
-  useInstantID: boolean = false
+  useInstantID: boolean = false,
+  // 🟢 新增参数：接收前端传来的动态负面提示词
+  negativePrompt?: string
 ) {
   try {
     console.log(`\n========== [DEBUG: Shot ${shotId}] ==========`);
@@ -169,6 +173,9 @@ export async function generateShotImage(
       }
     }
 
+    // 🟢 处理额外的负面提示词 (前端传入 + 角色自带)
+    const extraNegative = negativePrompt ? `, ${negativePrompt}` : "";
+
     // =================================================================
     // 🟢 V6.0 分支: InstantID (zsxkib 版本)
     // =================================================================
@@ -184,8 +191,12 @@ export async function generateShotImage(
         // 2. 准备 Prompt
         const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
         const angleWeightPrompt = ANGLE_PROMPTS[cameraAngle.toUpperCase()] || ANGLE_PROMPTS["EYE LEVEL"];
-        const instantIdPrompt = `${shotWeightPrompt}, ${angleWeightPrompt}, ${actionPrompt}, ${STYLE_PRESETS[stylePreset]}, masterpiece, best quality, 8k`;
-        const instantIdNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}`;
+        const currentStylePrompt = STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic'];
+        
+        const instantIdPrompt = `${shotWeightPrompt}, ${angleWeightPrompt}, ${actionPrompt}, ${currentStylePrompt}, masterpiece, best quality, 8k`;
+        
+        // 🟢 将前端传入的 extraNegative 拼接到这里
+        const instantIdNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}${extraNegative}`;
 
         // 3. 调用 Replicate (修正参数名: face_image -> image)
         const output = await replicate.run(
@@ -248,13 +259,16 @@ export async function generateShotImage(
     
     let finalPrompt = "";
     let finalNegative = "";
+    const currentStylePrompt = STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic'];
 
     if (isDraftMode) {
         finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}`;
-        finalNegative = `${DRAFT_NEGATIVE_BASE}`;
+        // 🟢 线稿模式也加入 extraNegative，因为我们在前端定义了针对线稿的 "hand holding pencil" 等过滤词
+        finalNegative = `${DRAFT_NEGATIVE_BASE}${extraNegative}`;
     } else {
-        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} (${STYLE_PRESETS[stylePreset]}:1.4)`; 
-        finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode)}${characterNegative}`;
+        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} (${currentStylePrompt}:1.4)`; 
+        // 🟢 正常模式拼接所有负面词
+        finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode)}${characterNegative}${extraNegative}`;
     }
 
     const payload: any = {
