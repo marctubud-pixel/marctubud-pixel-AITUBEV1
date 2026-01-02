@@ -7,11 +7,12 @@ import {
   User, X, Check, Globe, Settings, ChevronRight, LayoutGrid, Palette,
   Sun, Moon, Paperclip, Ratio, Send, ChevronDown, MoreHorizontal, Flame, CloudRain, Zap as ZapIcon,
   Maximize2, Eye, ArrowUp, ArrowDown, Repeat, Wand2, ChevronLeft, Camera, GripHorizontal, ChevronUp, Upload,
-  Users // 🟢 [V6.0] 新增图标
+  Users, ChevronsUpDown 
 } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
 import Image from 'next/image';
+// 请确保以下 actions 路径正确，或使用您的 mock 数据
 import { analyzeScript } from '@/app/actions/director';
 import { generateShotImage } from '@/app/actions/generate';
 import { repaintShotWithCharacter } from '@/app/actions/repaint'; 
@@ -42,105 +43,172 @@ import { CSS } from '@dnd-kit/utilities';
 
 // --- i18n ---
 const TRANSLATIONS = {
-  zh: {
-    title: "智能分镜生成",
-    subtitle: "不断进化的AI分镜生成器",
-    back: "返回",
-    step1: "剧本",
-    step2: "筹备",
-    step3: "渲染",
-    mockOn: "Mock On",
-    mockOff: "Real API",
-    manageChars: "角色库",
-    scriptPlaceholder: "输入你的故事，或上传剧本文件...\n(例如：赛博朋克侦探走入雨巷，发现了一枚发光的芯片...)",
-    analyzeBtn: "拆解剧本",
-    analyzing: "AI 思考中...",
-    uploadScript: "上传脚本",
-    autoRatio: "自动画幅",
-    panelCount: "分镜数量",
-    ratio: "画幅",
-    auto: "自动",
-    style: "美术风格",
-    scene: "场景/环境",
-    character: "核心角色",
-    atmosphere: "氛围基调",
-    draftMode: "线稿模式 (Draft)",
-    renderMode: "精绘模式 (Render)",
-    startGen: "生成分镜",
-    shotList: "分镜表",
-    addShot: "加镜头",
-    delShot: "删镜头",
-    delShotTip: "点击卡片删除",
-    exportZip: "素材包",
-    exportPdf: "通告单",
-    newProject: "新项目",
-    waiting: "待生成...",
-    delivery: "交付",
-    exportTitle: "导出设置",
-    exportDesc: "填写项目元数据以生成商业级 PDF",
-    projName: "项目名称",
-    author: "导演/作者",
-    notes: "备注信息",
-    confirmExport: "确认导出",
-    injectChar: "角色替换",
-    charLib: "角色库",
-    noChar: "不指定",
-    cameraAngle: "拍摄角度",
-    casting: "选角替换",
-    shotPrefix: "分镜",
-    shotSize: "景别",
-    angle: "角度"
-  },
-  en: {
-    title: "CineFlow Evolution",
-    subtitle: "AI-Powered Storyboard Generation V5.3",
-    back: "Back",
-    step1: "Script",
-    step2: "Setup",
-    step3: "Render",
-    mockOn: "Mock On",
-    mockOff: "Real API",
-    manageChars: "Library",
-    scriptPlaceholder: "Tell your story...",
-    analyzeBtn: "Analyze",
-    analyzing: "Thinking...",
-    uploadScript: "Upload Script",
-    autoRatio: "Auto Ratio",
-    panelCount: "Shots",
-    ratio: "Ratio",
-    auto: "Auto",
-    style: "Art Style",
-    scene: "Scene",
-    character: "Hero",
-    atmosphere: "Vibe",
-    draftMode: "Draft Mode",
-    renderMode: "Render Mode",
-    startGen: "Generate",
-    shotList: "Shots",
-    addShot: "Add Shot",
-    delShot: "Delete",
-    delShotTip: "Select to delete",
-    exportZip: "Assets",
-    exportPdf: "PDF (SOP)",
-    newProject: "New",
-    waiting: "Waiting...",
-    delivery: "Delivery",
-    exportTitle: "Export Settings",
-    exportDesc: "Metadata for professional PDF delivery",
-    projName: "Project Name",
-    author: "Director",
-    notes: "Notes",
-    confirmExport: "Export",
-    injectChar: "Inject Character",
-    charLib: "Character Library",
-    noChar: "None",
-    cameraAngle: "Angle",
-    casting: "Casting",
-    shotPrefix: "Shot",
-    shotSize: "Shot Size",
-    angle: "Angle"
-  }
-};
+    zh: {
+      title: "智能分镜生成",
+      subtitle: "不断进化的AI分镜生成器",
+      back: "返回",
+      step1: "剧本",
+      step2: "筹备",
+      step3: "渲染",
+      mockOn: "Mock On",
+      mockOff: "Real API",
+      manageChars: "角色库",
+      scriptPlaceholder: "输入你的故事 (Enter 拆解，Shift+Enter 换行)...\n例如：赛博朋克侦探走入雨巷...",
+      analyzeBtn: "拆解剧本",
+      analyzing: "AI 思考中...",
+      uploadScript: "上传脚本",
+      autoRatio: "自动画幅",
+      panelCount: "分镜数量",
+      ratio: "画幅",
+      auto: "自动",
+      style: "美术风格",
+      scene: "场景/环境",
+      character: "核心角色",
+      atmosphere: "氛围基调",
+      atmospherePlaceholder: "例如：阴郁，赛博朋克...",
+      draftMode: "线稿模式 (Draft)",
+      renderMode: "精绘模式 (Render)",
+      startGen: "生成分镜",
+      shotList: "分镜表",
+      addShot: "加镜头",
+      delShot: "删镜头",
+      delShotTip: "点击卡片删除",
+      exportZip: "素材包",
+      exportPdf: "通告单",
+      newProject: "新项目",
+      waiting: "待生成...",
+      delivery: "交付",
+      exportTitle: "导出设置",
+      exportDesc: "填写项目元数据以生成商业级 PDF",
+      projName: "项目名称",
+      author: "导演/作者",
+      notes: "备注信息",
+      confirmExport: "确认导出",
+      injectChar: "角色替换",
+      charLib: "角色库",
+      noChar: "不指定",
+      cameraAngle: "拍摄角度",
+      casting: "选角替换",
+      shotPrefix: "分镜", 
+      shotSize: "景别",   
+      angle: "角度",      
+      selectStyle: "选择风格",
+      uploadRef: "上传参考图",
+      moreAtmosphere: "更多氛围",
+      instantID: "角色一致性 (InstantID)",
+      instantIDDesc: "保持面部高度一致",
+      prompt: "AI 提示词",
+      loading: "加载中...",
+      globalSettings: "全局设置",
+      scenePlaceholder: "描述场景与环境...",
+      roleFallback: "角色",
+      shotFallback: "景别",
+      backToSetup: "返回编辑",
+      genComplete: "批量生成已完成",
+      total: "总计",
+      shotUnit: "个分镜",
+      ratioLabel: "画幅",
+      // 🟢 新增：渲染中的中文提示
+      rendering: "AI 正在绘图...", 
+      apply: "应用",
+      onlyThisShot: "仅当前分镜",
+      applyAll: "全部应用", 
+      clickToUpload: "点击上传参考图",
+      linked: "已关联角色",
+      batchLinked: "已批量关联角色",
+      projNamePlaceholder: "输入项目名称",
+      authorPlaceholder: "输入导演姓名",
+      notesPlaceholder: "输入备注信息...",
+      cancel: "取消",
+      zipping: "正在打包素材...",
+      zipDownloaded: "素材包已下载",
+      defaultFileName: "未命名分镜项目",
+      pdfExported: "PDF 通告单已导出"
+
+    },
+    en: {
+      title: "CineFlow Evolution",
+      subtitle: "AI-Powered Storyboard Generation V6.0",
+      back: "Back",
+      step1: "Script",
+      step2: "Setup",
+      step3: "Render",
+      mockOn: "Mock On",
+      mockOff: "Real API",
+      manageChars: "Library",
+      scriptPlaceholder: "Tell your story (Enter to Analyze, Shift+Enter for new line)...",
+      analyzeBtn: "Analyze",
+      analyzing: "Thinking...",
+      uploadScript: "Upload Script",
+      autoRatio: "Auto Ratio", 
+      panelCount: "Shots",
+      ratio: "Ratio",
+      auto: "Auto",
+      style: "Art Style",
+      scene: "Scene",
+      character: "Hero",
+      atmosphere: "Vibe",
+      atmospherePlaceholder: "e.g., Moody, Cyberpunk...",
+      draftMode: "Draft Mode",
+      renderMode: "Render Mode",
+      startGen: "Generate",
+      shotList: "Shots",
+      addShot: "Add Shot",
+      delShot: "Delete",
+      delShotTip: "Select to delete",
+      exportZip: "Assets",
+      exportPdf: "PDF (SOP)",
+      newProject: "New",
+      waiting: "Waiting...",
+      delivery: "Delivery",
+      exportTitle: "Export Settings",
+      exportDesc: "Metadata for professional PDF delivery",
+      projName: "Project Name",
+      author: "Director",
+      notes: "Notes",
+      confirmExport: "Export",
+      injectChar: "Inject Character",
+      charLib: "Character Library",
+      noChar: "None",
+      cameraAngle: "Angle",
+      casting: "Casting",
+      shotPrefix: "SHOT",
+      shotSize: "Shot Size",
+      angle: "Angle",
+      selectStyle: "Select Style",
+      uploadRef: "Upload Ref",
+      moreAtmosphere: "More Vibe",
+      instantID: "InstantID Lock",
+      instantIDDesc: "High Fidelity Face Keeping",
+      prompt: "AI Prompt",
+      loading: "Loading...",
+      globalSettings: "Global Settings",
+      scenePlaceholder: "Describe environment...",
+      roleFallback: "Role",
+      shotFallback: "Shot",
+      backToSetup: "Back to Setup",
+      genComplete: "Batch generation complete",
+      total: "TOTAL",
+      shotUnit: "SHOTS",
+      ratioLabel: "RATIO",
+      // 🟢 新增
+      rendering: "Rendering...",
+      apply: "Apply",
+      onlyThisShot: "Only This Shot",
+      applyAll: "Apply All",
+      clickToUpload: "Click to upload reference image",
+      linked: "Linked",
+      batchLinked: "Batch Linked",
+      projNamePlaceholder: "Project Name",
+      authorPlaceholder: "Director Name",
+      notesPlaceholder: "Notes...",
+      cancel: "Cancel",
+      zipping: "Zipping assets...",
+      zipDownloaded: "ZIP Downloaded",
+      defaultFileName: "Untitled_Project",
+      pdfExported: "PDF Exported"
+    }
+  };
 
 type StoryboardPanel = {
   id: string;
@@ -151,7 +219,6 @@ type StoryboardPanel = {
   prompt: string;      
   imageUrl?: string;   
   isLoading: boolean;
-  // 🟢 [V6.0] 升级为数组以支持双人
   characterIds?: string[];
   characterAvatars?: string[];
 }
@@ -198,12 +265,12 @@ const STYLE_OPTIONS = [
 ];
 
 const ATMOSPHERE_TAGS = [
-    { label: "🔥 Cinematic", val: "cinematic lighting, dramatic atmosphere" },
-    { label: "🌑 Dark/Noir", val: "dark, moody, low key lighting, noir" },
-    { label: "☀️ Warm/Happy", val: "warm lighting, sunny, happy atmosphere" },
-    { label: "🤖 Cyberpunk", val: "neon lights, futuristic, cyberpunk atmosphere" },
-    { label: "👻 Horror", val: "foggy, scary, horror atmosphere, dim light" },
-    { label: "🌫️ Dreamy", val: "soft focus, dreamy, ethereal, glow" },
+    { label: "电影感", val: "cinematic lighting, dramatic atmosphere" },
+    { label: "黑暗/黑色电影", val: "dark, moody, low key lighting, noir" },
+    { label: "温暖/治愈", val: "warm lighting, sunny, happy atmosphere" },
+    { label: "赛博朋克", val: "neon lights, futuristic, cyberpunk atmosphere" },
+    { label: "恐怖/惊悚", val: "foggy, scary, horror atmosphere, dim light" },
+    { label: "梦幻/唯美", val: "soft focus, dreamy, ethereal, glow" },
 ];
 
 const ASPECT_RATIOS = [
@@ -214,45 +281,49 @@ const ASPECT_RATIOS = [
   { value: "9:16", label: "9:16 Vertical", cssClass: "aspect-[9/16]" },
 ];
 
-// --- PanelCard Component (V6.0 重构版) ---
+// --- PanelCard Component (V6.0 更新版) ---
 const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, onOpenCharModal, onImageClick, step, isOverlay, t, isDark, isDeleteMode, ...props }, ref) => {
     const cardBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
     const cardBorder = isDark ? "border-zinc-800" : "border-gray-200";
     const textColor = isDark ? "text-gray-200" : "text-gray-800";
     const subTextColor = isDark ? "text-zinc-500" : "text-gray-400";
-    // 胶囊按钮背景
     const pillBg = isDark ? "bg-zinc-800 hover:bg-zinc-700" : "bg-gray-100 hover:bg-gray-200";
     
     const [isPromptOpen, setIsPromptOpen] = useState(false);
+    // 🟢 Step 3 折叠状态
+    const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
-    // 🟢 状态 1：已生成图片 (Step 3) - 极简海报风格 (需求点2)
+    const shotTitle = `${t.shotPrefix} ${String(idx + 1).padStart(2, '0')}`;
+
+    // 🟢 状态 1：已生成图片 (Step 3) - 参考图1布局
+    // 🟢 状态 1：已生成图片 (Step 3)
     if (step === 'generating' || step === 'done') {
         const baseClass = isOverlay ? "ring-2 ring-blue-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" : `${cardBorder} hover:shadow-md transition-shadow duration-300`;
 
         return (
-            <div ref={ref} {...props} className={`flex flex-col gap-2 group`}>
-                <div className={`relative rounded-xl overflow-hidden border ${baseClass} ${cardBg} ${currentRatioClass} cursor-pointer`} onClick={() => onImageClick(idx)}>
+            <div ref={ref} {...props} className={`flex flex-col gap-2 group relative`}>
+                <div className={`relative rounded-xl overflow-hidden border ${baseClass} ${cardBg} ${currentRatioClass} cursor-pointer group`} onClick={() => onImageClick(idx)}>
                     
-                    {/* 分镜号 - 大标题覆盖 (需求点2) */}
-                    <div className="absolute top-0 left-0 w-full p-4 bg-gradient-to-b from-black/80 to-transparent z-20 pointer-events-none">
-                        <span className="text-white font-black text-2xl font-mono tracking-tighter drop-shadow-md">
-                            SHOT {String(idx + 1).padStart(2, '0')}
+                    {/* 🟢 修改：左上角分镜号 - 字号缩小 (text-sm -> text-xs)，内边距减小 */}
+                    <div className="absolute top-2 left-2 z-20">
+                        <span className="text-white font-bold text-xs font-mono tracking-tight drop-shadow-md bg-black/40 backdrop-blur-sm px-1.5 py-0.5 rounded">
+                            {shotTitle}
                         </span>
                     </div>
 
-                    {/* 重新生成按钮 (Hover显示) */}
+                    {/* 重新生成按钮 */}
                     <button 
                         onClick={(e) => { e.stopPropagation(); onRegenerate(panel.id); }}
-                        className="absolute top-4 right-4 z-30 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-600 backdrop-blur-sm"
-                        title="Regenerate this shot"
+                        className="absolute top-2 right-2 z-30 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-600 backdrop-blur-sm"
                     >
-                        <RefreshCw size={16}/>
+                        <RefreshCw size={12}/>
                     </button>
 
-                    <div className="w-full h-full">
+                    <div className="w-full h-full relative">
                         {panel.isLoading ? (
                             <div className={`absolute inset-0 flex flex-col items-center justify-center backdrop-blur-sm z-10 ${isDark ? 'bg-zinc-900/50' : 'bg-white/50'}`}>
                                 <Loader2 className="animate-spin w-8 h-8 text-blue-500" />
+                                <span className="text-[10px] text-zinc-500 mt-2 font-bold">{t.loading}</span>
                             </div>
                         ) : panel.imageUrl ? (
                             <img src={panel.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" draggable={false} />
@@ -261,41 +332,57 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                                 <ImageIcon size={24} className={`${isDark ? 'text-zinc-700' : 'text-gray-300'} mb-2`}/><span className="text-[10px] text-zinc-500">{t.waiting}</span>
                             </div>
                         )}
+                        
+                        {/* 底部文字覆盖 */}
+                        <div 
+                            className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-auto transition-all duration-300"
+                            onClick={(e) => { e.stopPropagation(); }}
+                        >
+                             <div className="p-3 pb-3 flex items-end gap-2">
+                                 <p 
+                                    className={`text-white/90 text-xs leading-relaxed font-medium transition-all ${isDescriptionExpanded ? '' : 'line-clamp-1'} flex-1`}
+                                    title={panel.description}
+                                 >
+                                    {panel.description}
+                                 </p>
+                                 {panel.description.length > 15 && (
+                                     <button 
+                                        onClick={(e) => { e.stopPropagation(); setIsDescriptionExpanded(!isDescriptionExpanded); }}
+                                        className="text-white/60 hover:text-white transition-colors shrink-0 p-1"
+                                     >
+                                        {isDescriptionExpanded ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                                     </button>
+                                 )}
+                             </div>
+                        </div>
                     </div>
                 </div>
-                
-                {/* 底部文字 (沉底显示，仅保留描述) */}
-                <p className={`text-xs ${subTextColor} leading-relaxed line-clamp-3 px-1 font-medium`}>
-                    {panel.description}
-                </p>
             </div>
         );
     }
 
-    // 🟢 状态 2：编辑模式 (Step 2) - 垂直布局 (需求点1)
+    // 🟢 状态 2：编辑模式 (Step 2)
     const baseClass = isOverlay ? "ring-2 ring-blue-500 shadow-2xl scale-105 opacity-90 cursor-grabbing z-50" : `${cardBorder} hover:border-blue-500/50 transition-all shadow-sm`;
     
     return (
         <div ref={ref} {...props} className={`${cardBg} p-5 rounded-2xl border ${baseClass} flex flex-col gap-4 relative group min-h-[240px]`}>
             
-            {/* 顶部 Header: 分镜号 + 拖拽/删除 */}
             <div className="flex items-center justify-between">
                  <div className="flex items-center gap-3">
-                     <span className={`font-black text-xl ${isDark ? 'text-white' : 'text-black'} font-mono`}>SHOT {String(idx + 1).padStart(2, '0')}</span>
+                     <span className={`font-black text-xl ${isDark ? 'text-white' : 'text-black'} font-mono`}>{shotTitle}</span>
                  </div>
                  <div className="flex items-center gap-2">
                      <div className={`p-1.5 cursor-grab active:cursor-grabbing ${subTextColor} hover:text-blue-500 rounded-lg transition-colors`}>
                          <GripHorizontal size={18} />
                      </div>
                      {isDeleteMode && (
-                         <button onClick={() => onDelete(panel.id)} className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all">
-                             <Trash2 size={16} />
-                         </button>
-                     )}
+                         <button onClick={() => onDelete(panel.id)} className="p-1.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all cursor-pointer">
+                         <Trash2 size={16} />
+                     </button>
+                )}
                  </div>
             </div>
 
-            {/* 中间：文本编辑区 */}
             <div className="flex-1 space-y-3">
                 <textarea 
                   value={panel.description} 
@@ -306,13 +393,12 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
 
                 <div className={`w-full h-[1px] ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}></div>
 
-                {/* Prompt 折叠 */}
                 <div>
                      <button 
                         onClick={() => setIsPromptOpen(!isPromptOpen)}
-                        className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${subTextColor} hover:text-blue-500 mb-1`}
+                        className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${subTextColor} hover:text-blue-500 mb-1 cursor-pointer`}
                      >
-                         {isPromptOpen ? <ChevronUp size={10}/> : <ChevronDown size={10}/>} <span>AI Prompt</span>
+                         {isPromptOpen ? <ChevronUp size={10}/> : <ChevronDown size={10}/>} <span>{t.prompt}</span>
                      </button>
                      
                      {isPromptOpen && (
@@ -326,14 +412,14 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                 </div>
             </div>
 
-            {/* 底部：控制胶囊 (需求点1: 景别/角度/角色) */}
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-                {/* 1. Shot Size */}
+                {/* 1. Shot Size (景别) */}
                 <div className="relative group shrink-0">
                     <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all`}>
                         <Eye size={14} className="text-zinc-500"/>
                         <span className={`text-xs font-bold ${textColor} uppercase whitespace-nowrap`}>
-                            {CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0] || "Shot"}
+                            {/* 🟢 修改逻辑：如果没有匹配到值，显示 t.shotFallback (即 "景别") */}
+                            {CINEMATIC_SHOTS.find(s => s.value === panel.shotType)?.label.split('(')[0] || t.shotFallback}
                         </span>
                     </div>
                     <select 
@@ -345,12 +431,13 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                     </select>
                 </div>
 
-                {/* 2. Angle */}
+                {/* 2. Angle (角度) - 顺便检查一下 */}
                 <div className="relative group shrink-0">
                     <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all`}>
                         <Camera size={14} className="text-zinc-500"/>
                         <span className={`text-xs font-bold ${textColor} uppercase whitespace-nowrap`}>
-                            {CAMERA_ANGLES.find(a => a.value === panel.cameraAngle)?.label.split(' ')[1] || "Angle"}
+                            {/* 🟢 确保这里也使用了 split 处理中文显示 */}
+                            {CAMERA_ANGLES.find(a => a.value === panel.cameraAngle)?.label.split(' ')[1] || t.angle}
                         </span>
                     </div>
                     <select 
@@ -362,7 +449,7 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                     </select>
                 </div>
 
-                {/* 3. Character (双人支持) */}
+                {/* 3. Character (角色) */}
                 <button 
                     onClick={() => onOpenCharModal(panel.id)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all shrink-0`}
@@ -376,7 +463,8 @@ const PanelCard = React.forwardRef<HTMLDivElement, any>(({ panel, idx, currentRa
                                 </div>
                             ))
                         ) : (
-                            <span className={`text-xs font-bold ${textColor} whitespace-nowrap`}>Role</span>
+                            // 🟢 修改逻辑：显示 t.roleFallback (即 "角色")
+                            <span className={`text-xs font-bold ${textColor} whitespace-nowrap`}>{t.roleFallback}</span>
                         )}
                     </div>
                 </button>
@@ -394,6 +482,27 @@ function SortablePanelItem(props: any) {
 
 // --- Main Page ---
 export default function StoryboardPage() {
+  // 🟢 辅助函数：智能匹配景别中文 (解决 LONG SHOT 显示英文的问题)
+  // 🟢 辅助函数：智能匹配景别中文 (纯中文模式，不带英文括号)
+  const getLocalizedShotLabel = (shotType: string) => {
+    if (!shotType) return t.shotFallback;
+    const upper = shotType.toUpperCase();
+    
+    // 远景/全景系列
+    if (upper.includes("EXTREME LONG") || upper.includes("EXTREME WIDE")) return "大远景";
+    if (upper.includes("LONG") || upper.includes("WIDE")) return "全景";
+    
+    // 中景/全身系列
+    if (upper.includes("FULL")) return "全身";
+    if (upper.includes("MEDIUM") || upper.includes("MID")) return "中景";
+    
+    // 特写系列
+    if (upper.includes("EXTREME CLOSE")) return "大特写";
+    if (upper.includes("CLOSE")) return "特写";
+    
+    // 默认返回 (如果没有匹配到，尝试去掉下划线并转大写，或者直接显示原值)
+    return shotType.replace(/_/g, ' ').toUpperCase();
+};
   const [theme, setTheme] = useState<Theme>('light');
   const isDark = theme === 'dark';
   const [lang, setLang] = useState<Lang>('zh');
@@ -420,6 +529,12 @@ export default function StoryboardPage() {
   const [isDeleteMode, setIsDeleteMode] = useState(false); 
   const [useInstantID, setUseInstantID] = useState(false); 
   
+  // Modals & Popups
+  const [showStyleModal, setShowStyleModal] = useState(false);
+  const [showAtmosphereModal, setShowAtmosphereModal] = useState(false);
+  const [uploadedStyleRef, setUploadedStyleRef] = useState<string | null>(null);
+  const styleUploadRef = useRef<HTMLInputElement>(null);
+
   // Lightbox & Casting State
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [isRepainting, setIsRepainting] = useState(false);
@@ -431,7 +546,6 @@ export default function StoryboardPage() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportMeta, setExportMeta] = useState<ExportMeta>({ projectName: '', author: '', notes: '' });
 
-  // 🟢 [V6.0] 批量替换相关状态
   const [batchTargetChar, setBatchTargetChar] = useState<Character | null>(null);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
@@ -465,22 +579,25 @@ export default function StoryboardPage() {
     fetchCharacters();
   }, []);
 
-  // Keyboard Navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (lightboxIndex === null) return;
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') setLightboxIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') setLightboxIndex(prev => (prev !== null && prev < panels.length - 1 ? prev + 1 : prev));
-      if (e.key === 'Escape' || e.key === 'Enter') setLightboxIndex(null); 
+      if (e.key === 'ArrowLeft') setLightboxIndex(prev => (prev !== null && prev > 0 ? prev - 1 : prev));
+      if (e.key === 'ArrowRight') setLightboxIndex(prev => (prev !== null && prev < panels.length - 1 ? prev + 1 : prev));
+      if (e.key === 'Escape') setLightboxIndex(null); 
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lightboxIndex, panels.length]);
 
   const handleScriptKeyDown = (e: React.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-          if (!isAnalyzing && script.trim()) {
-              handleAnalyzeScript();
+      if (e.key === 'Enter') {
+          if (e.shiftKey) {
+          } else {
+              e.preventDefault();
+              if (!isAnalyzing && script.trim()) {
+                  handleAnalyzeScript();
+              }
           }
       }
   };
@@ -511,7 +628,7 @@ export default function StoryboardPage() {
         shotType: p.shotType || 'MID SHOT',
         cameraAngle: 'EYE LEVEL', 
         environment: '', prompt: p.visualPrompt, isLoading: false, 
-        characterIds: [], characterAvatars: [] // 初始化数组
+        characterIds: [], characterAvatars: []
       }));
       setPanels(initialPanels);
       setStep('review'); 
@@ -532,67 +649,83 @@ export default function StoryboardPage() {
     }]);
   };
 
-  // 🟢 [V6.0] 核心角色绑定逻辑 (支持双人 + 批量)
-  const handleOpenCharModal = (panelId: string) => { setActivePanelIdForModal(panelId); setShowCharModal(true); }
-  
-  // 1. 预选角色
-  const handlePreSelectCharacter = (char: Character) => {
-      setBatchTargetChar(char);
-      setShowCharModal(false); // 关闭库
-      setShowCastingModal(false); // 如果是Lightbox也关闭
-      setShowBatchConfirm(true); // 打开批量确认弹窗
-  };
-
-  // 2. 执行注入
-  const executeCharacterInject = (isBatch: boolean) => {
-      if (!activePanelIdForModal || !batchTargetChar) return;
-      
-      const targetPanel = panels.find(p => p.id === activePanelIdForModal);
-      if (!targetPanel) return;
-
-      const keywords = batchTargetChar.description.split(' ').filter(w => w.length > 3).slice(0, 3);
-      const matchKeyword = batchTargetChar.name.toLowerCase();
-
-      setPanels(current => current.map(p => {
-          // 判定逻辑: 是当前卡片 OR (批量模式 AND 描述含关键词)
-          const shouldUpdate = p.id === activePanelIdForModal || (isBatch && (p.description.toLowerCase().includes(matchKeyword) || p.description.toLowerCase().includes('she') || p.description.toLowerCase().includes('he')));
-          
-          if (shouldUpdate) {
-              const currentIds = p.characterIds || [];
-              const currentAvatars = p.characterAvatars || [];
-              
-              let newIds = [...currentIds];
-              let newAvatars = [...currentAvatars];
-
-              // 双人逻辑：如果未包含，则追加。超过2人则FIFO替换。
-              if (!newIds.includes(batchTargetChar.id)) {
-                  if (newIds.length >= 2) {
-                      newIds.shift(); newAvatars.shift(); 
-                  }
-                  newIds.push(batchTargetChar.id);
-                  newAvatars.push(batchTargetChar.avatar_url || '');
-              }
-
-              // Update Prompt
-              const charPrompt = `(Character: ${batchTargetChar.name}, ${batchTargetChar.description})`;
-              const newPrompt = p.prompt.includes(batchTargetChar.name) ? p.prompt : `${p.prompt} ${charPrompt}`;
-
-              return { ...p, characterIds: newIds, characterAvatars: newAvatars, prompt: newPrompt };
-          }
-          return p;
-      }));
-
-      toast.success(isBatch ? `Batch applied ${batchTargetChar.name}` : `Linked ${batchTargetChar.name}`);
-      setShowBatchConfirm(false);
-      setBatchTargetChar(null);
-      
-      // 如果是在Lightbox里操作的，可能需要触发重绘，这里留个钩子
-      if (lightboxIndex !== null && panels[lightboxIndex].id === activePanelIdForModal) {
-          // Trigger repaint logic handled by effect
-      } else {
-          setActivePanelIdForModal(null);
+  const handleStyleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const fakeUrl = URL.createObjectURL(file);
+          setUploadedStyleRef(fakeUrl);
+          toast.success("Style Reference Uploaded");
       }
   };
+
+  const handleOpenCharModal = (panelId: string) => { setActivePanelIdForModal(panelId); setShowCharModal(true); }
+  
+  const handlePreSelectCharacter = (char: Character) => {
+      setBatchTargetChar(char);
+      setShowCharModal(false); 
+      setShowCastingModal(false); 
+      setShowBatchConfirm(true); 
+  };
+
+  // 🟢 修改：支持 Lightbox 下的即时重绘
+  const executeCharacterInject = async (isBatch: boolean) => {
+    if (!activePanelIdForModal || !batchTargetChar) return;
+    
+    const targetChar = batchTargetChar; // 1. 暂存角色对象，防止被清空
+    const targetPanelId = activePanelIdForModal;
+
+    const keywords = targetChar.description.split(' ').filter(w => w.length > 3).slice(0, 3);
+    const matchKeyword = targetChar.name.toLowerCase();
+
+    // 2. 更新前端面板数据 (头像、Prompt)
+    setPanels(current => current.map(p => {
+        // 判定逻辑: 是当前卡片 OR (批量模式 AND 描述含关键词)
+        const shouldUpdate = p.id === targetPanelId || (isBatch && (p.description.toLowerCase().includes(matchKeyword) || p.description.toLowerCase().includes('she') || p.description.toLowerCase().includes('he')));
+        
+        if (shouldUpdate) {
+            const currentIds = p.characterIds || [];
+            const currentAvatars = p.characterAvatars || [];
+            
+            let newIds = [...currentIds];
+            let newAvatars = [...currentAvatars];
+
+            // 双人逻辑：如果未包含，则追加。超过2人则FIFO替换。
+            if (!newIds.includes(targetChar.id)) {
+                if (newIds.length >= 2) {
+                    newIds.shift(); newAvatars.shift(); 
+                }
+                newIds.push(targetChar.id);
+                newAvatars.push(targetChar.avatar_url || '');
+            }
+
+            // Update Prompt
+            const charPrompt = `(Character: ${targetChar.name}, ${targetChar.description})`;
+            const newPrompt = p.prompt.includes(targetChar.name) ? p.prompt : `${p.prompt} ${charPrompt}`;
+
+            return { ...p, characterIds: newIds, characterAvatars: newAvatars, prompt: newPrompt };
+        }
+        return p;
+    }));
+
+    // 3. 提示成功
+    toast.success(isBatch ? `${t.batchLinked}: ${targetChar.name}` : `${t.linked}: ${targetChar.name}`);
+    
+    // 4. 关闭确认弹窗
+    setShowBatchConfirm(false);
+    
+    // 5. 🟢 关键修复：如果是 Lightbox 模式，立即触发重绘 (并将角色数据传过去)
+    // 注意：这里必须把 targetChar 传给 triggerRepaint，因为 state 马上要被清空了
+    if (lightboxIndex !== null && panels[lightboxIndex].id === targetPanelId) {
+        await triggerRepaint(targetChar); 
+    }
+
+    // 6. 清空临时状态
+    setBatchTargetChar(null);
+    // 如果不在 Lightbox 模式下，才清空选中ID；在 Lightbox 下保留 ID 以便支持连续操作
+    if (lightboxIndex === null) {
+        setActivePanelIdForModal(null);
+    }
+};
 
   const toggleAtmosphere = (tag: string) => {
       if (globalAtmosphere.includes(tag)) {
@@ -618,7 +751,6 @@ export default function StoryboardPage() {
     try {
         const tempShotId = `shot_${Date.now()}`; 
         const actionPrompt = buildActionPrompt(panel);
-        // 取第一个角色作为主ID
         const primaryCharId = panel.characterIds?.[0]; 
         
         const res = await generateShotImage(
@@ -637,13 +769,17 @@ export default function StoryboardPage() {
   const handleGenerateImages = async () => {
     setStep('generating');
     setIsDrawing(true);
+
+    // 🟢 修正：使用翻译变量 t.rendering (显示 "AI 正在绘图...")
+    // 之前可能是 toast.loading("Rendering ...") 硬编码导致的
+    const toastId = toast.loading(t.rendering);
+
     setPanels(current => current.map(p => ({ ...p, isLoading: true })));
     for (const panel of panels) {
         try {
             const tempShotId = `shot_${Date.now()}_${panel.id.substring(0, 4)}`;
             const actionPrompt = buildActionPrompt(panel);
             const primaryCharId = panel.characterIds?.[0];
-            
             const res = await generateShotImage(
               tempShotId, actionPrompt, tempProjectId, mode === 'draft', stylePreset, aspectRatio, panel.shotType, 
               primaryCharId, undefined, undefined, isMockMode,
@@ -662,32 +798,34 @@ export default function StoryboardPage() {
     }
     setIsDrawing(false);
     setStep('done');
-    toast.success('Batch generation complete');
+    toast.dismiss(toastId);
+    toast.success(t.genComplete);
   };
 
-  // Lightbox 替换入口
-  const handleCastingSelect = async (char: Character) => {
-    if (lightboxIndex === null) return;
-    const currentPanel = panels[lightboxIndex];
-    // 复用批量流程
-    setBatchTargetChar(char);
-    setActivePanelIdForModal(currentPanel.id);
-    setShowCastingModal(false);
-    setShowBatchConfirm(true); 
-  };
-
-  // 触发 Lightbox 重绘
-  const triggerRepaint = async () => {
-    if (lightboxIndex === null || !batchTargetChar) return;
-    const currentPanel = panels[lightboxIndex]; // State 已经被 executeCharacterInject 更新
+  // 🟢 修改：支持传入角色参数 (charOverride)，确保即使 State 被清空也能获取到角色
+  const triggerRepaint = async (charOverride?: Character) => {
+    // 1. 优先使用传入的参数，如果没传再看 State
+    const targetChar = charOverride || batchTargetChar; 
     
+    if (lightboxIndex === null || !targetChar) return;
+    
+    const currentPanel = panels[lightboxIndex]; 
     setIsRepainting(true);
+    
     try {
-        const actionPrompt = buildActionPrompt(currentPanel);
+        // 2. 重新构建 Prompt，确保包含新角色的描述
+        let actionPrompt = buildActionPrompt(currentPanel);
+        const charPrompt = `(Character: ${targetChar.name}, ${targetChar.description})`;
+        
+        // 防止重复添加
+        if (!actionPrompt.includes(targetChar.name)) {
+            actionPrompt = `${actionPrompt} ${charPrompt}`;
+        }
+
         const res = await repaintShotWithCharacter(
             currentPanel.id,
             currentPanel.imageUrl!,
-            batchTargetChar.id,
+            targetChar.id, // 使用 targetChar.id
             actionPrompt,
             tempProjectId,
             aspectRatio,
@@ -701,32 +839,30 @@ export default function StoryboardPage() {
         } else {
             throw new Error((res as any).message);
         }
-    } catch (e: any) {
-        toast.error(e.message);
-    } finally {
+    } catch (e: any) { 
+        toast.error(e.message); 
+    } finally { 
         setIsRepainting(false);
-        setActivePanelIdForModal(null);
+        // 🟢 注意：这里去掉了 setActivePanelIdForModal(null)，防止干扰 Lightbox 状态
     }
   };
-
-  // 监听 Batch 确认后触发重绘 (仅针对 Lightbox 场景)
-  useEffect(() => {
-      if (!showBatchConfirm && batchTargetChar === null && lightboxIndex !== null && activePanelIdForModal !== null) {
-          triggerRepaint();
-      }
-  }, [showBatchConfirm]);
 
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
-      toast.info('Generating PDF...');
+      toast.info(t.zipping.replace('素材', 'PDF')); // 复用一下提示，或者写死 "正在生成 PDF..."
+      
       const metaData = {
-          projectName: exportMeta.projectName || "Untitled Project",
+          projectName: exportMeta.projectName || t.defaultFileName, // 🟢 默认名也汉化
           author: exportMeta.author || "Director",
           notes: exportMeta.notes || ""
       };
+      
+      // 注意：这里我们将 panels 传进去，具体的汉化在 export-pdf.ts 内部处理
       await exportStoryboardPDF(metaData, panels);
-      toast.success('PDF Exported');
+      
+      // 🟢 修改：使用中文提示
+      toast.success(t.pdfExported);
       setShowExportModal(false);
     } catch (error: any) { console.error(error); toast.error('Export failed'); } finally { setIsExporting(false); }
   };
@@ -734,15 +870,27 @@ export default function StoryboardPage() {
   const handleExportZIP = async () => {
     setIsExporting(true);
     try {
-      toast.info('Zipping assets...');
-      await exportStoryboardZIP(script.slice(0, 20) || "CineFlow", panels);
-      toast.success('ZIP Downloaded');
-    } catch (error) { toast.error('Export failed'); } finally { setIsExporting(false); }
+      // 🟢 修改：提示语汉化
+      toast.info(t.zipping);
+      
+      // 🟢 修改：文件名汉化 (如果脚本为空，使用默认中文文件名)
+      const fileName = script.slice(0, 20).trim() || t.defaultFileName;
+      
+      await exportStoryboardZIP(fileName, panels);
+      
+      // 🟢 修改：成功提示汉化
+      toast.success(t.zipDownloaded);
+    } catch (error) { 
+      toast.error('Export failed'); 
+    } finally { 
+      setIsExporting(false); 
+    }
   };
 
   const currentRatioClass = ASPECT_RATIOS.find(r => r.value === aspectRatio)?.cssClass || "aspect-video";
   const activePanel = activeDragId ? panels.find(p => p.id === activeDragId) : null;
   const currentLightboxPanel = lightboxIndex !== null ? panels[lightboxIndex] : null;
+  
   const containerBg = isDark ? "bg-[#1e1e1e] border-zinc-800" : "bg-white border-white shadow-sm";
   const headerBg = isDark ? "bg-[#131314]/80 border-white/5" : "bg-[#f0f4f9]/80 border-black/5";
   const inputBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
@@ -752,47 +900,67 @@ export default function StoryboardPage() {
     <div className={`min-h-screen ${isDark ? "bg-[#131314] text-white" : "bg-[#f0f4f9] text-gray-900"} font-sans transition-colors duration-300`}>
       <Toaster position="top-center" richColors theme={isDark ? "dark" : "light"}/>
       
-      {/* 🟢 Lightbox Pro (需求3: 沉浸式 + 悬浮按钮) */}
+      {/* 🟢 Lightbox Pro (大图模式) - 修正：景别/角度数值中文化映射 */}
+      {/* 🟢 Lightbox Pro (大图模式) - 修正：移除图标，强制中文显示 */}
+      {/* 🟢 Lightbox Pro (大图模式) - 修正：智能景别翻译 */}
       {currentLightboxPanel && currentLightboxPanel.imageUrl && (
           <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
               
-              <button onClick={() => setLightboxIndex(null)} className="absolute top-6 right-6 text-white/50 hover:text-white p-2 z-50 bg-black/20 rounded-full backdrop-blur-md"><X size={28} /></button>
+              {/* 左上角：分镜号 */}
+              <div className="absolute top-6 left-6 z-50">
+                   <span className="text-white/60 font-black text-2xl font-mono tracking-widest bg-black/30 px-3 py-1 rounded-lg backdrop-blur-md">
+                       {t.shotPrefix} {String((lightboxIndex??0) + 1).padStart(2, '0')}
+                   </span>
+              </div>
+
+              <button onClick={() => setLightboxIndex(null)} className="absolute top-6 right-6 text-white/50 hover:text-white p-2 z-50 bg-black/20 rounded-full backdrop-blur-md cursor-pointer"><X size={28} /></button>
 
               <div className="relative w-full h-[85vh] flex items-center justify-center group">
-                  {/* 增加非空判断 && */}
-                  {lightboxIndex !== null && lightboxIndex > 0 && <button onClick={() => setLightboxIndex(lightboxIndex - 1)} className="absolute left-4 p-3 bg-black/20 hover:bg-black/50 text-white rounded-full transition-all backdrop-blur-sm"><ArrowLeft /></button>}
-
-                  {/* 增加非空判断 && */}
-                  {lightboxIndex !== null && lightboxIndex < panels.length - 1 && <button onClick={() => setLightboxIndex(lightboxIndex + 1)} className="absolute right-4 p-3 bg-black/20 hover:bg-black/50 text-white rounded-full transition-all backdrop-blur-sm"><ChevronRight /></button>}
+                  <button onClick={() => setLightboxIndex(lightboxIndex !== null && lightboxIndex > 0 ? lightboxIndex - 1 : lightboxIndex)} className="absolute left-4 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md z-40"><ChevronLeft size={32}/></button>
+                  <button onClick={() => setLightboxIndex(lightboxIndex !== null && lightboxIndex < panels.length - 1 ? lightboxIndex + 1 : lightboxIndex)} className="absolute right-4 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md z-40"><ChevronRight size={32}/></button>
 
                   <img src={currentLightboxPanel.imageUrl} className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" />
                   
-                  {isRepainting && <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60"><Loader2 className="animate-spin text-white w-12 h-12"/><span className="text-white font-bold mt-4">REPAINTING...</span></div>}
+                  {isRepainting && <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60"><Loader2 className="animate-spin text-white w-12 h-12"/><span className="text-white font-bold mt-4">{t.loading}</span></div>}
 
-                  {/* 底部信息栏 (需求3布局) */}
-                  <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex justify-between items-end rounded-b-lg">
-                      <div className="max-w-3xl space-y-2">
-                          <div className="flex gap-2 text-blue-400 font-mono text-xs font-bold tracking-wider">
-                              <span>#{currentLightboxPanel.shotType}</span>
-                              <span>#{currentLightboxPanel.cameraAngle}</span>
+                  {/* 底部信息栏 */}
+                  <div className="absolute bottom-0 left-0 right-0 w-full p-10 pt-32 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex justify-between items-end pointer-events-none rounded-b-lg">
+                      <div className="max-w-4xl space-y-3 pointer-events-auto">
+                          
+                          {/* 1. 描述文字 */}
+                          <p className="text-white/95 text-xl font-medium leading-relaxed drop-shadow-md">
+                              {currentLightboxPanel.description}
+                          </p>
+                          
+                          {/* 2. 标签信息：使用 getLocalizedShotLabel 函数 */}
+                          <div className="flex gap-4 text-white/60 font-mono text-xs font-bold tracking-wider uppercase">
+                              <span>
+                                  {/* 🟢 使用新函数翻译景别 */}
+                                  {t.shotSize}: {getLocalizedShotLabel(currentLightboxPanel.shotType)}
+                              </span>
+                              <span className="opacity-30">|</span>
+                              <span>
+                                  {/* 🟢 翻译角度并去图标 */}
+                                  {t.angle}: {CAMERA_ANGLES.find(a => a.value === currentLightboxPanel.cameraAngle)?.label.replace('👁️', '').split('(')[0].trim() || currentLightboxPanel.cameraAngle}
+                              </span>
                           </div>
-                          <p className="text-zinc-100 text-lg font-medium leading-relaxed drop-shadow-md">{currentLightboxPanel.description}</p>
                       </div>
                       
-                      {/* 🟢 悬浮替换按钮 */}
-                      <button 
-                        onClick={() => setShowCastingModal(true)} 
-                        disabled={isRepainting}
-                        className="px-6 py-3 bg-white text-black hover:bg-zinc-200 font-bold rounded-full flex items-center gap-2 shadow-xl hover:scale-105 transition-all"
-                      >
-                          <User size={18} /> 角色替换
-                      </button>
+                      <div className="pointer-events-auto">
+                          <button 
+                            onClick={() => { setActivePanelIdForModal(currentLightboxPanel.id); setShowCastingModal(true); }} 
+                            disabled={isRepainting}
+                            className="px-6 py-3 bg-white text-black hover:bg-zinc-200 font-bold rounded-full flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer"
+                          >
+                              <User size={18} /> {t.casting}
+                          </button>
+                      </div>
                   </div>
               </div>
           </div>
       )}
 
-      {/* 🟢 Batch Confirm Modal */}
+      {/* 🟢 Batch Confirm Modal (修复：完整内容 + 交互优化) */}
       {showBatchConfirm && batchTargetChar && (
           <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in">
               <div className={`w-[400px] ${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} border rounded-3xl p-6 shadow-2xl space-y-6`}>
@@ -801,29 +969,123 @@ export default function StoryboardPage() {
                           <img src={batchTargetChar.avatar_url || ''} className="w-full h-full object-cover"/>
                       </div>
                       <div>
-                          <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-black'}`}>Apply {batchTargetChar.name}?</h3>
-                          <p className="text-sm text-zinc-500 mt-1">Do you want to replace this character in ALL similar shots?</p>
+                          <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-black'}`}>
+                              {t.apply} {batchTargetChar.name}?
+                          </h3>
                       </div>
                   </div>
                   <div className="flex gap-3">
-                      <button onClick={() => executeCharacterInject(false)} className={`flex-1 py-3 rounded-xl font-bold text-sm ${isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'}`}>Only This Shot</button>
-                      <button onClick={() => executeCharacterInject(true)} className="flex-1 py-3 rounded-xl font-bold bg-blue-600 hover:bg-blue-500 text-white text-sm flex items-center justify-center gap-2"><Sparkles size={16}/> Apply All</button>
+                      <button 
+                          onClick={() => executeCharacterInject(false)} 
+                          // 按钮：小手光标
+                          className={`flex-1 py-3 rounded-xl font-bold text-sm cursor-pointer ${isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'}`}
+                      >
+                          {t.onlyThisShot}
+                      </button>
+                      <button 
+                          onClick={() => executeCharacterInject(true)} 
+                          // 按钮：小手光标
+                          className="flex-1 py-3 rounded-xl font-bold bg-blue-600 hover:bg-blue-500 text-white text-sm flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                          <Sparkles size={16}/> {t.applyAll}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+      {/* 🟢 风格选择弹窗 (修复：完整内容 + 交互优化) */}
+      {showStyleModal && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowStyleModal(false)}>
+              <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[85vh]`} onClick={e => e.stopPropagation()}>
+                  <div className="p-5 border-b border-white/10 flex justify-between items-center">
+                      <h3 className={`font-bold text-lg ${isDark ? 'text-white' : 'text-black'}`}>{t.selectStyle}</h3>
+                      {/* 关闭按钮：默认箭头 */}
+                      <button onClick={() => setShowStyleModal(false)}><X size={20}/></button>
+                  </div>
+                  
+                  <div className="p-6 overflow-y-auto custom-scrollbar space-y-8">
+                       {/* 上传区域：小手光标 */}
+                       <div className="space-y-3">
+                           <label className="text-xs font-bold text-zinc-500 uppercase">{t.uploadRef}</label>
+                           <div className={`border-2 border-dashed ${isDark ? 'border-zinc-700 hover:border-zinc-500' : 'border-gray-200 hover:border-gray-400'} rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-colors relative`}>
+                               <input type="file" ref={styleUploadRef} onChange={handleStyleUpload} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*"/>
+                               {uploadedStyleRef ? (
+                                   <div className="relative w-full h-32 rounded-lg overflow-hidden">
+                                       <img src={uploadedStyleRef} className="w-full h-full object-cover" />
+                                       <div className="absolute inset-0 bg-black/20 flex items-center justify-center"><Check className="text-white drop-shadow-md" size={32}/></div>
+                                   </div>
+                               ) : (
+                                   <>
+                                    <Upload className="text-zinc-500 mb-2"/>
+                                    <span className="text-xs text-zinc-500 font-medium">{t.clickToUpload}</span>
+                                   </>
+                               )}
+                           </div>
+                       </div>
+
+                       {/* 风格列表：小手光标 */}
+                       <div className="space-y-3">
+                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {STYLE_OPTIONS.map(opt => (
+                                    <button 
+                                        key={opt.value} 
+                                        onClick={() => { setStylePreset(opt.value); setShowStyleModal(false); }} 
+                                        className={`relative aspect-square rounded-xl border transition-all overflow-hidden group text-left p-3 flex flex-col justify-end cursor-pointer ${stylePreset === opt.value ? 'border-blue-500 ring-2 ring-blue-500' : `${isDark ? 'border-zinc-800' : 'border-gray-200'}`}`}
+                                    >
+                                        <div className={`absolute inset-0 bg-gradient-to-br ${opt.color} opacity-40 group-hover:opacity-60 transition-opacity`}></div>
+                                        <div className="relative z-10">
+                                            <span className={`text-xs font-bold block ${isDark || stylePreset === opt.value ? 'text-white' : 'text-gray-800'}`}>{opt.label}</span>
+                                        </div>
+                                    </button>
+                                ))}
+                           </div>
+                       </div>
                   </div>
               </div>
           </div>
       )}
 
-      {/* Character Library Modal */}
+      {/* 🟢 氛围选择弹窗 (修复：完整内容 + 交互优化) */}
+      {showAtmosphereModal && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setShowAtmosphereModal(false)}>
+            <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-[300px] rounded-2xl border overflow-hidden shadow-2xl flex flex-col`} onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b border-white/10 flex justify-between items-center">
+                    <h3 className={`font-bold text-sm ${isDark ? 'text-white' : 'text-black'}`}>{t.moreAtmosphere}</h3>
+                    <button onClick={() => setShowAtmosphereModal(false)}><X size={16}/></button>
+                </div>
+                <div className="p-2 overflow-y-auto custom-scrollbar max-h-[300px]">
+                    {ATMOSPHERE_TAGS.map(tag => (
+                        <button 
+                            key={tag.label} 
+                            onClick={() => toggleAtmosphere(tag.val)} 
+                            className={`w-full text-left px-3 py-3 text-xs font-bold border-b border-white/5 flex justify-between items-center cursor-pointer ${isDark ? 'text-zinc-300 hover:bg-zinc-800' : 'text-gray-700 hover:bg-gray-50'}`}
+                        >
+                            <span>{tag.label}</span>
+                            {globalAtmosphere.includes(tag.val) && <Check size={14} className="text-blue-500"/>}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* 🟢 Character Library Modal (修复：完整内容 + 交互优化) */}
       {(showCharModal || showCastingModal) && (
           <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => {setShowCharModal(false); setShowCastingModal(false);}}>
               <div className={`${isDark ? 'bg-[#1e1e1e] border-zinc-700' : 'bg-white border-gray-200'} w-full max-w-2xl rounded-3xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]`} onClick={e => e.stopPropagation()}>
                   <div className="p-5 border-b border-white/10 flex justify-between items-center">
-                      <h3 className={`font-bold flex items-center gap-2 text-lg ${isDark ? 'text-white' : 'text-black'}`}><Users size={20} className="text-blue-500"/> Select Character</h3>
+                      <h3 className={`font-bold flex items-center gap-2 text-lg ${isDark ? 'text-white' : 'text-black'}`}><Users size={20} className="text-blue-500"/> {t.charLib}</h3>
+                      {/* 关闭按钮：默认箭头 */}
                       <button onClick={() => {setShowCharModal(false); setShowCastingModal(false);}}><X size={20}/></button>
                   </div>
                   <div className="p-6 grid grid-cols-4 gap-4 overflow-y-auto custom-scrollbar">
                       {characters.map(char => (
-                          <button key={char.id} onClick={() => handlePreSelectCharacter(char)} className="group relative aspect-square rounded-2xl border border-white/10 overflow-hidden hover:border-blue-500 transition-all shadow-md">
+                          <button 
+                              key={char.id} 
+                              onClick={() => handlePreSelectCharacter(char)} 
+                              // 内容卡片：小手光标
+                              className="group relative aspect-square rounded-2xl border border-white/10 overflow-hidden hover:border-blue-500 transition-all shadow-md cursor-pointer"
+                          >
                               {char.avatar_url ? <Image src={char.avatar_url} alt={char.name} fill className="object-cover group-hover:scale-110 transition-transform duration-500"/> : <User className="text-zinc-700 m-auto"/>}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
                                   <span className="text-xs font-bold text-white truncate">{char.name}</span>
@@ -846,20 +1108,41 @@ export default function StoryboardPage() {
               <div className="space-y-4">
                  <div>
                     <label className="text-xs font-bold text-zinc-500 mb-1 block">{t.projName}</label>
-                    <input value={exportMeta.projectName} onChange={e => setExportMeta({...exportMeta, projectName: e.target.value})} className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none`} placeholder="Project Name" />
+                    {/* 🟢 修改：Placeholder 汉化 */}
+                    <input 
+                        value={exportMeta.projectName} 
+                        onChange={e => setExportMeta({...exportMeta, projectName: e.target.value})} 
+                        className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none`} 
+                        placeholder={t.projNamePlaceholder} 
+                    />
                  </div>
                  <div>
                     <label className="text-xs font-bold text-zinc-500 mb-1 block">{t.author}</label>
-                    <input value={exportMeta.author} onChange={e => setExportMeta({...exportMeta, author: e.target.value})} className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none`} placeholder="Director Name" />
+                    {/* 🟢 修改：Placeholder 汉化 */}
+                    <input 
+                        value={exportMeta.author} 
+                        onChange={e => setExportMeta({...exportMeta, author: e.target.value})} 
+                        className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none`} 
+                        placeholder={t.authorPlaceholder} 
+                    />
                  </div>
                  <div>
                     <label className="text-xs font-bold text-zinc-500 mb-1 block">{t.notes}</label>
-                    <textarea value={exportMeta.notes} onChange={e => setExportMeta({...exportMeta, notes: e.target.value})} className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none h-20 resize-none`} placeholder="Notes..." />
+                    {/* 🟢 修改：Placeholder 汉化 */}
+                    <textarea 
+                        value={exportMeta.notes} 
+                        onChange={e => setExportMeta({...exportMeta, notes: e.target.value})} 
+                        className={`w-full ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} rounded-xl p-3 text-sm focus:border-blue-500 outline-none h-20 resize-none`} 
+                        placeholder={t.notesPlaceholder} 
+                    />
                  </div>
               </div>
               <div className="flex gap-3 pt-2">
-                 <button onClick={() => setShowExportModal(false)} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors ${buttonBg}`}>Cancel</button>
-                 <button onClick={handleExportPDF} disabled={isExporting} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2">
+                 {/* 🟢 修改：按钮文字汉化 + 确保 cursor-pointer */}
+                 <button onClick={() => setShowExportModal(false)} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer ${buttonBg}`}>
+                    {t.cancel}
+                 </button>
+                 <button onClick={handleExportPDF} disabled={isExporting} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer">
                     {isExporting ? <Loader2 className="animate-spin w-4 h-4"/> : <Check size={16}/>} {t.confirmExport}
                  </button>
               </div>
@@ -869,6 +1152,9 @@ export default function StoryboardPage() {
 
       {/* Header */}
       <div className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b h-16 flex items-center justify-between px-6 transition-colors duration-300 ${headerBg}`}>
+        {/* 🟢 主页Header去横线：headerBg本身带border，如果是主页特有需求，这里是全局的。
+            但根据需求 "首页标题上方的横线"，指的可能是输入框容器的顶部边框。
+            这里是全局Header，保持原样。 */}
         <div className="flex items-center gap-6">
            <Link href="/tools" className="flex items-center text-zinc-500 hover:text-blue-500 transition-colors text-sm font-bold gap-2"><ArrowLeft size={18}/> {t.back}</Link>
            <div className="flex items-center gap-2 text-xs font-bold">
@@ -885,39 +1171,44 @@ export default function StoryboardPage() {
                 <Zap size={10} fill={isMockMode ? "currentColor" : "none"}/> {isMockMode ? t.mockOn : t.mockOff}
              </button>
              <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')} className={`p-2 rounded-full transition-colors cursor-pointer ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
-                {isDark ? <Moon size={18}/> : <Sun size={18}/>}
+                    {isDark ? <Moon size={18}/> : <Sun size={18}/>}
              </button>
              <button onClick={() => setLang(l => l === 'zh' ? 'en' : 'zh')} className={`p-2 rounded-full transition-colors cursor-pointer ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
-                <Globe size={18}/>
+                    <Globe size={18}/>
              </button>
-             <Link href="/tools/characters" className={`p-2 rounded-full transition-colors ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
-                <User size={18}/>
+             <Link href="/tools/characters" className={`p-2 rounded-full transition-colors cursor-pointer ${isDark ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-gray-100 text-zinc-600'}`}>
+                    <User size={18}/>
              </Link>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="pt-40 pb-12 px-6 min-h-screen">
-        {step === 'input' && (
+      {step === 'input' && (
+           // 🟢 修改1：移除了 '-mt-20'，让整体内容垂直居中（即下移回正中位置）
            <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 flex flex-col items-center justify-center min-h-[70vh]">
-              <div className="w-full space-y-6">
-                 <div className="text-center space-y-1 mb-8">
-                    <h1 className={`text-6xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              
+              {/* 🟢 修改2：宽度改为 'w-full max-w-2xl' (比之前的 70% 更窄更精致) */}
+              <div className="w-full max-w-2xl space-y-8">
+                 
+                 <div className="text-center space-y-4 mb-10">
+                    {/* 🟢 修改3：字号改为 'text-5xl' (原为 6xl)，稍微缩小 */}
+                    <h1 className={`text-5xl font-black tracking-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
                         {t.title}
                     </h1>
                     <p className="text-zinc-500 text-sm mt-2">{t.subtitle}</p>
                  </div>
                  
-                 <div className={`relative w-full rounded-3xl shadow-xl transition-all duration-300 ${isDark ? 'bg-[#1e1e1e] shadow-black/50 border border-zinc-800' : 'bg-white shadow-blue-900/5 border border-white'}`}>
+                 <div className={`relative w-full rounded-3xl shadow-2xl transition-all duration-300 overflow-hidden ${isDark ? 'bg-[#1e1e1e] shadow-black/50' : 'bg-white shadow-blue-900/10'}`}>
                     <textarea 
                       className={`w-full min-h-[240px] p-8 text-lg bg-transparent border-none resize-none outline-none leading-relaxed custom-scrollbar ${isDark ? 'text-gray-200 placeholder-zinc-600' : 'text-gray-800 placeholder-gray-300'}`}
                       placeholder={t.scriptPlaceholder}
                       value={script} 
                       onChange={(e) => setScript(e.target.value)}
-                      onKeyDown={handleScriptKeyDown}
+                      onKeyDown={handleScriptKeyDown} 
                     />
                     
-                    <div className="flex items-center justify-between p-4 pl-6">
+                    <div className="flex items-center justify-between p-4 pl-6 bg-gradient-to-t from-black/5 to-transparent">
                         <div className="flex items-center gap-2">
                              <div className="relative">
                                  <input type="file" ref={fileInputRef} onChange={handleScriptFileUpload} className="hidden" accept=".txt,.md,.docx,.xlsx" />
@@ -978,57 +1269,67 @@ export default function StoryboardPage() {
         )}
 
         {step === 'review' && (
-           <div className="max-w-[1600px] mx-auto flex gap-8 animate-in fade-in">
+           <div className="max-w-[1600px] mx-auto flex gap-8 items-start animate-in fade-in">
               <div className="w-[340px] shrink-0 space-y-6 h-fit sticky top-24">
                  <div className={`${containerBg} p-5 rounded-3xl space-y-6`}>
-                    <h2 className="text-xs font-black text-zinc-400 flex items-center gap-2 uppercase tracking-widest"><Settings size={12}/> Global Settings</h2>
+                 <h2 className="text-xs font-black text-zinc-400 flex items-center gap-2 uppercase tracking-widest"><Settings size={12}/> {t.globalSettings}</h2>
                     
                     <div className={`flex ${isDark ? 'bg-black' : 'bg-gray-100'} p-1 rounded-xl mb-4`}>
-                        <button onClick={() => setMode('draft')} className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold transition-all ${mode === 'draft' ? 'bg-white text-black shadow-sm' : 'text-zinc-500'}`}>{t.draftMode}</button>
-                        <button onClick={() => setMode('render')} className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold transition-all ${mode === 'render' ? 'bg-blue-600 text-white shadow-sm' : 'text-zinc-500'}`}>{t.renderMode}</button>
+                        <button onClick={() => setMode('draft')} className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${mode === 'draft' ? 'bg-white text-black shadow-sm' : 'text-zinc-500'}`}>{t.draftMode}</button>
+                        <button onClick={() => setMode('render')} className={`flex-1 py-2.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${mode === 'render' ? 'bg-blue-600 text-white shadow-sm' : 'text-zinc-500'}`}>{t.renderMode}</button>
                     </div>
 
                     {mode === 'render' && (
-                        <>
-                            <div className={`mb-4 p-3 rounded-xl border flex items-center justify-between transition-all ${useInstantID ? 'bg-blue-500/10 border-blue-500' : `${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}`}>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase">{t.atmosphere}</label>
+                                <div className={`flex items-center gap-1`}>
+                                    <div className={`flex-1 flex items-center gap-2 ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} p-2.5 rounded-xl focus-within:border-blue-500 transition-colors`}>
+                                        <Sparkles size={14} className="text-purple-500 shrink-0"/>
+                                        <input value={globalAtmosphere} onChange={(e) => setGlobalAtmosphere(e.target.value)} placeholder={t.atmospherePlaceholder} className={`bg-transparent text-xs ${isDark ? 'text-white' : 'text-gray-900'} placeholder-zinc-500 outline-none w-full font-bold`}/>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowAtmosphereModal(!showAtmosphereModal)}
+                                        // 🟢 修改：添加 cursor-pointer
+                                        className={`p-3 rounded-xl border cursor-pointer ${isDark ? 'border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                                    >
+                                        <ChevronsUpDown size={16} className="text-zinc-500"/>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-zinc-500 uppercase">{t.style}</label>
+                                <button 
+                                    onClick={() => setShowStyleModal(true)}
+                                    // 🟢 修改：添加 cursor-pointer
+                                    className={`w-full text-left p-3 rounded-xl border flex items-center justify-between cursor-pointer ${isDark ? 'border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-8 h-8 rounded bg-gradient-to-br ${STYLE_OPTIONS.find(s => s.value === stylePreset)?.color || 'from-gray-500 to-black'}`}></div>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold">{STYLE_OPTIONS.find(s => s.value === stylePreset)?.label || t.selectStyle}</span>
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={14} className="text-zinc-500"/>
+                                </button>
+                            </div>
+
+                            <div className={`p-3 rounded-xl border flex items-center justify-between transition-all ${useInstantID ? 'bg-blue-500/10 border-blue-500' : `${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}`}>
                                 <div className="flex flex-col">
                                     <span className={`text-[10px] font-bold flex items-center gap-1 ${useInstantID ? 'text-blue-500' : 'text-zinc-500'}`}>
-                                        <User size={12} /> InstantID Character Lock
+                                        <User size={12} /> {t.instantID}
                                     </span>
-                                    <span className="text-[8px] opacity-60">High Fidelity Face Keeping (Slower)</span>
+                                    <span className="text-[8px] opacity-60">{t.instantIDDesc}</span>
                                 </div>
                                 <button 
                                     onClick={() => setUseInstantID(!useInstantID)}
-                                    className={`w-10 h-5 rounded-full transition-colors relative ${useInstantID ? 'bg-blue-500' : 'bg-zinc-600'}`}
+                                    className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${useInstantID ? 'bg-blue-500' : 'bg-zinc-600'}`}
                                 >
                                     <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform duration-200 ${useInstantID ? 'translate-x-5' : ''}`} />
                                 </button>
                             </div>
-                        
-                            <div className="space-y-3 animate-in fade-in slide-in-from-left-2">
-                            <label className="text-[10px] font-bold text-zinc-500 uppercase flex items-center gap-2">
-                                {t.atmosphere} <span className="text-[9px] bg-blue-500/10 text-blue-500 px-1.5 py-0.5 rounded">Multi-Select</span>
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                                {ATMOSPHERE_TAGS.map(tag => {
-                                    const isActive = globalAtmosphere.includes(tag.val);
-                                    return (
-                                        <button 
-                                            key={tag.label} 
-                                            onClick={() => toggleAtmosphere(tag.val)}
-                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${isActive ? 'bg-blue-500 border-blue-500 text-white' : `${isDark ? 'border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800' : 'border-gray-200 bg-white hover:bg-gray-50'} text-zinc-500`}`}
-                                        >
-                                            {tag.label}
-                                        </button>
-                                    )
-                                })}
-                            </div>
-                            <div className={`flex items-center gap-2 ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} p-2.5 rounded-xl focus-within:border-blue-500 transition-colors`}>
-                                <Sparkles size={14} className="text-purple-500 shrink-0"/>
-                                <input value={globalAtmosphere} onChange={(e) => setGlobalAtmosphere(e.target.value)} placeholder="Or type custom atmosphere..." className={`bg-transparent text-xs ${isDark ? 'text-white' : 'text-gray-900'} placeholder-zinc-500 outline-none w-full font-bold`}/>
-                            </div>
-                            </div>
-                        </>
+                        </div>
                     )}
 
                     {mode === 'draft' && (
@@ -1036,34 +1337,13 @@ export default function StoryboardPage() {
                            <label className="text-[10px] font-bold text-zinc-500 uppercase">{t.scene}</label>
                            <div className={`flex items-center gap-2 ${inputBg} border ${isDark ? 'border-zinc-700' : 'border-gray-200'} p-2.5 rounded-xl focus-within:border-blue-500 transition-colors`}>
                               <LayoutGrid size={14} className="text-green-500 shrink-0"/>
-                              <input value={sceneDescription} onChange={(e) => setSceneDescription(e.target.value)} placeholder="Describe environment..." className={`bg-transparent text-xs ${isDark ? 'text-white' : 'text-gray-900'} placeholder-zinc-500 outline-none w-full font-bold`}/>
+                              <input 
+    value={sceneDescription} 
+    onChange={(e) => setSceneDescription(e.target.value)} 
+    placeholder={t.scenePlaceholder} // 🟢 使用翻译变量
+    className={`bg-transparent text-xs ${isDark ? 'text-white' : 'text-gray-900'} placeholder-zinc-500 outline-none w-full font-bold`}
+/>
                            </div>
-                        </div>
-                    )}
-                    
-                    {/* Style Section (Only for Render) */}
-                    {mode === 'render' && (
-                        <div className={`pt-4 border-t ${isDark ? 'border-white/5' : 'border-gray-100'} space-y-4 animate-in slide-in-from-right-2`}>
-                            <label className="text-[10px] font-bold text-zinc-500 mb-2 block uppercase">{t.style}</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {STYLE_OPTIONS.map(opt => {
-                                    const isActive = stylePreset === opt.value;
-                                    return (
-                                        <button 
-                                            key={opt.value} 
-                                            onClick={() => setStylePreset(opt.value)} 
-                                            className={`relative h-14 rounded-xl border transition-all overflow-hidden group text-left p-2 flex flex-col justify-end ${isActive ? 'border-blue-500 ring-1 ring-blue-500' : `${isDark ? 'border-zinc-800' : 'border-gray-200'}`}`}
-                                        >
-                                            <div className={`absolute inset-0 bg-gradient-to-br ${opt.color} opacity-40 group-hover:opacity-60 transition-opacity`}></div>
-                                            <div className="relative z-10">
-                                                <span className={`text-[10px] font-bold block ${isDark || isActive ? 'text-white' : 'text-gray-800'}`}>{opt.label}</span>
-                                                <span className="text-[8px] text-white/70 uppercase tracking-wider">{opt.sub}</span>
-                                            </div>
-                                            {isActive && <div className="absolute top-1 right-1 bg-blue-500 text-white p-0.5 rounded-full"><Check size={8}/></div>}
-                                        </button>
-                                    )
-                                })}
-                            </div>
                         </div>
                     )}
 
@@ -1088,9 +1368,7 @@ export default function StoryboardPage() {
                  </div>
                  
                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-                    {/* 🟢 Key Fix: Pass isDeleteMode */}
                     <SortableContext items={panels.map(p => p.id)} strategy={rectSortingStrategy}>
-                        {/* 🟢 布局回归：一行两个大卡片 */}
                         <div className={`grid gap-4 grid-cols-1 xl:grid-cols-2`}>
                             {panels.map((panel, idx) => (
                                 <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} onDelete={handleDeletePanel} onUpdate={handleUpdatePanel} onOpenCharModal={handleOpenCharModal} onImageClick={setLightboxIndex} t={t} isDark={isDark} currentRatioClass={currentRatioClass} isDeleteMode={isDeleteMode}/>
@@ -1105,13 +1383,18 @@ export default function StoryboardPage() {
            </div>
         )}
 
-        {(step === 'generating' || step === 'done') && (
+{(step === 'generating' || step === 'done') && (
             <div className="max-w-[1920px] mx-auto animate-in fade-in space-y-8">
                  <div className="flex justify-between items-center px-4">
-                     <button onClick={() => setStep('review')} className="text-xs font-bold text-zinc-500 hover:text-blue-500 flex items-center gap-2 transition-colors cursor-pointer"><ArrowLeft size={14}/> Back to Setup</button>
+                     {/* 🟢 修改 1：返回按钮文字 */}
+                     <button onClick={() => setStep('review')} className="text-xs font-bold text-zinc-500 hover:text-blue-500 flex items-center gap-2 transition-colors cursor-pointer">
+                        <ArrowLeft size={14}/> {t.backToSetup}
+                     </button>
+                     
                      <div className="flex items-center gap-4">
-                         <div className="text-xs font-mono text-zinc-500">
-                             TOTAL: <span className={isDark ? "text-white" : "text-black"}>{panels.length}</span> SHOTS | RATIO: <span className={isDark ? "text-white" : "text-black"}>{aspectRatio}</span>
+                         {/* 🟢 修改 2：统计信息栏 (TOTAL / SHOTS / RATIO) */}
+                         <div className="text-xs font-mono text-zinc-500 uppercase">
+                             {t.total}: <span className={isDark ? "text-white" : "text-black"}>{panels.length}</span> {t.shotUnit} | {t.ratioLabel}: <span className={isDark ? "text-white" : "text-black"}>{aspectRatio}</span>
                          </div>
                      </div>
                  </div>

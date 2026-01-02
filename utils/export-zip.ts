@@ -1,6 +1,23 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
+// 🟢 新增：景别中英文映射表
+const SHOT_TYPE_MAP: Record<string, string> = {
+  "EXTREME WIDE SHOT": "大远景",
+  "EXTREME_WIDE_SHOT": "大远景",
+  "WIDE SHOT": "全景",
+  "WIDE_SHOT": "全景",
+  "FULL SHOT": "全身",
+  "FULL_SHOT": "全身",
+  "MID SHOT": "中景",
+  "MID_SHOT": "中景",
+  "MEDIUM SHOT": "中景",
+  "CLOSE-UP": "特写",
+  "CLOSE_UP": "特写",
+  "EXTREME CLOSE-UP": "大特写",
+  "EXTREME_CLOSE_UP": "大特写"
+};
+
 // 辅助：获取图片 Blob
 const getImageBlob = async (url: string): Promise<Blob | null> => {
   try {
@@ -13,20 +30,40 @@ const getImageBlob = async (url: string): Promise<Blob | null> => {
   }
 };
 
+// 🟢 新增：获取安全的中文文件名
+const getSafeFileName = (index: number, shotType: string) => {
+  const shotNum = String(index + 1).padStart(2, '0');
+  const upperType = shotType.toUpperCase().replace(/\(.*\)/, '').trim(); // 去掉括号内容
+  
+  // 尝试匹配中文，如果匹配不到则使用原英文，并将空格转下划线
+  let cnType = SHOT_TYPE_MAP[upperType];
+  
+  // 模糊匹配兜底
+  if (!cnType) {
+      if (upperType.includes("WIDE") || upperType.includes("LONG")) cnType = "全景";
+      else if (upperType.includes("MID") || upperType.includes("MEDIUM")) cnType = "中景";
+      else if (upperType.includes("CLOSE")) cnType = "特写";
+      else cnType = upperType.replace(/\s+/g, '_');
+  }
+
+  return `${shotNum}_${cnType}.png`;
+};
+
 export const exportStoryboardZIP = async (
   projectName: string,
   panels: any[]
 ) => {
   const zip = new JSZip();
-  const safeProjectName = projectName.replace(/[^a-z0-9]/gi, '_').slice(0, 30);
+  // 文件名处理：只保留中文、英文、数字
+  const safeProjectName = projectName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '_').slice(0, 30);
   
   // 1. 创建文件夹结构
   const assetsFolder = zip.folder("assets");
   
   // 2. 准备文本内容
-  let scriptContent = `PROJECT: ${projectName}\n`;
-  scriptContent += `EXPORT DATE: ${new Date().toLocaleString()}\n`;
-  scriptContent += `TOTAL SHOTS: ${panels.length}\n`;
+  let scriptContent = `项目名称: ${projectName}\n`;
+  scriptContent += `导出时间: ${new Date().toLocaleString()}\n`;
+  scriptContent += `分镜总数: ${panels.length}\n`;
   scriptContent += `------------------------------------------------\n\n`;
 
   // 3. 遍历分镜
@@ -37,17 +74,16 @@ export const exportStoryboardZIP = async (
     if (panel.imageUrl && assetsFolder) {
       const blob = await getImageBlob(panel.imageUrl);
       if (blob) {
-        // 命名格式: 01_MID_SHOT.png
-        const safeShotType = panel.shotType.replace(/\s+/g, '_').toUpperCase();
-        const fileName = `${shotNum}_${safeShotType}.png`;
+        // 🟢 修改：使用中文命名逻辑
+        const fileName = getSafeFileName(index, panel.shotType);
         assetsFolder.file(fileName, blob);
       }
     }
 
     // --- B. 追加文本脚本 ---
-    scriptContent += `[SHOT #${shotNum}] ${panel.shotType}\n`;
-    scriptContent += `ACTION: ${panel.description}\n`;
-    scriptContent += `PROMPT: ${panel.prompt}\n`;
+    scriptContent += `[分镜 #${shotNum}] ${SHOT_TYPE_MAP[panel.shotType.toUpperCase()] || panel.shotType}\n`;
+    scriptContent += `画面描述: ${panel.description}\n`;
+    scriptContent += `AI提示词: ${panel.prompt}\n`;
     scriptContent += `\n`; // 空行分隔
   });
 
@@ -61,7 +97,7 @@ export const exportStoryboardZIP = async (
     meta: {
       name: projectName,
       exportedAt: new Date().toISOString(),
-      version: "CineFlow V3.1"
+      version: "CineFlow V6.0"
     },
     panels: panels
   };
@@ -69,5 +105,5 @@ export const exportStoryboardZIP = async (
 
   // 6. 生成并下载
   const content = await zip.generateAsync({ type: "blob" });
-  saveAs(content, `CineFlow_Assets_${safeProjectName}_${Date.now()}.zip`);
+  saveAs(content, `${safeProjectName}_素材包.zip`);
 };
