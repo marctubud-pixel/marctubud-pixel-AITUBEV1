@@ -18,8 +18,10 @@ function enforceCinematicRules(panels: any[]) {
     if (shotType === "LONG SHOT") shotType = "LONG SHOT";
     if (shotType === "LONGSHOT") shotType = "LONG SHOT";
 
-    // 🛡️ [新增] 全景保护机制 (Panorama Protection)
-    const isPanorama = desc.includes("全景") || desc.includes("远景") || desc.includes("全身") || desc.includes("大场景") || desc.includes("环境") || desc.includes("背影");
+    // 🛡️ [加固] 全景/空镜保护机制 (Empty Scene & Panorama Protection)
+    // 增加对“空无一人”、“空旷”等词的识别
+    const isEmptyScene = desc.includes("空无一人") || desc.includes("空旷") || desc.includes("无人") || desc.includes("纯景");
+    const isPanorama = desc.includes("全景") || desc.includes("远景") || desc.includes("全身") || desc.includes("大场景") || desc.includes("环境") || desc.includes("背影") || isEmptyScene;
 
     // 🔍 语义检测
     const isStopping = desc.includes("停下") || desc.includes("止步") || desc.includes("刹车") || desc.includes("停止") || desc.includes("站定");
@@ -30,21 +32,27 @@ function enforceCinematicRules(panels: any[]) {
     const isEyeSpecific = desc.includes("眼部") || desc.includes("瞳") || desc.includes("眸") || desc.includes("眼神特写") || (desc.includes("眼") && desc.includes("特写")); 
     const isFootSpecific = desc.includes("脚部") || desc.includes("鞋") || desc.includes("步伐") || desc.includes("积水"); 
 
-    console.log(`[Director Logic] Panel ${index + 1}: "${desc.substring(0, 20)}..." | 全景: ${isPanorama}`);
+    console.log(`[Director Logic] Panel ${index + 1}: "${desc.substring(0, 20)}..." | 全景/空镜: ${isPanorama}`);
 
     // ----------------------------------------------------------------
-    // 🛡️ 规则 0：全景优先权 (Panorama Authority)
+    // 🛡️ 规则 0：全景/空镜优先权 (Panorama Authority)
     // ----------------------------------------------------------------
     if (isPanorama) {
-        // 强制修正标签，防止 AI 误判为特写
-        if (shotType.includes("CLOSE")) {
-            console.log("⚡️ [Fix] 全景词修正：将 Close-Up 纠正为 Full Shot");
-            shotType = "FULL SHOT"; 
+        // 如果检测到是空镜或明确的全景需求，强制使用大远景
+        // 这将配合 generate.ts 中的 isNonFace 逻辑彻底压制人像幻觉
+        if (isEmptyScene || shotType.includes("WIDE") || shotType.includes("CLOSE")) {
+            console.log("⚡️ [Fix] 空镜/全景修正：强制锁定 EXTREME WIDE SHOT 以压制人像");
+            shotType = "EXTREME WIDE SHOT"; 
+        }
+        
+        // 如果是明确标记的空镜，注入特定的视觉引导
+        if (isEmptyScene) {
+            panel.visualPrompt = `${desc}, wide angle, vast landscape, cinematic scenery, (no people:2.0), (empty:1.5).`;
         }
     }
 
     // ----------------------------------------------------------------
-    // 🔴 规则 1：车辆/轮胎停止 -> 强制轮胎特写 (最高优先级)
+    // 🔴 规则 1：车辆/轮胎停止 -> 强制轮胎特写 (保持逻辑守恒)
     // ----------------------------------------------------------------
     else if (isStopping && isVehicle) {
       console.log(`⚡️ [Override] 检测到车辆停止 -> 强制轮胎特写`);
@@ -53,8 +61,7 @@ function enforceCinematicRules(panels: any[]) {
     }
 
     // ----------------------------------------------------------------
-    // 🔴 规则 2：人称代词剥离 (Subject Scrubbing) for Body Parts
-    // 只有在非全景模式下才执行
+    // 🔴 规则 2：人称代词剥离 (Subject Scrubbing)
     // ----------------------------------------------------------------
     
     // ✋ 手部
@@ -65,15 +72,14 @@ function enforceCinematicRules(panels: any[]) {
 
     // 👁️ 眼部
     else if (isEyeSpecific) {
-      shotType = "EXTREME CLOSE-UP"; // 升级为大特写
+      shotType = "EXTREME CLOSE-UP";
       panel.visualPrompt = `extreme close-up of eyes, focus on iris and pupil, emotional expression, catchlight, macro photography.`;
     }
 
-    // 🦶 脚部 (修正：只要检测到停下+非车，或者明确脚部，就触发)
+    // 🦶 脚部
     else if ((isStopping && !isVehicle) || isFootSpecific) {
       console.log(`⚡️ [Override] 检测到人物停下/脚步 -> 强制脚部特写`);
       shotType = "CLOSE-UP"; 
-      // 关键修正：Prompt 中绝对不能出现 'He' 或 'Man'
       panel.visualPrompt = `close-up of feet/shoes on the ground, ground level perspective, low angle view, focus on footwear and surface details, (no upper body:2.0).`;
     }
 
