@@ -14,9 +14,7 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-// ✅ [V6.0] 使用 zsxkib 的稳定版
 const INSTANT_ID_MODEL = "zsxkib/instant-id:2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789";
-
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
 
@@ -71,16 +69,28 @@ const RATIO_MAP: Record<string, string> = {
 
 // --- [辅助函数] ---
 
-// 🟢 [新增] 语义清洗函数：物理剔除颜色词
+// 🟢 [核心升级] 语义清洗函数：物理剔除颜色词 (中英双语版)
 function cleanCharacterDescription(desc: string): string {
+    if (!desc) return "";
+    
     const banList = [
+        // English
         'cyberpunk', 'city', 'neon', 'future', 'sci-fi', 'urban', 'street', 'night', 'lights', 'building', 'skyscraper', 'modern',
-        'blue', 'pink', 'red', 'green', 'yellow', 'purple', 'orange', 'colorful', 'cyan', 'teal', 'magenta', 'brown', 'gold', 'silver', 'blonde', 'dark', 'light'
+        'blue', 'pink', 'red', 'green', 'yellow', 'purple', 'orange', 'colorful', 'cyan', 'teal', 'magenta', 'brown', 'gold', 'silver', 'blonde', 'dark', 'light',
+        // 🇨🇳 Chinese (必须拦截中文颜色)
+        '粉色', '粉', '红色', '红', '蓝色', '蓝', '绿色', '绿', '黄色', '黄', '紫色', '紫', 
+        '金色', '金', '银色', '银', '黑色', '黑', '白色', '白', '彩色', '霓虹', '城市', '科技感'
     ];
-    let cleaned = desc.toLowerCase();
+    
+    let cleaned = desc.toLowerCase(); // 英文转小写
+    // 中文不需要转小写，直接处理
+    
     banList.forEach(word => {
-        cleaned = cleaned.replace(new RegExp(`\\b${word}\\b`, 'gi'), '');
+        // 全局替换，忽略大小写
+        cleaned = cleaned.replace(new RegExp(`${word}`, 'gi'), '');
     });
+    
+    // 清理多余空格和标点残留
     return cleaned.replace(/\s+/g, ' ').trim();
 }
 
@@ -111,33 +121,25 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: s
     }
 }
 
-// 🟢 [核心升级] 物理去色锁 (Grayscale Lock)
 async function processImageRef(url: string, vision: VisionAnalysis | null, targetShot: string, makeGrayscale: boolean = false): Promise<string | null> {
     try {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Fetch failed`);
         const buffer = Buffer.from(await res.arrayBuffer());
         
-        // 1. 初始化 Sharp 实例
         let processor = sharp(buffer);
 
-        // 2. 如果是线稿模式，强制执行物理去色与增强
         if (makeGrayscale) {
              processor = processor
-                .grayscale() // 去色
-                .linear(1.5, -40) // 高对比度 (模仿墨水)
-                .sharpen({ sigma: 1.5 }); // 锐化
+                .grayscale() 
+                .linear(1.5, -40) 
+                .sharpen({ sigma: 1.5 }); 
         }
 
-        // 3. 智能裁剪逻辑 (保持原有逻辑不变)
-        const metadata = await processor.metadata(); // 注意这里要重新获取 metadata，或者在 resize 前做 crop
-        // 为了简化流，我们先做 crop 逻辑 (需要基于原始 buffer 或保证 processor 链式正确)
-        // 由于 sharp 是链式的，metadata 最好在变换前获取。
-        // 这里为了稳妥，如果涉及到 crop，我们在 crop 之后再做 grayscale，或者先 grayscale 再 crop
+        const metadata = await processor.metadata(); 
         
         let finalBuffer: Buffer;
         
-        // 如果需要 Crop
         const isTargetClose = targetShot.toUpperCase().includes("CLOSE");
         const isFaceStart = vision?.shot_type.includes("Full");
         
@@ -150,7 +152,7 @@ async function processImageRef(url: string, vision: VisionAnalysis | null, targe
         }
 
         finalBuffer = await processor
-            .resize({ width: 1536, height: 1536, fit: 'inside' }) // 统一缩放
+            .resize({ width: 1536, height: 1536, fit: 'inside' }) 
             .toBuffer();
 
         return `data:image/jpeg;base64,${finalBuffer.toString('base64')}`;
@@ -199,14 +201,12 @@ export async function generateShotImage(
         .maybeSingle(); 
         
       if (char) {
-          // 🟢 关键修复：根据模式构建不同的 characterPart
           if (!isNonFace) {
              if (isDraftMode) {
-                 // 线稿模式：清洗颜色词，并强调 sketch 风格
+                 // 🟢 清洗角色描述 (中英双语)
                  const cleanDesc = cleanCharacterDescription(char.description);
                  characterPart = `(Character visual features: ${cleanDesc} in sketch style), `;
              } else {
-                 // 正常模式：保持原样
                  characterPart = `(Character: ${char.description}), `;
              }
           }
@@ -223,13 +223,12 @@ export async function generateShotImage(
     const extraNegative = negativePrompt ? `, ${negativePrompt}` : "";
 
     // =================================================================
-    // 🟢 V6.0 InstantID (保持逻辑不变)
+    // 🟢 V6.0 InstantID 
     // =================================================================
     if (useInstantID && characterId && !isDraftMode && !isNonFace && characterAvatarUrl) {
         console.log("🚀 [V6.0] 触发 InstantID 生成流程 (zsxkib)...");
         let poseImageBase64 = null;
         if (activeRefImage) {
-             // InstantID 模式下一般不需要强制去色，除非特殊需求
              poseImageBase64 = await processImageRef(activeRefImage, null, shotType, false);
         }
         const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
@@ -273,7 +272,7 @@ export async function generateShotImage(
     }
 
     // =================================================================
-    // 🟠 Doubao / Volcengine (核心修改区)
+    // 🟠 Doubao / Volcengine
     // =================================================================
 
     if (!ARK_API_KEY) throw new Error("API Key Missing");
@@ -293,8 +292,12 @@ export async function generateShotImage(
     const currentStylePrompt = STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic'];
 
     if (isDraftMode) {
-        // 🟢 修复：现在线稿模式也会包含 characterPart (已清洗颜色)
-        finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), ${characterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, lineart, rough sketch, (white background:1.2)`;
+        // 🟢 核心修复：同样清洗 Action Prompt 中的中文颜色词！
+        const cleanAction = cleanCharacterDescription(actionPrompt);
+        
+        console.log(`[Draft Cleaning] Original: "${actionPrompt}" -> Cleaned: "${cleanAction}"`);
+
+        finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), ${characterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), ${cleanAction}, lineart, rough sketch, (white background:1.2)`;
         finalNegative = `${DRAFT_NEGATIVE_BASE}${extraNegative}`;
     } else {
         finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} (${currentStylePrompt}:1.4)`; 
@@ -310,8 +313,7 @@ export async function generateShotImage(
     };
 
     if (activeRefImage) { 
-        // 🟢 核心修复：传递 isDraftMode 给 processImageRef
-        // 这将触发后端的 sharp 灰度+高对比度逻辑
+        // 传递 isDraftMode 以触发 sharp 灰度锁
         const base64Image = await processImageRef(activeRefImage, visionAnalysis, shotType, isDraftMode);
         if (base64Image) {
             payload.image_url = base64Image;
