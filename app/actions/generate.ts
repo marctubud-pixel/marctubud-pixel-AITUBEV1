@@ -17,7 +17,6 @@ const replicate = new Replicate({
 const INSTANT_ID_MODEL = "zsxkib/instant-id:2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789";
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
 const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
-
 const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
 const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
 
@@ -28,7 +27,6 @@ const SHOT_PROMPTS: Record<string, string> = {
     "WIDE SHOT": "(full body visible:1.6), (feet visible:1.6), (head to toe:1.5), distance shot, wide angle, environment focus, (no crop:1.5)",
     "FULL SHOT": "(full body from head to toe:1.8), (feet visible:1.6), standing pose, environment visible, (no close up:1.5)",
     "MID SHOT": "(waist up:1.5), (head and torso focus:1.5), portrait composition, standard cinematic shot",
-    // 🛡️ 铁律：特写必须包含双眼，防止单眼瞳孔
     "CLOSE-UP": "(both eyes visible:1.8), (face focus:1.8), (head and shoulders:1.5), depth of field, emotion focus",
     "EXTREME CLOSE-UP": "(both eyes visible:2.0), (upper face focus:1.8), (macro photography:1.2), (extreme facial detail:1.5), (no single eye:2.0)"
 };
@@ -49,9 +47,6 @@ const OBJECT_SHOT_PROMPTS: Record<string, string> = {
     "FULL SHOT": "(full object visible:1.5), (environment context:1.2)"
 };
 
-const DRAFT_PROMPT_CLASSIC = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0), professional storyboard";
-const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient, text, watermark, (yellow:1.5), (orange:1.5), (purple:1.5), (golden:1.5)";
-
 const STYLE_PRESETS: Record<string, string> = {
   "realistic": "cinematic lighting, photorealistic, 8k, masterpiece, movie still, arri alexa, high detail, real photo",
   "anime_jp": "anime style, studio ghibli, makoto shinkai, vibrant colors, clean lines",
@@ -68,22 +63,8 @@ const RATIO_MAP: Record<string, string> = {
   "16:9": "2560x1440", "9:16": "1440x2560", "1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "2.39:1": "3072x1280" 
 };
 
-function cleanCharacterDescription(desc: string): string {
-    if (!desc) return "";
-    const banList = [
-        'cyberpunk', 'city', 'neon', 'future', 'sci-fi', 'urban', 'street', 'night', 'lights', 'building', 'skyscraper', 'modern',
-        'blue', 'pink', 'red', 'green', 'yellow', 'purple', 'orange', 'colorful', 'cyan', 'teal', 'magenta', 'brown', 'gold', 'silver', 'blonde', 'dark', 'light',
-        '粉色', '粉', '红色', '红', '蓝色', '蓝', '绿色', '绿', '黄色', '黄', '紫色', '紫', "橙","橙红",
-        '金色', '金', '银色', '银', '黑色', '黑', '白色', '白', '彩色', '霓虹', '城市', '科技感',
-        '夕阳', '日落', '黄昏', '晚霞', '日出', '黎明', '晨曦', '火烧云', '金色大厅',
-        'sunset', 'sunrise', 'golden hour', 'dawn', 'dusk', 'twilight'
-    ];
-    let cleaned = desc.toLowerCase();
-    banList.forEach(word => {
-        cleaned = cleaned.replace(new RegExp(`${word}`, 'gi'), '');
-    });
-    return cleaned.replace(/\s+/g, ' ').trim();
-}
+const DRAFT_PROMPT_CLASSIC = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0), professional storyboard, greyscale, lineart";
+const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient, text, watermark, (yellow:1.5), (orange:1.5), (purple:1.5), (golden:1.5)";
 
 function isNonFaceDetail(prompt: string): boolean {
     const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶', '风景', '场景', '背景', '环境'];
@@ -163,21 +144,48 @@ export async function generateShotImage(
     let activeRefImage = referenceImageUrl;
     let characterPart = "";
     let characterNegative = ""; 
-    let characterAvatarUrl = ""; 
 
     if (characterId) {
-      const { data: char } = await supabaseAdmin.from('characters').select('name, description, negative_prompt, avatar_url').eq('id', characterId).maybeSingle(); 
+      // 🟢 [新架构] 查询 description_map
+      const { data: char } = await supabaseAdmin.from('characters')
+        .select('name, description, negative_prompt, avatar_url, assets, description_map')
+        .eq('id', characterId).maybeSingle(); 
+      
       if (char) {
           if (!isNonFace) {
+             const p = actionPrompt.toLowerCase();
+             let targetDescription = char.description || "";
+             const descMap = char.description_map || {};
+             
+             // 🟢 智能资产与描述匹配 (Generate 版)
+             // 只要命中背影/侧脸资产，就自动切换为对应的干净描述
+             let isBackView = false;
+             
+             if (!activeRefImage && char.assets) {
+                 // 宽容匹配
+                 if (/back view|rear|behind|背影|背对|背向|背身|后背/.test(p) && char.assets["back"]) {
+                     console.log("🎯 [Generate] 命中背影资产 -> 切换背影描述");
+                     activeRefImage = char.assets["back"];
+                     if(descMap.back) targetDescription = descMap.back; // 切换！
+                     isBackView = true;
+                 } else if (/side|profile|侧/.test(p) && char.assets["side"]) {
+                     console.log("🎯 [Generate] 命中侧脸资产 -> 切换侧脸描述");
+                     activeRefImage = char.assets["side"];
+                     if(descMap.side) targetDescription = descMap.side; // 切换！
+                 }
+             }
+
              if (isDraftMode) {
-                 const cleanDesc = cleanCharacterDescription(char.description);
-                 characterPart = `(Character: ${cleanDesc}), `;
+                 characterPart = `(Character: ${targetDescription}), `;
+                 if(isBackView) {
+                     characterPart = `(rear view structure:1.5), (back of: ${targetDescription}), `;
+                 }
              } else {
-                 characterPart = `(Character: ${char.description}), `;
+                 characterPart = `(Character: ${targetDescription}), `;
              }
           }
           if (char.negative_prompt) characterNegative = `, ${char.negative_prompt}`;
-          characterAvatarUrl = char.avatar_url; 
+          
           if (!activeRefImage && char.avatar_url && !isNonFace && !useInstantID) {
               activeRefImage = char.avatar_url;
           }
@@ -185,10 +193,6 @@ export async function generateShotImage(
     }
 
     const extraNegative = negativePrompt ? `, ${negativePrompt}` : "";
-
-    // =================================================================
-    // 🟠 Doubao / Volcengine (导演指令优先重构)
-    // =================================================================
 
     if (!ARK_API_KEY) throw new Error("API Key Missing");
 
@@ -205,27 +209,13 @@ export async function generateShotImage(
     let finalNegative = "";
 
     if (isDraftMode) {
-      const cleanAction = cleanCharacterDescription(actionPrompt);
-      const safeCharacterPart = isNonFace ? "" : characterPart;
-      
-      // 🛡️ 移除 'two eyes'，防止双人。加入 (solo:1.5)
-      const facialLock = actionPrompt.includes("面部") || actionPrompt.includes("眼") 
-          ? "(solo:2.0), (single person:2.0), (center composition:1.5), " 
-          : "(solo:1.5), "; // 默认也加 solo
-
-      // 🛡️ 背影逻辑增强：剥离 facialLock
-      const finalFacialLock = (actionPrompt.includes("back view") || actionPrompt.includes("背影")) ? "" : facialLock;
-
-      finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), ${finalFacialLock}(${cleanAction}:1.6), ${safeCharacterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), lineart, (white background:1.2)`;
+      finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${actionPrompt}:1.6), ${characterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), lineart, (white background:1.2)`;
       
       let dynamicNegative = getStrictNegative(shotType, isNonFace, stylePreset, true);
-      
-      if (actionPrompt.includes("back view") || actionPrompt.includes("back to camera")) {
-          dynamicNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth, (profile:2.0), (cheek:2.0)";
+      // 虽然换了描述，但加上负面词双重保险也没坏处
+      if (actionPrompt.includes("back view") || actionPrompt.includes("背影")) {
+          dynamicNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth, (tie:2.0), (logo:2.0)";
       }
-      // 🛡️ 增加防分身负面词
-      dynamicNegative += ", (multiple people:2.0), (clones:2.0), (twins:2.0), (group:2.0)";
-
       finalNegative = `${dynamicNegative}${extraNegative}`;
     } else {
         finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), (${actionPrompt}:1.3), ${characterPart} (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`; 

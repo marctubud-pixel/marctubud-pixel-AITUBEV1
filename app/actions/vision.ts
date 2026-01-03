@@ -6,88 +6,77 @@ import { createClient } from '@supabase/supabase-js'
 // 🟢 接口定义 (Interfaces)
 // ==========================================
 
-// 1. 供角色库使用 (V4.0 New)
+// 1. 供角色库使用 (Smart Matrix)
 export interface VisionResult {
   description: string;
   tags: string[];
   colors: string[];
 }
 
-// 2. 供生图引擎使用 (Restored for generate.ts)
+// 2. 供生图 & 重绘使用 (Generate & Repaint)
 export interface VisionAnalysis {
     shot_type: string;
     subject_composition: {
-        head_y_range?: [number, number]; // [top, bottom] 0-1 relative coordinates
+        head_y_range?: [number, number]; 
     };
     key_features: string[];
+    description?: string; // 🟢 新增：用于 Visual Bridge 的纯文本描述
 }
 
 const ARK_API_KEY = process.env.VOLC_ARK_API_KEY || process.env.OPENAI_API_KEY;
-// 默认视觉模型
 const VISION_MODEL = process.env.VOLC_VISION_ENDPOINT_ID || "gpt-4o"; 
 
 // ==========================================
-// 🟢 方法 1: 角色库分析 (V4.0 Character Vision)
+// 🟢 方法 1: 角色库分析 (Smart Matrix Input)
 // ==========================================
 export async function analyzeImageContent(base64Image: string): Promise<VisionResult> {
-  // Mock 模式
   if (!ARK_API_KEY) {
-    console.log("[Vision] No API Key, returning mock data");
-    await new Promise(r => setTimeout(r, 1000));
-    return {
-      description: "A futuristic cyberpunk character with neon glowing jacket, silver hair, standing in rain. High contrast, cinematic lighting.",
-      tags: ["cyberpunk", "neon", "silver hair", "jacket", "scifi"],
-      colors: ["#00ffcc", "#ff0099"]
-    };
+    return { description: "Mock analysis result.", tags: [], colors: [] };
   }
 
   try {
     const response = await fetch("https://ark.cn-beijing.volces.com/api/v3/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${ARK_API_KEY}`
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ARK_API_KEY}` },
       body: JSON.stringify({
         model: VISION_MODEL,
         messages: [
           {
             role: "user",
             content: [
-              { type: "text", text: "Analyze this image. Provide a detailed visual description (appearance, clothing, features) for AI image generation prompts. Then list 5 key visual tags. Format: Description: [text] Tags: [tag1, tag2...]" },
+              // 🟢 关键修改：更明确的 Prompt，不仅要 Tags，还要一段用于绘画的描述
+              { type: "text", text: "Analyze this image for AI Image Generation. 1. Describe the character's appearance (hair, clothing, age) in one detailed paragraph. 2. List 5 key visual tags. Format: Description: [text] Tags: [tag1, tag2...]" },
               { type: "image_url", image_url: { url: base64Image } }
             ]
           }
         ],
-        max_tokens: 500
+        max_tokens: 800
       })
     });
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || "";
     
-    // 简单的解析逻辑
-    const descMatch = content.match(/Description:\s*(.*?)(\n|$)/i) || [null, content.slice(0, 150)];
+    const descMatch = content.match(/Description:\s*(.*?)(\n|$)/i) || [null, content.slice(0, 200)];
     const tagsMatch = content.match(/Tags:\s*(.*?)(\n|$)/i);
     const tags = tagsMatch ? tagsMatch[1].split(',').map((t: string) => t.trim()) : ["AI Analyzed"];
 
     return {
-      description: descMatch[1] || content.slice(0, 200),
+      description: descMatch[1] || content,
       tags: tags,
       colors: []
     };
 
   } catch (error) {
     console.error("[Vision Error]", error);
-    return { description: "Failed to analyze image.", tags: [], colors: [] };
+    return { description: "", tags: [], colors: [] };
   }
 }
 
 // ==========================================
-// 🟢 方法 2: 生图参考图分析 (Restored for generate.ts)
+// 🟢 方法 2: 生图参考图分析 (Generate & Visual Bridge)
 // ==========================================
 export async function analyzeRefImage(imageUrl: string): Promise<VisionAnalysis | null> {
-    // 如果没有 Key，返回 Null 跳过分析，保证 generate.ts 不报错
     if (!ARK_API_KEY) return null;
 
     try {
@@ -95,32 +84,30 @@ export async function analyzeRefImage(imageUrl: string): Promise<VisionAnalysis 
         
         const response = await fetch("https://ark.cn-beijing.volces.com/api/v3/chat/completions", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${ARK_API_KEY}`
-            },
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ARK_API_KEY}` },
             body: JSON.stringify({
                 model: VISION_MODEL,
                 messages: [
                     {
                         role: "user",
                         content: [
-                            { type: "text", text: "Analyze this image layout. 1. Identify Shot Type (Close-up, Mid Shot, Full Shot, Wide). 2. If it's a person, estimate the Y-axis range of the Head (0.0 to 1.0). 3. List 5 key visual features (e.g. blue tie, red hair). Return JSON: { \"shot_type\": \"...\", \"head_y\": [0.1, 0.3], \"features\": [...] }" },
+                            // 🟢 核心修改：请求 JSON，且明确要求返回 description
+                            { type: "text", text: "Analyze this image. Return JSON format: { \"shot_type\": \"(Close-up/Mid/Full/Wide)\", \"head_y\": [0.1, 0.3], \"features\": [\"blue tie\", \"red hair\"], \"description\": \"A concise visual description of the clothing and hair style visible in this image (e.g. back view of white shirt, high ponytail).\" }" },
                             { type: "image_url", image_url: { url: imageUrl } }
                         ]
                     }
-                ],
-                // 强制 JSON 模式（如果模型支持）
-                response_format: { type: "json_object" } 
+                ]
             })
         });
 
         const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
+        let content = data.choices?.[0]?.message?.content;
         
         if (!content) return null;
+        
+        // 清理 markdown 标记
+        content = content.replace(/```json\n?/, "").replace(/```\n?/, "").trim();
 
-        // 解析 JSON
         const result = JSON.parse(content);
         
         return {
@@ -128,11 +115,13 @@ export async function analyzeRefImage(imageUrl: string): Promise<VisionAnalysis 
             subject_composition: {
                 head_y_range: result.head_y || undefined
             },
-            key_features: result.features || []
+            key_features: result.features || [],
+            // 🟢 这就是 Visual Bridge 要用的救命稻草！
+            description: result.description || result.features?.join(", ") || ""
         };
 
     } catch (e) {
         console.warn("[Vision] Structure analysis failed, skipping...", e);
-        return null; // 返回 null 让 generate.ts 使用兜底逻辑
+        return null;
     }
 }
