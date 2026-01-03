@@ -44,7 +44,7 @@ function cleanCharacterDescription(desc: string): string {
     return cleaned.replace(/\s+/g, ' ').trim();
 }
 
-// 🟢 图片处理函数
+// 🟢 图片处理函数 [核心升级: 物理去色锁 - 修复版]
 async function fetchImageAsBase64(url: string, makeGrayscale: boolean = false): Promise<string | null> {
     try {
         const res = await fetch(url);
@@ -54,7 +54,18 @@ async function fetchImageAsBase64(url: string, makeGrayscale: boolean = false): 
         let processor = sharp(buffer);
         
         if (makeGrayscale) {
-            processor = processor.grayscale(); 
+            // 🔒 [The Grayscale Lock] 
+            processor = processor
+                .grayscale() // 1. 物理去色
+                // 2. 使用 linear 替代 modulate 来实现高对比度
+                // multiplier(1.5) > 1 增加对比度
+                // offset(-40) 拉低整体亮度，使线条更黑更实
+                .linear(1.5, -40) 
+                .sharpen({ // 3. 锐化边缘
+                    sigma: 1.5, 
+                    m1: 1.0, 
+                    m2: 1.0 
+                }); 
         }
 
         const resizedBuffer = await processor
@@ -93,7 +104,7 @@ export async function repaintShotWithCharacter(
         if (error || !char) throw new Error("Character not found");
 
         // =================================================================
-        // 🟢 V6.0 分支: InstantID (zsxkib 版本)
+        // 🟢 V6.0 分支: InstantID (zsxkib 版本) - 逻辑守恒
         // =================================================================
         if (useInstantID && !isDraftMode && char.avatar_url) {
             console.log("🚀 [V6.0 Repaint] 触发 InstantID (zsxkib) 重绘...");
@@ -107,21 +118,14 @@ export async function repaintShotWithCharacter(
                     input: {
                         prompt: instantPrompt,
                         negative_prompt: instantNegative,
-                        
-                        // ✅ 修正：使用 'image' 参数
                         image: char.avatar_url, 
-                        
-                        // ✅ 姿态参考 (分镜图)
                         pose_image: originImageUrl, 
-                        
-                        // ✅ 画质增强参数
                         sdxl_weights: "protovision-xl-high-fidel",
                         scheduler: "K_EULER_ANCESTRAL",
                         num_inference_steps: 30,
                         guidance_scale: 5,
                         control_strength: 0.6,
                         ip_adapter_scale: 0.8,
-                        
                         width: Number(RATIO_MAP[aspectRatio]?.split('x')[0] || 1280),
                         height: Number(RATIO_MAP[aspectRatio]?.split('x')[1] || 720),
                     }
@@ -146,6 +150,7 @@ export async function repaintShotWithCharacter(
         // 🟠 原有流程: Doubao / Volcengine
         // =================================================================
 
+        // 核心修改：isDraftMode 传给 fetchImageAsBase64，触发物理去色锁
         const originBase64 = await fetchImageAsBase64(originImageUrl, isDraftMode);
         if (!originBase64) throw new Error("Failed to process original image");
 
