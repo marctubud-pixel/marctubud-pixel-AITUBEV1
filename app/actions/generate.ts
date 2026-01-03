@@ -69,20 +69,16 @@ const RATIO_MAP: Record<string, string> = {
 
 // --- [辅助函数] ---
 
-// 🟢 [语义清洗库升级] 增加氛围色彩暗示词的拦截
 function cleanCharacterDescription(desc: string): string {
     if (!desc) return "";
-    
     const banList = [
         'cyberpunk', 'city', 'neon', 'future', 'sci-fi', 'urban', 'street', 'night', 'lights', 'building', 'skyscraper', 'modern',
         'blue', 'pink', 'red', 'green', 'yellow', 'purple', 'orange', 'colorful', 'cyan', 'teal', 'magenta', 'brown', 'gold', 'silver', 'blonde', 'dark', 'light',
-        '粉色', '粉', '红色', '红', '蓝色', '蓝', '绿色', '绿', '黄色', '黄', '紫色', '紫', 
+        '粉色', '粉', '红色', '红', '蓝色', '蓝', '绿色', '绿', '黄色', '黄', '紫色', '紫', "橙","橙红",
         '金色', '金', '银色', '银', '黑色', '黑', '白色', '白', '彩色', '霓虹', '城市', '科技感',
-        // 🚨 氛围暗示词拦截 (防止 AI 联想夕阳红、金灿灿)
         '夕阳', '日落', '黄昏', '晚霞', '日出', '黎明', '晨曦', '火烧云', '金色大厅',
         'sunset', 'sunrise', 'golden hour', 'dawn', 'dusk', 'twilight'
     ];
-    
     let cleaned = desc.toLowerCase();
     banList.forEach(word => {
         cleaned = cleaned.replace(new RegExp(`${word}`, 'gi'), '');
@@ -97,20 +93,16 @@ function isNonFaceDetail(prompt: string): boolean {
 
 function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: string, isDraftMode?: boolean): string {
     let base = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
-    
     if (isDraftMode) {
         base = DRAFT_NEGATIVE_BASE;
     } else if (stylePreset === 'realistic') {
         base += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting";
     }
-
     if (shotType.includes("WIDE") || shotType.includes("LONG") || shotType.includes("FULL")) {
         base += ", close up, portrait, face focus, headshot, macro";
     }
-
-    // 🛡️ 加固非人物场景的负面词，防止大远景“闹鬼”出人像
     if (isNonFace) {
-        return `${base}, (face:2.0), (head:2.0), (eyes:2.0), portrait, (person:2.0), woman, girl, man, boy, (humanoid silhouette:1.5), look at camera, upper body, torso, selfie, hair`;
+        return `${base}, (face:2.0), (head:2.0), (eyes:2.0), portrait, (person:5.0), woman, girl, man, boy, (humanoid silhouette:1.5), look at camera, upper body, torso, selfie, hair`;
     } else {
         return shotType.toUpperCase().includes("CLOSE") 
             ? `${base}, legs, feet, shoes, socks, pants, skirt, lower body, full body` 
@@ -177,11 +169,10 @@ export async function generateShotImage(
     if (characterId) {
       const { data: char } = await supabaseAdmin.from('characters').select('name, description, negative_prompt, avatar_url').eq('id', characterId).maybeSingle(); 
       if (char) {
-          // 🛡️ 只有当不是环境/物体特写时，才注入角色描述
           if (!isNonFace) {
              if (isDraftMode) {
                  const cleanDesc = cleanCharacterDescription(char.description);
-                 characterPart = `(Character visual features: ${cleanDesc} in sketch style), `;
+                 characterPart = `(Character: ${cleanDesc}), `;
              } else {
                  characterPart = `(Character: ${char.description}), `;
              }
@@ -197,46 +188,7 @@ export async function generateShotImage(
     const extraNegative = negativePrompt ? `, ${negativePrompt}` : "";
 
     // =================================================================
-    // 🟢 V6.0 InstantID (省略未改动部分)
-    // =================================================================
-    if (useInstantID && characterId && !isDraftMode && !isNonFace && characterAvatarUrl) {
-        // ... (保持原样)
-        let poseImageBase64 = null;
-        if (activeRefImage) {
-             poseImageBase64 = await processImageRef(activeRefImage, null, shotType, false);
-        }
-        const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
-        const angleWeightPrompt = ANGLE_PROMPTS[cameraAngle.toUpperCase()] || ANGLE_PROMPTS["EYE LEVEL"];
-        const currentStylePrompt = STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic'];
-        const instantIdPrompt = `${shotWeightPrompt}, ${angleWeightPrompt}, ${actionPrompt}, ${currentStylePrompt}, masterpiece, best quality, 8k`;
-        const instantIdNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}${extraNegative}`;
-
-        const output = await replicate.run(INSTANT_ID_MODEL as any, {
-            input: {
-                prompt: instantIdPrompt, negative_prompt: instantIdNegative,
-                image: characterAvatarUrl, pose_image: poseImageBase64,    
-                sdxl_weights: "protovision-xl-high-fidel", scheduler: "K_EULER_ANCESTRAL",
-                num_inference_steps: 30, guidance_scale: 5, control_strength: 0.7, ip_adapter_scale: 0.8,
-                width: Number(RATIO_MAP[aspectRatio]?.split('x')[0] || 1280),
-                height: Number(RATIO_MAP[aspectRatio]?.split('x')[1] || 720),
-            }
-        });
-
-        if (Array.isArray(output) && output.length > 0) {
-            const rawUrl = output[0];
-            const res = await fetch(rawUrl);
-            const buffer = Buffer.from(await res.arrayBuffer());
-            const fileName = `cineflow/${projectId}/iid_${Date.now()}_${shotId}.png`;
-            await supabaseAdmin.storage.from('images').upload(fileName, buffer, { contentType: 'image/png', upsert: true });
-            const { data: { publicUrl } } = supabaseAdmin.storage.from('images').getPublicUrl(fileName);
-            return { success: true, url: publicUrl };
-        } else {
-            throw new Error("InstantID returned no images");
-        }
-    }
-
-    // =================================================================
-    // 🟠 Doubao / Volcengine (核心修改区)
+    // 🟠 Doubao / Volcengine (导演指令优先重构)
     // =================================================================
 
     if (!ARK_API_KEY) throw new Error("API Key Missing");
@@ -252,20 +204,26 @@ export async function generateShotImage(
     
     let finalPrompt = "";
     let finalNegative = "";
-    const currentStylePrompt = STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic'];
 
     if (isDraftMode) {
-        // 🟢 核心加固：清洗 Action Prompt 中的夕阳等氛围颜色暗示
-        const cleanAction = cleanCharacterDescription(actionPrompt);
-        
-        // 🛡️ 只有非空镜时才注入人物特征
-        const activeCharacterPart = isNonFace ? "" : characterPart;
-
-        finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), ${activeCharacterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), ${cleanAction}, lineart, rough sketch, (white background:1.2)`;
-        finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, true)}${extraNegative}`;
+      const cleanAction = cleanCharacterDescription(actionPrompt);
+      const safeCharacterPart = isNonFace ? "" : characterPart;
+      
+      // 🛡️ 铁律：导演指令 (cleanAction) 置顶并加权
+      finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${cleanAction}:1.5), ${safeCharacterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), lineart, (white background:1.2)`;
+      
+      // 🛡️ 动态负面词封锁
+      let dynamicNegative = getStrictNegative(shotType, isNonFace, stylePreset, true);
+      if (actionPrompt.includes("back view") || actionPrompt.includes("back to camera")) {
+          dynamicNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth";
+      }
+      if (actionPrompt.includes("eyes tightly closed")) {
+          dynamicNegative += ", (smile:2.0), (open eyes:2.0)";
+      }
+      finalNegative = `${dynamicNegative}${extraNegative}`;
     } else {
-        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, ${characterPart} (${currentStylePrompt}:1.4)`; 
-        finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode)}${characterNegative}${extraNegative}`;
+        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), (${actionPrompt}:1.3), ${characterPart} (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`; 
+        finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}${extraNegative}`;
     }
 
     const payload: any = {
