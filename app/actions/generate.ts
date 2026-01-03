@@ -28,8 +28,9 @@ const SHOT_PROMPTS: Record<string, string> = {
     "WIDE SHOT": "(full body visible:1.6), (feet visible:1.6), (head to toe:1.5), distance shot, wide angle, environment focus, (no crop:1.5)",
     "FULL SHOT": "(full body from head to toe:1.8), (feet visible:1.6), standing pose, environment visible, (no close up:1.5)",
     "MID SHOT": "(waist up:1.5), (head and torso focus:1.5), portrait composition, standard cinematic shot",
-    "CLOSE-UP": "(face focus:1.8), (head and shoulders:1.5), (background blurred:1.2), depth of field, emotion focus",
-    "EXTREME CLOSE-UP": "(macro photography:2.0), (extreme detail:1.5), (focus on single part:2.0), crop to detail, (no full body:2.0)"
+    // 🛡️ 铁律：特写必须包含双眼，防止单眼瞳孔
+    "CLOSE-UP": "(both eyes visible:1.8), (face focus:1.8), (head and shoulders:1.5), depth of field, emotion focus",
+    "EXTREME CLOSE-UP": "(both eyes visible:2.0), (upper face focus:1.8), (macro photography:1.2), (extreme facial detail:1.5), (no single eye:2.0)"
 };
 
 const ANGLE_PROMPTS: Record<string, string> = {
@@ -66,8 +67,6 @@ const STYLE_PRESETS: Record<string, string> = {
 const RATIO_MAP: Record<string, string> = {
   "16:9": "2560x1440", "9:16": "1440x2560", "1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "2.39:1": "3072x1280" 
 };
-
-// --- [辅助函数] ---
 
 function cleanCharacterDescription(desc: string): string {
     if (!desc) return "";
@@ -209,17 +208,24 @@ export async function generateShotImage(
       const cleanAction = cleanCharacterDescription(actionPrompt);
       const safeCharacterPart = isNonFace ? "" : characterPart;
       
-      // 🛡️ 铁律：导演指令 (cleanAction) 置顶并加权
-      finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${cleanAction}:1.5), ${safeCharacterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), lineart, (white background:1.2)`;
+      // 🛡️ 移除 'two eyes'，防止双人。加入 (solo:1.5)
+      const facialLock = actionPrompt.includes("面部") || actionPrompt.includes("眼") 
+          ? "(solo:2.0), (single person:2.0), (center composition:1.5), " 
+          : "(solo:1.5), "; // 默认也加 solo
+
+      // 🛡️ 背影逻辑增强：剥离 facialLock
+      const finalFacialLock = (actionPrompt.includes("back view") || actionPrompt.includes("背影")) ? "" : facialLock;
+
+      finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), ${finalFacialLock}(${cleanAction}:1.6), ${safeCharacterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), lineart, (white background:1.2)`;
       
-      // 🛡️ 动态负面词封锁
       let dynamicNegative = getStrictNegative(shotType, isNonFace, stylePreset, true);
+      
       if (actionPrompt.includes("back view") || actionPrompt.includes("back to camera")) {
-          dynamicNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth";
+          dynamicNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth, (profile:2.0), (cheek:2.0)";
       }
-      if (actionPrompt.includes("eyes tightly closed")) {
-          dynamicNegative += ", (smile:2.0), (open eyes:2.0)";
-      }
+      // 🛡️ 增加防分身负面词
+      dynamicNegative += ", (multiple people:2.0), (clones:2.0), (twins:2.0), (group:2.0)";
+
       finalNegative = `${dynamicNegative}${extraNegative}`;
     } else {
         finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), (${actionPrompt}:1.3), ${characterPart} (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`; 

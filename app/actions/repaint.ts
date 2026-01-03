@@ -39,6 +39,29 @@ function cleanCharacterDescription(desc: string): string {
     return desc.replace(regex, '').replace(/\s+/g, ' ').trim();
 }
 
+// 🟢 [表情清洗器]
+function syncEmotionInDescription(charDesc: string, actionPrompt: string): string {
+    const emotionalMatches = [
+        { trigger: /痛苦|难受|深思|凝重|哭/, ban: /笑|开心|欢快|阳光|喜悦|smile|laugh|happy/gi, replacement: "表情凝重痛苦" },
+        { trigger: /愤怒|生气|火大/, ban: /温柔|和蔼|笑|gentle|kind/gi, replacement: "愤怒" },
+        { trigger: /闭眼|闭目/, ban: /大眼|明亮|open eyes/gi, replacement: "闭眼" }
+    ];
+    let processedDesc = charDesc;
+    emotionalMatches.forEach(({ trigger, ban, replacement }) => {
+        if (trigger.test(actionPrompt)) {
+            processedDesc = processedDesc.replace(ban, replacement);
+        }
+    });
+    return processedDesc;
+}
+
+// 🟢 [五官剥离术] 专门针对背影，把角色描述里的脸部特征全部删掉！
+function stripFacialFeatures(charDesc: string): string {
+    // 凡是涉及五官的词，在背影镜头里都是“毒药”
+    const faceFeatures = /eyes?|nose|mouth|lips?|face|makeup|eye|pupil|iris|smile|expression|look|gaze|眼|鼻|嘴|唇|脸|妆|瞳/gi;
+    return charDesc.replace(faceFeatures, "");
+}
+
 async function fetchImageAsBase64(url: string, makeGrayscale: boolean = false): Promise<string | null> {
     try {
         const res = await fetch(url);
@@ -90,28 +113,48 @@ export async function repaintShotWithCharacter(
         let finalNegative = "";
 
         if (isDraftMode) {
-            const cleanDesc = cleanCharacterDescription(char.description);
-            // 🛡️ 铁律：重绘时导演指令 (prompt) 绝对置顶并暴力加权
+            let cleanDesc = cleanCharacterDescription(char.description);
+            cleanDesc = syncEmotionInDescription(cleanDesc, prompt);
+
+            // 🛡️ [背影终极修正] 检测到背影，启动五官剥离术
+            const isBackView = prompt.includes("back view") || prompt.includes("no face");
+            if (isBackView) {
+                console.log("⚡️ [Repaint] 检测到背影，正在剥离角色五官描述...");
+                cleanDesc = stripFacialFeatures(cleanDesc);
+            }
+
+            const emotionLock = (prompt.includes("闭眼") || prompt.includes("痛苦") || prompt.includes("紧闭"))
+                ? "(eyes tightly shut:2.0), (neutral mouth:1.8), (no smile:2.0), "
+                : "";
+
+            // 🛡️ [防分身终极修正] 强制加入 (solo:2.0) 和 (single person)
             finalPrompt = `
                 (exact same pose and composition:1.9), 
-                (${prompt}:1.6), 
+                (solo:2.0), (single person:2.0), 
+                ${emotionLock}(${prompt}:1.7), 
                 (${DRAFT_PROMPT_CLASSIC}), 
                 (Character: ${cleanDesc}), 
                 lineart, (keep original background:2.0)
             `.trim();
 
-            // 🛡️ 动态负面拦截
             let repaintNegative = DRAFT_NEGATIVE_BASE;
-            if (prompt.includes("back view") || prompt.includes("no face")) {
-                repaintNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth";
+            
+            // 🛡️ 背影核打击
+            if (isBackView) {
+                repaintNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth, (profile:2.0), (turning head:2.0), (cheek:2.0)";
             }
-            if (prompt.includes("eyes tightly closed") || prompt.includes("no smile")) {
-                repaintNegative += ", (smile:2.0), (laughter:2.0), (open eyes:2.0)";
+            
+            // 🛡️ 防分身核打击
+            repaintNegative += ", (multiple people:2.0), (clones:2.0), (twins:2.0), (two people:2.0), (group:2.0)";
+
+            if (prompt.includes("eyes tightly closed") || prompt.includes("no smile") || prompt.includes("痛苦")) {
+                repaintNegative += ", (smile:2.5), (laugh:2.5), (open mouth:2.0), (teeth:2.0), (open eyes:2.0)";
             }
             finalNegative = repaintNegative;
         } else {
-            finalPrompt = `(Character: ${char.description}), (${prompt}:1.4), (exact same pose:1.5), (exact same composition:1.5), masterpiece`;
-            finalNegative = "nsfw, low quality, bad anatomy, changed pose, changed composition";
+            // 渲染模式也加上 solo 防止分身
+            finalPrompt = `(solo:1.5), (Character: ${char.description}), (${prompt}:1.4), (exact same pose:1.5), (exact same composition:1.5), masterpiece`;
+            finalNegative = "nsfw, low quality, bad anatomy, changed pose, changed composition, multiple people, clones";
         }
 
         const payload: any = {
@@ -120,8 +163,8 @@ export async function repaintShotWithCharacter(
             negative_prompt: finalNegative,
             size: RATIO_MAP[aspectRatio] || "2560x1440", 
             image_url: originBase64,
-            strength: 0.55, // 🔒 结构锁死：极致保留原分镜骨架
-            ref_strength: 0.9
+            strength: 0.52, 
+            ref_strength: 0.95
         };
 
         const response = await fetch(ARK_API_URL, {
