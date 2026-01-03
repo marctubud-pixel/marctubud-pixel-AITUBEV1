@@ -49,7 +49,7 @@ const OBJECT_SHOT_PROMPTS: Record<string, string> = {
 };
 
 const DRAFT_PROMPT_CLASSIC = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0), professional storyboard";
-const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient, text, watermark";
+const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient, text, watermark, (yellow:1.5), (orange:1.5), (purple:1.5), (golden:1.5)";
 
 const STYLE_PRESETS: Record<string, string> = {
   "realistic": "cinematic lighting, photorealistic, 8k, masterpiece, movie still, arri alexa, high detail, real photo",
@@ -69,33 +69,29 @@ const RATIO_MAP: Record<string, string> = {
 
 // --- [辅助函数] ---
 
-// 🟢 [核心升级] 语义清洗函数：物理剔除颜色词 (中英双语版)
+// 🟢 [语义清洗库升级] 增加氛围色彩暗示词的拦截
 function cleanCharacterDescription(desc: string): string {
     if (!desc) return "";
     
     const banList = [
-        // English
         'cyberpunk', 'city', 'neon', 'future', 'sci-fi', 'urban', 'street', 'night', 'lights', 'building', 'skyscraper', 'modern',
         'blue', 'pink', 'red', 'green', 'yellow', 'purple', 'orange', 'colorful', 'cyan', 'teal', 'magenta', 'brown', 'gold', 'silver', 'blonde', 'dark', 'light',
-        // 🇨🇳 Chinese (必须拦截中文颜色)
         '粉色', '粉', '红色', '红', '蓝色', '蓝', '绿色', '绿', '黄色', '黄', '紫色', '紫', 
-        '金色', '金', '银色', '银', '黑色', '黑', '白色', '白', '彩色', '霓虹', '城市', '科技感'
+        '金色', '金', '银色', '银', '黑色', '黑', '白色', '白', '彩色', '霓虹', '城市', '科技感',
+        // 🚨 氛围暗示词拦截 (防止 AI 联想夕阳红、金灿灿)
+        '夕阳', '日落', '黄昏', '晚霞', '日出', '黎明', '晨曦', '火烧云', '金色大厅',
+        'sunset', 'sunrise', 'golden hour', 'dawn', 'dusk', 'twilight'
     ];
     
-    let cleaned = desc.toLowerCase(); // 英文转小写
-    // 中文不需要转小写，直接处理
-    
+    let cleaned = desc.toLowerCase();
     banList.forEach(word => {
-        // 全局替换，忽略大小写
         cleaned = cleaned.replace(new RegExp(`${word}`, 'gi'), '');
     });
-    
-    // 清理多余空格和标点残留
     return cleaned.replace(/\s+/g, ' ').trim();
 }
 
 function isNonFaceDetail(prompt: string): boolean {
-    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶'];
+    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶', '风景', '场景', '背景', '环境'];
     return keywords.some(k => prompt.toLowerCase().includes(k));
 }
 
@@ -112,8 +108,9 @@ function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: s
         base += ", close up, portrait, face focus, headshot, macro";
     }
 
+    // 🛡️ 加固非人物场景的负面词，防止大远景“闹鬼”出人像
     if (isNonFace) {
-        return `${base}, face, head, eyes, portrait, person, woman, girl, man, boy, human silhouette, look at camera, upper body, torso, selfie, hair`;
+        return `${base}, (face:2.0), (head:2.0), (eyes:2.0), portrait, (person:2.0), woman, girl, man, boy, (humanoid silhouette:1.5), look at camera, upper body, torso, selfie, hair`;
     } else {
         return shotType.toUpperCase().includes("CLOSE") 
             ? `${base}, legs, feet, shoes, socks, pants, skirt, lower body, full body` 
@@ -126,35 +123,21 @@ async function processImageRef(url: string, vision: VisionAnalysis | null, targe
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Fetch failed`);
         const buffer = Buffer.from(await res.arrayBuffer());
-        
         let processor = sharp(buffer);
-
         if (makeGrayscale) {
-             processor = processor
-                .grayscale() 
-                .linear(1.5, -40) 
-                .sharpen({ sigma: 1.5 }); 
+             processor = processor.grayscale().linear(1.5, -40).sharpen({ sigma: 1.5 }); 
         }
-
         const metadata = await processor.metadata(); 
-        
         let finalBuffer: Buffer;
-        
         const isTargetClose = targetShot.toUpperCase().includes("CLOSE");
         const isFaceStart = vision?.shot_type.includes("Full");
-        
         if (isFaceStart && isTargetClose && vision?.subject_composition?.head_y_range && metadata.width && metadata.height) {
              const [startY, endY] = vision.subject_composition.head_y_range;
              const top = Math.max(0, Math.floor(startY * metadata.height * 0.7)); 
              const cropHeight = Math.min(metadata.height - top, Math.floor((endY - startY + 0.3) * metadata.height));
-             
              processor = processor.extract({ left: 0, top: top, width: metadata.width, height: cropHeight });
         }
-
-        finalBuffer = await processor
-            .resize({ width: 1536, height: 1536, fit: 'inside' }) 
-            .toBuffer();
-
+        finalBuffer = await processor.resize({ width: 1536, height: 1536, fit: 'inside' }).toBuffer();
         return `data:image/jpeg;base64,${finalBuffer.toString('base64')}`;
       } catch (error) {
         console.error("[Sharp] 图像处理失败:", error);
@@ -182,38 +165,29 @@ export async function generateShotImage(
 ) {
   try {
     console.log(`\n========== [DEBUG: Shot ${shotId}] ==========`);
-    console.log(`1. Mode: ${isDraftMode ? 'DRAFT' : 'RENDER'} | UseMock: ${useMock} | InstantID: ${useInstantID}`);
+    const isNonFace = isNonFaceDetail(actionPrompt); 
 
     if (useMock) { return { success: true, url: "https://picsum.photos/1280/720" }; }
 
-    const isNonFace = isNonFaceDetail(actionPrompt); 
     let activeRefImage = referenceImageUrl;
     let characterPart = "";
     let characterNegative = ""; 
     let characterAvatarUrl = ""; 
 
-    // --- 角色信息获取 ---
     if (characterId) {
-      const { data: char } = await supabaseAdmin
-        .from('characters')
-        .select('name, description, negative_prompt, avatar_url')
-        .eq('id', characterId)
-        .maybeSingle(); 
-        
+      const { data: char } = await supabaseAdmin.from('characters').select('name, description, negative_prompt, avatar_url').eq('id', characterId).maybeSingle(); 
       if (char) {
+          // 🛡️ 只有当不是环境/物体特写时，才注入角色描述
           if (!isNonFace) {
              if (isDraftMode) {
-                 // 🟢 清洗角色描述 (中英双语)
                  const cleanDesc = cleanCharacterDescription(char.description);
                  characterPart = `(Character visual features: ${cleanDesc} in sketch style), `;
              } else {
                  characterPart = `(Character: ${char.description}), `;
              }
           }
-
           if (char.negative_prompt) characterNegative = `, ${char.negative_prompt}`;
           characterAvatarUrl = char.avatar_url; 
-          
           if (!activeRefImage && char.avatar_url && !isNonFace && !useInstantID) {
               activeRefImage = char.avatar_url;
           }
@@ -223,10 +197,10 @@ export async function generateShotImage(
     const extraNegative = negativePrompt ? `, ${negativePrompt}` : "";
 
     // =================================================================
-    // 🟢 V6.0 InstantID 
+    // 🟢 V6.0 InstantID (省略未改动部分)
     // =================================================================
     if (useInstantID && characterId && !isDraftMode && !isNonFace && characterAvatarUrl) {
-        console.log("🚀 [V6.0] 触发 InstantID 生成流程 (zsxkib)...");
+        // ... (保持原样)
         let poseImageBase64 = null;
         if (activeRefImage) {
              poseImageBase64 = await processImageRef(activeRefImage, null, shotType, false);
@@ -234,29 +208,19 @@ export async function generateShotImage(
         const shotWeightPrompt = SHOT_PROMPTS[shotType.toUpperCase()] || SHOT_PROMPTS["MID SHOT"];
         const angleWeightPrompt = ANGLE_PROMPTS[cameraAngle.toUpperCase()] || ANGLE_PROMPTS["EYE LEVEL"];
         const currentStylePrompt = STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic'];
-        
         const instantIdPrompt = `${shotWeightPrompt}, ${angleWeightPrompt}, ${actionPrompt}, ${currentStylePrompt}, masterpiece, best quality, 8k`;
         const instantIdNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}${extraNegative}`;
 
-        const output = await replicate.run(
-            INSTANT_ID_MODEL as any,
-            {
-                input: {
-                    prompt: instantIdPrompt,
-                    negative_prompt: instantIdNegative,
-                    image: characterAvatarUrl,      
-                    pose_image: poseImageBase64,    
-                    sdxl_weights: "protovision-xl-high-fidel",
-                    scheduler: "K_EULER_ANCESTRAL",
-                    num_inference_steps: 30, 
-                    guidance_scale: 5,
-                    control_strength: 0.7,
-                    ip_adapter_scale: 0.8,
-                    width: Number(RATIO_MAP[aspectRatio]?.split('x')[0] || 1280),
-                    height: Number(RATIO_MAP[aspectRatio]?.split('x')[1] || 720),
-                }
+        const output = await replicate.run(INSTANT_ID_MODEL as any, {
+            input: {
+                prompt: instantIdPrompt, negative_prompt: instantIdNegative,
+                image: characterAvatarUrl, pose_image: poseImageBase64,    
+                sdxl_weights: "protovision-xl-high-fidel", scheduler: "K_EULER_ANCESTRAL",
+                num_inference_steps: 30, guidance_scale: 5, control_strength: 0.7, ip_adapter_scale: 0.8,
+                width: Number(RATIO_MAP[aspectRatio]?.split('x')[0] || 1280),
+                height: Number(RATIO_MAP[aspectRatio]?.split('x')[1] || 720),
             }
-        );
+        });
 
         if (Array.isArray(output) && output.length > 0) {
             const rawUrl = output[0];
@@ -272,13 +236,12 @@ export async function generateShotImage(
     }
 
     // =================================================================
-    // 🟠 Doubao / Volcengine
+    // 🟠 Doubao / Volcengine (核心修改区)
     // =================================================================
 
     if (!ARK_API_KEY) throw new Error("API Key Missing");
 
     let visionAnalysis: VisionAnalysis | null = null;
-    let keyFeaturesPrompt = "";
     if (activeRefImage) {
         try { visionAnalysis = await analyzeRefImage(activeRefImage); } catch (e) {}
     }
@@ -292,28 +255,25 @@ export async function generateShotImage(
     const currentStylePrompt = STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic'];
 
     if (isDraftMode) {
-        // 🟢 核心修复：同样清洗 Action Prompt 中的中文颜色词！
+        // 🟢 核心加固：清洗 Action Prompt 中的夕阳等氛围颜色暗示
         const cleanAction = cleanCharacterDescription(actionPrompt);
         
-        console.log(`[Draft Cleaning] Original: "${actionPrompt}" -> Cleaned: "${cleanAction}"`);
+        // 🛡️ 只有非空镜时才注入人物特征
+        const activeCharacterPart = isNonFace ? "" : characterPart;
 
-        finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), ${characterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), ${cleanAction}, lineart, rough sketch, (white background:1.2)`;
-        finalNegative = `${DRAFT_NEGATIVE_BASE}${extraNegative}`;
+        finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), ${activeCharacterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), ${cleanAction}, lineart, rough sketch, (white background:1.2)`;
+        finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, true)}${extraNegative}`;
     } else {
-        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, ${characterPart} ${keyFeaturesPrompt} (${currentStylePrompt}:1.4)`; 
+        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), ${actionPrompt}, ${characterPart} (${currentStylePrompt}:1.4)`; 
         finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, isDraftMode)}${characterNegative}${extraNegative}`;
     }
 
     const payload: any = {
-      model: isDraftMode ? MODEL_DRAFT : MODEL_PRO, 
-      prompt: finalPrompt, 
-      negative_prompt: finalNegative, 
-      size: RATIO_MAP[aspectRatio] || "2560x1440", 
-      n: 1
+      model: isDraftMode ? MODEL_DRAFT : MODEL_PRO, prompt: finalPrompt, negative_prompt: finalNegative, 
+      size: RATIO_MAP[aspectRatio] || "2560x1440", n: 1
     };
 
     if (activeRefImage) { 
-        // 传递 isDraftMode 以触发 sharp 灰度锁
         const base64Image = await processImageRef(activeRefImage, visionAnalysis, shotType, isDraftMode);
         if (base64Image) {
             payload.image_url = base64Image;
