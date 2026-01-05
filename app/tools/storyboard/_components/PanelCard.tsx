@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState } from 'react';
-import { RefreshCw, ImageIcon, Loader2, GripHorizontal, Trash2, ChevronDown, ChevronUp, Eye, Camera, User } from 'lucide-react';
+// ✅ 修复点1：确保引入了 ImagePlus 图标
+import { RefreshCw, ImageIcon, Loader2, GripHorizontal, Trash2, ChevronDown, ChevronUp, Eye, Camera, User, ImagePlus } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { StoryboardPanel } from '../types';
@@ -15,6 +16,8 @@ interface PanelCardProps extends React.HTMLAttributes<HTMLDivElement> {
     onUpdate?: (id: string, field: keyof StoryboardPanel, value: any) => void;
     onRegenerate?: (id: string) => void;
     onOpenCharModal?: (id: string) => void;
+    // 定义接口
+    onOpenSearch?: (idx: number) => void;
     onImageClick?: (idx: number) => void;
     step: string;
     isOverlay?: boolean;
@@ -23,8 +26,27 @@ interface PanelCardProps extends React.HTMLAttributes<HTMLDivElement> {
     isDeleteMode?: boolean;
 }
 
-// --- PanelCard Component (V6.0 更新版) ---
-export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ panel, idx, currentRatioClass, onDelete, onUpdate, onRegenerate, onOpenCharModal, onImageClick, step, isOverlay, t, isDark, isDeleteMode, ...props }, ref) => {
+// --- PanelCard Component (V6.2 修复版) ---
+// ✅ 修复点2：注意下面这行，必须把 onOpenSearch 从 props 里解构出来！
+// 如果不写在这里，它就会留在 ...props 里传给 div，导致报错
+export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ 
+    panel, 
+    idx, 
+    currentRatioClass, 
+    onDelete, 
+    onUpdate, 
+    onRegenerate, 
+    onOpenCharModal, 
+    onOpenSearch, // <--- 关键：这里必须把它拿出来
+    onImageClick, 
+    step, 
+    isOverlay, 
+    t, 
+    isDark, 
+    isDeleteMode, 
+    ...props // 剩下的 props 才能传给 div
+}, ref) => {
+    
     const cardBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
     const cardBorder = isDark ? "border-zinc-800" : "border-gray-200";
     const textColor = isDark ? "text-gray-200" : "text-gray-800";
@@ -32,7 +54,6 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ pan
     const pillBg = isDark ? "bg-zinc-800 hover:bg-zinc-700" : "bg-gray-100 hover:bg-gray-200";
     
     const [isPromptOpen, setIsPromptOpen] = useState(false);
-    // 🟢 Step 3 折叠状态
     const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
     const shotTitle = `${t.shotPrefix} ${String(idx + 1).padStart(2, '0')}`;
@@ -44,15 +65,12 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ pan
         return (
             <div ref={ref} {...props} className={`flex flex-col gap-2 group relative`}>
                 <div className={`relative rounded-xl overflow-hidden border ${baseClass} ${cardBg} ${currentRatioClass} cursor-pointer group`} onClick={() => onImageClick && onImageClick(idx)}>
-                    
-                    {/* 左上角分镜号 */}
                     <div className="absolute top-2 left-2 z-20">
                         <span className="text-white font-bold text-xs font-mono tracking-tight drop-shadow-md bg-black/40 backdrop-blur-sm px-1.5 py-0.5 rounded">
                             {shotTitle}
                         </span>
                     </div>
 
-                    {/* 重新生成按钮 */}
                     {onRegenerate && (
                         <button 
                             onClick={(e) => { e.stopPropagation(); onRegenerate(panel.id); }}
@@ -76,7 +94,6 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ pan
                             </div>
                         )}
                         
-                        {/* 底部文字覆盖 */}
                         <div 
                             className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-auto transition-all duration-300"
                             onClick={(e) => { e.stopPropagation(); }}
@@ -155,8 +172,9 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ pan
                 </div>
             </div>
 
+            {/* ✅ 修复点3：确保这里有 ImagePlus 按钮的 JSX 代码 */}
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-                {/* 1. Shot Size (景别) */}
+                {/* 1. Shot Size */}
                 <div className="relative group shrink-0">
                     <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all`}>
                         <Eye size={14} className="text-zinc-500"/>
@@ -173,7 +191,7 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ pan
                     </select>
                 </div>
 
-                {/* 2. Angle (角度) */}
+                {/* 2. Angle */}
                 <div className="relative group shrink-0">
                     <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all`}>
                         <Camera size={14} className="text-zinc-500"/>
@@ -190,7 +208,7 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ pan
                     </select>
                 </div>
 
-                {/* 3. Character (角色) */}
+                {/* 3. Character */}
                 <button 
                     onClick={() => onOpenCharModal && onOpenCharModal(panel.id)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all shrink-0`}
@@ -207,6 +225,36 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ pan
                             <span className={`text-xs font-bold ${textColor} whitespace-nowrap`}>{t.roleFallback}</span>
                         )}
                     </div>
+                </button>
+
+                {/* 🟢 4. [导演搜图按钮] - 修复版 */}
+                <button 
+                    onClick={(e) => {
+                        // 1. 阻止拖拽事件干扰
+                        e.stopPropagation();
+                        e.preventDefault();
+                        
+                        // 2. 打印日志，按 F12 看控制台有没有输出
+                        console.log("🖱️ 点击了搜图按钮，Index:", idx);
+
+                        // 3. 执行回调
+                        if (onOpenSearch) {
+                            onOpenSearch(idx);
+                        } else {
+                            console.error("❌ onOpenSearch 未定义，请检查父组件传参！");
+                        }
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all shrink-0 ${panel.referenceImage ? 'bg-indigo-500/10 border-indigo-500' : ''}`}
+                    title="Search Unsplash Reference"
+                >
+                    <ImagePlus size={14} className={panel.referenceImage ? "text-indigo-500" : "text-zinc-500"} />
+                    {panel.referenceImage ? (
+                        <div className="w-4 h-4 rounded-sm overflow-hidden ring-1 ring-indigo-500">
+                            <img src={panel.referenceImage} className="w-full h-full object-cover" />
+                        </div>
+                    ) : (
+                        <span className={`text-xs font-bold ${textColor} whitespace-nowrap`}>参考图</span>
+                    )}
                 </button>
             </div>
         </div>

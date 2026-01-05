@@ -23,8 +23,11 @@ import StepInput from './_components/StepInput';
 import StepReview from './_components/StepReview';
 import StepRender from './_components/StepRender';
 
-// ✅ 修复点：引入默认导出的 StoryboardModals，而不是分别引入各个 Modal
+// ✅ 修复点：引入默认导出的 StoryboardModals
 import StoryboardModals from './_components/StoryboardModals';
+
+// 🟢 [新增] 引入导演搜图弹窗
+import { ImageSearchModal } from '@/components/ImageSearchModal';
 
 import { StoryboardPanel, Character, WorkflowStep, Lang, Theme, ExportMeta } from './types';
 import { TRANSLATIONS, STYLE_OPTIONS, ASPECT_RATIOS, STOP_WORDS } from './constants';
@@ -82,6 +85,10 @@ export default function StoryboardPage() {
 
   const [batchTargetChar, setBatchTargetChar] = useState<Character | null>(null);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+
+  // 🟢 [新增] 导演模式：搜图弹窗状态
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
 
   const supabase = useMemo(() => createClient(), []); 
   const tempProjectId = "temp_workspace"; 
@@ -189,6 +196,29 @@ export default function StoryboardPage() {
           setUploadedStyleRef(fakeUrl);
           toast.success("Style Reference Uploaded");
       }
+  };
+
+  // 🟢 [新增] 导演模式：打开搜图弹窗
+  const handleOpenSearch = (index: number) => {
+    setActiveSearchIndex(index);
+    setIsSearchOpen(true);
+  };
+
+  // 🟢 [新增] 导演模式：选中图片回调
+  const handleSelectImage = (imageUrl: string) => {
+    if (activeSearchIndex !== null) {
+      setPanels(current => current.map((p, idx) => {
+        if (idx === activeSearchIndex) {
+            // 将图片存入 referenceImage
+            return { ...p, referenceImage: imageUrl };
+        }
+        return p;
+      }));
+      
+      toast.success("已添加参考图");
+      setIsSearchOpen(false);
+      setActiveSearchIndex(null);
+    }
   };
 
   const handleOpenCharModal = (panelId: string) => { setActivePanelIdForModal(panelId); setShowCharModal(true); }
@@ -330,20 +360,21 @@ const executeCharacterInject = async (isBatch: boolean) => {
       }
   };
 
-  // 🟢 升级版：修复“没有任何人”被误判为有人的 BUG
+  // 🟢 [升级版 V2] 修复“无人场景出现鬼影”的 BUG
+  // 策略：正向明确声明 + 负向核弹级压制
   const buildActionPrompt = (panel: StoryboardPanel) => {
     let desc = panel.description;
+    const isChinese = /[\u4e00-\u9fa5]/.test(desc);
     
-    // 1. 关键词定义
+    // 1. 关键词定义 (保持不变)
     const humanKeywords = ['man', 'woman', 'people', 'person', 'character', 'figure', 'body', '男', '女', '人', '他', '她'];
-    // 🟢 扩充空镜词库
     const emptyKeywords = ['no people', 'no one', 'nobody', 'empty', 'vacant', 'deserted', 'scenery only', '没有', '无人', '空', '勿', '零'];
 
     const hasDefinedChar = panel.characterIds && panel.characterIds.length > 0;
     const hasHumanText = humanKeywords.some(k => desc.toLowerCase().includes(k));
     const hasEmptyText = emptyKeywords.some(k => desc.toLowerCase().includes(k));
 
-    // 逻辑：只要有空镜词，就强制认为是无人 (即使描述里包含了"人"这个字，比如"空无一人")
+    // 逻辑：只要有空镜词，就强制认为是无人
     const shouldHaveHumans = hasDefinedChar || (hasHumanText && !hasEmptyText);
 
     let finalPrompt = "";
@@ -355,17 +386,25 @@ const executeCharacterInject = async (isBatch: boolean) => {
     if (panel.shotType) finalPrompt += `${panel.shotType}, `;
     if (panel.cameraAngle) finalPrompt += `${panel.cameraAngle}, `;
 
-    // 🟢 双重保险逻辑
+    // 🟢 [核心修改点] 双重保险逻辑 V2
     if (!shouldHaveHumans) {
-        // 策略A: 英文强力禁止
-        finalPrompt += `(no humans, no people, empty scene, scenery only, architectural photography:1.8), `;
-        // 策略B: 针对中文描述，如果包含"空无一人"，我们保留它，AI能读懂
-        finalPrompt += `${desc}, `;
+        // 策略A: 负面提示词增强 (权重提升到 2.0, 增加词汇量)
+        // 告诉 AI：画面里绝对不能出现这些东西
+        finalPrompt += `(no humans, no people, nobody, empty scene, vacant, deserted, scenery only, architectural photography, stillness:2.0), `;
+        
+        // 策略B: 正向提示词引导 (关键!)
+        // 明确告诉 AI：这是一个空镜头。这比单纯写描述更有效。
+        if (isChinese) {
+            finalPrompt += `空镜头，无人场景，静止画面，${desc}, `;
+        } else {
+            finalPrompt += `Empty shot of, deserted scene, stillness, ${desc}, `;
+        }
     } else {
+        // 如果有人，就正常连接
         finalPrompt += `${desc}, `;
     }
 
-    // 环境与氛围
+    // 环境与氛围 (保持不变)
     const effectiveEnv = panel.environment?.trim() || sceneDescription;
     if (effectiveEnv) finalPrompt += `(Environment: ${effectiveEnv}), `;
     
@@ -584,7 +623,6 @@ const executeCharacterInject = async (isBatch: boolean) => {
     <div className={`min-h-screen ${isDark ? "bg-[#131314] text-white" : "bg-[#f0f4f9] text-gray-900"} font-sans transition-colors duration-300`}>
       <Toaster position="top-center" richColors theme={isDark ? "dark" : "light"}/>
       
-      {/* ✅ 修复点：使用统一的 StoryboardModals 组件管理所有弹窗 */}
       <StoryboardModals 
          t={t} isDark={isDark} lightboxIndex={lightboxIndex} setLightboxIndex={setLightboxIndex} panels={panels} isRepainting={isRepainting}
          triggerRepaint={triggerRepaint} setActivePanelIdForModal={setActivePanelIdForModal} setShowCastingModal={setShowCastingModal}
@@ -647,6 +685,8 @@ const executeCharacterInject = async (isBatch: boolean) => {
               handleAddPanel={handleAddPanel} handleDeletePanel={handleDeletePanel} handleUpdatePanel={handleUpdatePanel}
               handleOpenCharModal={handleOpenCharModal} setLightboxIndex={setLightboxIndex} currentRatioClass={currentRatioClass}
               sensors={sensors} handleDragStart={handleDragStart} handleDragEnd={handleDragEnd} activeDragId={activeDragId}
+              // 🟢 关键：传入搜图方法
+              handleOpenSearch={handleOpenSearch}
            />
       )}
 
@@ -660,6 +700,14 @@ const executeCharacterInject = async (isBatch: boolean) => {
             />
         )}
       </div>
+
+      {/* 🟢 [新增] 全局搜图弹窗 */}
+      <ImageSearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelect={handleSelectImage}
+        initialQuery={activeSearchIndex !== null ? panels[activeSearchIndex]?.description : ''}
+      />
     </div>
   );
 }

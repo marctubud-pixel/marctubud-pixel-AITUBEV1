@@ -9,6 +9,9 @@ export type StoryboardPanel = {
   isLoading: boolean;
   characterIds?: string[];
   characterAvatars?: string[];
+  
+  // 🟢 [新增] 导演模式：参考图字段 (解决报错的核心)
+  referenceImage?: string;
 };
 
 export type Character = { id: string; name: string; avatar_url: string | null; description: string; };

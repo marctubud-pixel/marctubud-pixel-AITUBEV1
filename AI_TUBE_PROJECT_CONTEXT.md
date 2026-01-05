@@ -227,3 +227,51 @@ Step 2 剧本卡片回归：
 目标：解决 Step 2 文字脚本太干瘪的问题。
 
 行动：集成 Unsplash/Pexels API，根据脚本关键词自动推荐参考图。
+
+✅ 今日完成工作 (Milestones - 2026/01/05)
+1. 导演参考库 (Director's Reference Library) —— 生产力级实装 我们将原本简陋的“搜图弹窗”升级为了一个专业的导演工作台，支持三种维度的视觉探索：
+
+三模式架构 (Tri-Mode Architecture)：
+
+氛围参考 (Atmosphere)：接入 Unsplash，用于寻找光影、具体动作（如“Running”）和人体姿态。
+
+构图骨架 (Composition)：[预埋] 提供“三分法/中心构图/荷兰角”等结构模版，用于锁定画面几何结构。
+
+电影剧照 (Cinematic)：[PRO 功能] 接入 Google Custom Search API，锁定 Film-Grab、AnimationScreencaps 等 8 大顶级剧照源，提供 4K 级电影截图。
+
+智能翻译大脑 (Movie Database Expert)：
+
+痛点：Film-Grab 等库只收录英文片名，搜“变形金刚”无结果。
+
+解决：重写 translateToEnglish Action，植入“电影资料库专家”人格。实现了从“中文俗名”到“官方英文片名”的精准映射（如：千与千寻 -> Spirited Away），确保 100% 命中英文数据库。
+
+搜图引擎核聚变 (Search Engine Fusion)：
+
+网络突围：后端引入 undici 的 ProxyAgent，配合本地代理端口（7890），彻底解决了 Next.js 后端无法连接 Google API 的 ConnectTimeout 问题。
+
+并发与分页：重构后端逻辑，首屏并行发射 3 个请求（Start Index 1, 11, 21），实现 30张大图霸屏，并支持“加载更多”无限滚动。
+
+画质觉醒：API 强制请求 imgSize=huge，前端 CSS 优化 object-cover 并配合全新的 Lightbox (全屏灯箱)，让导演能确认每一处光影细节。
+
+2. 视觉锚点理论 (Visual Anchor Theory) 在产品逻辑层面，明确了参考图在 IP-Adapter 流程中的权重体系：
+
+70% 光影氛围 (Atmosphere)：吸取参考图的色板、光比和胶片质感。
+
+30% 软构图 (Soft Composition)：提供站位建议，但非硬性骨架锁定。
+
+价值：确立了“剧照即高级滤镜”的产品核心价值，解决了 AI 生图“塑料感”和“光影不统一”的顽疾。
+
+📅 明日开发计划 (Next Steps)
+按照您的指示，明天我们将重点攻克以下两个堡垒：
+
+构图骨架 (Composition Skeleton) 实装
+
+目标：将 Tab 2 中的“占位图”替换为真正具有指导意义的结构线稿/深度图。
+
+技术点：接入 ControlNet (Depth/Canny) 的逻辑，让用户选了“三分法”后，生成的图严格遵守该构图。
+
+魔法编辑 (Magic Edit) / 局部重绘
+
+目标：解决“图生成得很好，但这只手画歪了”或者“我想把这把枪换成花”的问题。
+
+技术点：实现 In-painting（局部重绘）交互，让导演可以对分镜进行像素级的微调。

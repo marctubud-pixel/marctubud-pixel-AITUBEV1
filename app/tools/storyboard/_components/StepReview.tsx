@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Settings, Sparkles, ChevronsUpDown, ChevronRight, User, LayoutGrid, PenTool, Palette, Minus, Plus } from 'lucide-react';
 import { DndContext, closestCenter, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
@@ -32,6 +32,7 @@ interface StepReviewProps {
     handleDeletePanel: (id: string) => void;
     handleUpdatePanel: (id: string, field: keyof StoryboardPanel, value: any) => void;
     handleOpenCharModal: (id: string) => void;
+    handleOpenSearch: (idx: number) => void;
     setLightboxIndex: (idx: number | null) => void;
     currentRatioClass: string;
     sensors: any;
@@ -47,8 +48,20 @@ export default function StepReview({
     useInstantID, setUseInstantID, sceneDescription, setSceneDescription,
     handleGenerateImages, isDeleteMode, setIsDeleteMode, handleAddPanel,
     handleDeletePanel, handleUpdatePanel, handleOpenCharModal, setLightboxIndex,
-    currentRatioClass, sensors, handleDragStart, handleDragEnd, activeDragId
+    currentRatioClass, sensors, handleDragStart, handleDragEnd, activeDragId,
+    handleOpenSearch
 }: StepReviewProps) {
+
+    // 🔍🔍🔍【调试追踪器】🔍🔍🔍
+    // 每次组件渲染时，检查 handleOpenSearch 是否存在
+    console.log('--- StepReview Render Debug ---');
+    console.log('StepReview 接收到的 handleOpenSearch:', handleOpenSearch);
+    if (!handleOpenSearch) {
+        console.error('😱 严重错误：StepReview 没有收到 handleOpenSearch！问题在 page.tsx');
+    } else {
+        console.log('✅ StepReview 已收到方法，准备传递给 PanelCard');
+    }
+    // --------------------------------
 
     const containerBg = isDark ? "bg-[#1e1e1e] border-zinc-800" : "bg-white border-white shadow-sm";
     const inputBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
@@ -156,12 +169,40 @@ export default function StepReview({
                   <SortableContext items={panels.map(p => p.id)} strategy={rectSortingStrategy}>
                       <div className={`grid gap-4 grid-cols-1 xl:grid-cols-2`}>
                           {panels.map((panel, idx) => (
-                              <SortablePanelItem key={panel.id} panel={panel} idx={idx} step="review" onDelete={handleDeletePanel} onUpdate={handleUpdatePanel} onOpenCharModal={handleOpenCharModal} onImageClick={setLightboxIndex} t={t} isDark={isDark} currentRatioClass={currentRatioClass} isDeleteMode={isDeleteMode}/>
+                              <SortablePanelItem 
+                                key={panel.id} 
+                                panel={panel} 
+                                idx={idx} 
+                                step="review" 
+                                onDelete={handleDeletePanel} 
+                                onUpdate={handleUpdatePanel} 
+                                onOpenCharModal={handleOpenCharModal}
+                                // ✅ 3. 核心传递
+                                onOpenSearch={handleOpenSearch}
+                                onImageClick={setLightboxIndex} 
+                                t={t} 
+                                isDark={isDark} 
+                                currentRatioClass={currentRatioClass} 
+                                isDeleteMode={isDeleteMode}
+                              />
                           ))}
                       </div>
                   </SortableContext>
                   <DragOverlay>
-                      {activePanel ? <PanelCard panel={activePanel} idx={panels.findIndex(p => p.id === activePanel.id)} step="review" currentRatioClass={currentRatioClass} isOverlay={true} t={t} isDark={isDark} isDeleteMode={isDeleteMode}/> : null}
+                      {activePanel ? (
+                        <PanelCard 
+                            panel={activePanel} 
+                            idx={panels.findIndex(p => p.id === activePanel.id)} 
+                            step="review" 
+                            currentRatioClass={currentRatioClass} 
+                            isOverlay={true} 
+                            t={t} 
+                            isDark={isDark} 
+                            isDeleteMode={isDeleteMode}
+                            // ✅ 4. Overlay 也要传
+                            onOpenSearch={handleOpenSearch}
+                        /> 
+                      ) : null}
                   </DragOverlay>
                </DndContext>
            </div>
