@@ -1,26 +1,109 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
-import { analyzeRefImage, type VisionAnalysis } from './vision'; 
-import sharp from 'sharp'; 
 import Replicate from "replicate"; 
 
+// 初始化 Supabase
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// 初始化 Replicate (用于 High Precision 模式)
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-const INSTANT_ID_MODEL = "zsxkib/instant-id:2e4785a4d80dadf580077b2244c8d7c05d8e3faac04a04c02d8e099dd2876789";
-const ARK_API_KEY = process.env.VOLC_ARK_API_KEY;
-const ARK_API_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
-const MODEL_PRO = process.env.VOLC_IMAGE_ENDPOINT_ID; 
-const MODEL_DRAFT = process.env.VOLC_IMAGE_DRAFT_ENDPOINT_ID || process.env.VOLC_IMAGE_ENDPOINT_ID; 
+// --- [配置区域] ---
 
-// --- [常量配置] ---
+const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY; 
+
+// 🟢 [修改 1] 定义模型列表
+const MODEL_RENDER = "z-image-turbo"; // 渲染/写实模式专用 (极速)
+
+// 🟢 [修改 3 - 关键] 调整线稿模式优先级
+// 将 wanx-v1 至于首位，利用其原生的 <sketch> 参数保证风格最大统一
+const DRAFT_MODELS = [
+    "wanx-v1",           // 首选：风格最统一
+    "wanx2.1-t2i-turbo", // 备选
+    "wanx2.1-t2i-plus"   // 兜底
+];
+
+// Replicate 模型常量
+const MODEL_CN_DEPTH = "diffusers/controlnet-depth-sdxl-1.0:a926d7f027cc7f0c5a2468725832a89047970d4c82b1373510e42f9b87b7677d";
+const MODEL_CN_CANNY = "diffusers/controlnet-canny-sdxl-1.0:f0298a83236e3e5c7a23c8a996f0012297127163013d8d7b3a7263c965e8a7d3";
+const MODEL_CN_OPENPOSE = "thibaud/controlnet-openpose-sdxl-1.0:6f9039327827e87178873752243003025211933c026d3027b5454647906d2892";
+
+// --- [智能辅助函数] ---
+
+function getSmartStyleSuffix(prompt: string): string {
+    const lowerPrompt = prompt.toLowerCase();
+    let suffix = ", film grain, analog film texture, Kodak Portra 400 style, photorealistic details, 8k resolution";
+    const isDarkShot = lowerPrompt.includes("low key") || lowerPrompt.includes("noir") || lowerPrompt.includes("silhouette") || lowerPrompt.includes("shadow") || lowerPrompt.includes("night");
+    if (isDarkShot) {
+        suffix += ", high contrast, chiaroscuro, dramatic shadows, hard lighting";
+    } else {
+        suffix += ", soft film lighting, cinematic grainy texture";
+    }
+    return suffix;
+}
+
+function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: string, isDraftMode?: boolean): string {
+    let base = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands, missing fingers";
+    if (shotType.includes("WIDE") || shotType.includes("LONG")) {
+        base += ", extra people, multiple characters, 2 people, crowd, dual composition, ghost";
+    }
+    if (isDraftMode) {
+        base += ", " + DRAFT_NEGATIVE_BASE; 
+    } else if (stylePreset === 'realistic') {
+        base += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting";
+    }
+    if (shotType.includes("WIDE") || shotType.includes("LONG") || shotType.includes("FULL")) {
+        base += ", close up, portrait, face focus, headshot, macro";
+    }
+    if (isNonFace) {
+        return `${base}, (face:2.0), (head:2.0), (eyes:2.0), portrait, (person:5.0), woman, girl, man, boy, (humanoid silhouette:1.5), look at camera, upper body, torso, selfie, hair`;
+    } else {
+        return shotType.toUpperCase().includes("CLOSE") 
+            ? `${base}, legs, feet, shoes, socks, pants, skirt, lower body, full body` 
+            : base;
+    }
+}
+
+function isNonFaceDetail(prompt: string): boolean {
+    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶', '风景', '场景', '背景', '环境'];
+    return keywords.some(k => prompt.toLowerCase().includes(k));
+}
+
+async function pollDashScopeTask(taskId: string): Promise<string> {
+    const maxAttempts = 90; 
+    const url = `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
+    for (let i = 0; i < maxAttempts; i++) {
+        const res = await fetch(url, {
+            headers: { "Authorization": `Bearer ${DASHSCOPE_API_KEY}` }
+        });
+        const data = await res.json();
+        const status = data.output?.task_status;
+        if (status === 'SUCCEEDED') {
+            return data.output.results[0].url;
+        } else if (status === 'FAILED' || status === 'CANCELED') {
+            throw new Error(`Task Failed: ${data.output?.message}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    throw new Error("Generation Task Timed Out");
+}
+
+// --- [Prompt 字典] ---
+
+const ANGLE_PROMPTS: Record<string, string> = {
+    "EYE LEVEL": "(eye level shot:1.5), neutral angle, straight on",
+    "LOW ANGLE": "(low angle shot:1.6), (worm's eye view:1.5), (looking up at subject:1.6), imposing, dramatic perspective, floor level camera",
+    "HIGH ANGLE": "(high angle shot:1.6), (bird's eye view:1.5), (looking down at subject:1.6), vulnerable, camera above head",
+    "OVERHEAD SHOT": "(directly overhead:1.7), (top down view:1.7), (god's eye view:1.5), 90 degree angle down, map view",
+    "DUTCH ANGLE": "(dutch angle:1.6), (tilted camera:1.6), (slanted horizon:1.5), dynamic composition, unease, unstable",
+    "OVER-THE-SHOULDER": "(over the shoulder shot:1.6), focus on subject, blurred foreground shoulder, depth of field"
+};
 
 const SHOT_PROMPTS: Record<string, string> = {
     "EXTREME WIDE SHOT": "(tiny figure:1.5), (massive environment:2.0), wide angle lens, aerial view, <subject> only occupies 5% of frame, (no close up:2.0), (no portrait:2.0)",
@@ -29,15 +112,6 @@ const SHOT_PROMPTS: Record<string, string> = {
     "MID SHOT": "(waist up:1.5), (head and torso focus:1.5), portrait composition, standard cinematic shot",
     "CLOSE-UP": "(both eyes visible:1.8), (face focus:1.8), (head and shoulders:1.5), depth of field, emotion focus",
     "EXTREME CLOSE-UP": "(both eyes visible:2.0), (upper face focus:1.8), (macro photography:1.2), (extreme facial detail:1.5), (no single eye:2.0)"
-};
-
-const ANGLE_PROMPTS: Record<string, string> = {
-    "EYE LEVEL": "eye level shot, neutral angle, straight on",
-    "LOW ANGLE": "low angle shot, (looking up at subject:1.4), worm's eye view, imposing, floor level camera",
-    "HIGH ANGLE": "high angle shot, (looking down at subject:1.4), bird's eye view, vulnerable, camera above head",
-    "OVERHEAD SHOT": "directly overhead, top down view, god's eye view, 90 degree angle down, map view",
-    "DUTCH ANGLE": "dutch angle, tilted camera, slanted horizon, dynamic composition, unease",
-    "OVER-THE-SHOULDER": "over the shoulder shot, focus on subject, blurred foreground shoulder"
 };
 
 const OBJECT_SHOT_PROMPTS: Record<string, string> = {
@@ -60,65 +134,16 @@ const STYLE_PRESETS: Record<string, string> = {
 };
 
 const RATIO_MAP: Record<string, string> = {
-  "16:9": "2560x1440", "9:16": "1440x2560", "1:1": "2048x2048", "4:3": "2304x1728", "3:4": "1728x2304", "2.39:1": "3072x1280" 
+  "16:9": "1280*720", "9:16": "720*1280", "1:1": "1024*1024", "4:3": "1280*960", "3:4": "960*1280", "2.39:1": "1280*720"
 };
 
-const DRAFT_PROMPT_CLASSIC = "monochrome storyboard sketch, rough pencil drawing, black and white, minimal lines, high contrast, loose strokes, (no color:2.0), professional storyboard, greyscale, lineart";
-const DRAFT_NEGATIVE_BASE = "color, realistic, photorealistic, 3d render, painting, anime, complex details, shading, gradient, text, watermark, (yellow:1.5), (orange:1.5), (purple:1.5), (golden:1.5)";
+// 🟢 [修改 1 - 关键] 新版线稿 Prompt：强调手绘、墨水笔触、排线纹理
+const DRAFT_PROMPT_CLASSIC = "(hand-drawn manga storyboard sketch:1.7), (rough ink brush strokes:1.5), visible pencil lines, cross-hatching texture for shading, black and white on textured paper, loose composition, varied line weight, unfinished feel, comic panel style";
 
-function isNonFaceDetail(prompt: string): boolean {
-    const keywords = ['hand', 'finger', 'keyboard', 'feet', 'shoe', 'typing', 'holding', 'tool', 'object', 'ground', 'sand', 'car', 'wheel', 'tire', 'vehicle', 'driving', 'brake', 'asphalt', 'pedal', '手', '指', '键盘', '脚', '足', '鞋', '沙滩', '物体', '腰', '腿', '积水', '步伐', '脚步', '水花', '踩', '车', '轮', '轮胎', '驾驶', '风景', '场景', '背景', '环境'];
-    return keywords.some(k => prompt.toLowerCase().includes(k));
-}
-
-function getStrictNegative(shotType: string, isNonFace: boolean, stylePreset?: string, isDraftMode?: boolean): string {
-    let base = "nsfw, low quality, bad anatomy, distortion, watermark, text, logo, extra digits, bad hands";
-    if (isDraftMode) {
-        base = DRAFT_NEGATIVE_BASE;
-    } else if (stylePreset === 'realistic') {
-        base += ", anime, cartoon, illustration, drawing, 2d, 3d render, sketch, painting";
-    }
-    if (shotType.includes("WIDE") || shotType.includes("LONG") || shotType.includes("FULL")) {
-        base += ", close up, portrait, face focus, headshot, macro";
-    }
-    if (isNonFace) {
-        return `${base}, (face:2.0), (head:2.0), (eyes:2.0), portrait, (person:5.0), woman, girl, man, boy, (humanoid silhouette:1.5), look at camera, upper body, torso, selfie, hair`;
-    } else {
-        return shotType.toUpperCase().includes("CLOSE") 
-            ? `${base}, legs, feet, shoes, socks, pants, skirt, lower body, full body` 
-            : base;
-    }
-}
-
-async function processImageRef(url: string, vision: VisionAnalysis | null, targetShot: string, makeGrayscale: boolean = false): Promise<string | null> {
-    try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Fetch failed`);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        let processor = sharp(buffer);
-        if (makeGrayscale) {
-             processor = processor.grayscale().linear(1.5, -40).sharpen({ sigma: 1.5 }); 
-        }
-        const metadata = await processor.metadata(); 
-        let finalBuffer: Buffer;
-        const isTargetClose = targetShot.toUpperCase().includes("CLOSE");
-        const isFaceStart = vision?.shot_type.includes("Full");
-        if (isFaceStart && isTargetClose && vision?.subject_composition?.head_y_range && metadata.width && metadata.height) {
-             const [startY, endY] = vision.subject_composition.head_y_range;
-             const top = Math.max(0, Math.floor(startY * metadata.height * 0.7)); 
-             const cropHeight = Math.min(metadata.height - top, Math.floor((endY - startY + 0.3) * metadata.height));
-             processor = processor.extract({ left: 0, top: top, width: metadata.width, height: cropHeight });
-        }
-        finalBuffer = await processor.resize({ width: 1536, height: 1536, fit: 'inside' }).toBuffer();
-        return `data:image/jpeg;base64,${finalBuffer.toString('base64')}`;
-      } catch (error) {
-        console.error("[Sharp] 图像处理失败:", error);
-        return null;
-      }
-}
+// 🟢 [修改 2 - 关键] 新版负向词：禁止平滑数字感和灰色填充
+const DRAFT_NEGATIVE_BASE = "color, 3d render, photorealistic, (smooth digital art:1.5), (clean vector lines:1.5), gray fill, gradient shading, shiny, photograph, complex details";
 
 // --- [主生成函数] ---
-
 export async function generateShotImage(
   shotId: string | number, 
   actionPrompt: string, 
@@ -129,11 +154,12 @@ export async function generateShotImage(
   shotType: string = 'MID SHOT',
   characterId?: string,
   referenceImageUrl?: string, 
-  sceneImageUrl?: string,
+  controlStrength: number = 0.75,
   useMock: boolean = false,
   cameraAngle: string = 'EYE LEVEL',
   useInstantID: boolean = false,
-  negativePrompt?: string
+  negativePrompt?: string,
+  useHighPrecision: boolean = false 
 ) {
   try {
     console.log(`\n========== [DEBUG: Shot ${shotId}] ==========`);
@@ -141,66 +167,26 @@ export async function generateShotImage(
 
     if (useMock) { return { success: true, url: "https://picsum.photos/1280/720" }; }
 
-    let activeRefImage = referenceImageUrl;
+    const isCompositionMode = !!referenceImageUrl;
     let characterPart = "";
     let characterNegative = ""; 
 
     if (characterId) {
-      // 🟢 [新架构] 查询 description_map
       const { data: char } = await supabaseAdmin.from('characters')
-        .select('name, description, negative_prompt, avatar_url, assets, description_map')
+        .select('name, description, negative_prompt')
         .eq('id', characterId).maybeSingle(); 
       
       if (char) {
+          const p = actionPrompt.toLowerCase();
+          const targetDescription = char.description || "";
           if (!isNonFace) {
-             const p = actionPrompt.toLowerCase();
-             let targetDescription = char.description || "";
-             const descMap = char.description_map || {};
-             
-             // 🟢 智能资产与描述匹配 (Generate 版)
-             // 只要命中背影/侧脸资产，就自动切换为对应的干净描述
-             let isBackView = false;
-             
-             if (!activeRefImage && char.assets) {
-                 // 宽容匹配
-                 if (/back view|rear|behind|背影|背对|背向|背身|后背/.test(p) && char.assets["back"]) {
-                     console.log("🎯 [Generate] 命中背影资产 -> 切换背影描述");
-                     activeRefImage = char.assets["back"];
-                     if(descMap.back) targetDescription = descMap.back; // 切换！
-                     isBackView = true;
-                 } else if (/side|profile|侧/.test(p) && char.assets["side"]) {
-                     console.log("🎯 [Generate] 命中侧脸资产 -> 切换侧脸描述");
-                     activeRefImage = char.assets["side"];
-                     if(descMap.side) targetDescription = descMap.side; // 切换！
-                 }
-             }
-
-             if (isDraftMode) {
-                 characterPart = `(Character: ${targetDescription}), `;
-                 if(isBackView) {
-                     characterPart = `(rear view structure:1.5), (back of: ${targetDescription}), `;
-                 }
-             } else {
-                 characterPart = `(Character: ${targetDescription}), `;
-             }
+             characterPart = `(Character: ${targetDescription}), `;
           }
           if (char.negative_prompt) characterNegative = `, ${char.negative_prompt}`;
-          
-          if (!activeRefImage && char.avatar_url && !isNonFace && !useInstantID) {
-              activeRefImage = char.avatar_url;
-          }
       }
     }
 
     const extraNegative = negativePrompt ? `, ${negativePrompt}` : "";
-
-    if (!ARK_API_KEY) throw new Error("API Key Missing");
-
-    let visionAnalysis: VisionAnalysis | null = null;
-    if (activeRefImage) {
-        try { visionAnalysis = await analyzeRefImage(activeRefImage); } catch (e) {}
-    }
-    
     const shotDictionary = isNonFace ? OBJECT_SHOT_PROMPTS : SHOT_PROMPTS;
     const shotWeightPrompt = shotDictionary[shotType.toUpperCase()] || shotDictionary["MID SHOT"];
     const angleWeightPrompt = ANGLE_PROMPTS[cameraAngle.toUpperCase()] || ANGLE_PROMPTS["EYE LEVEL"];
@@ -208,57 +194,151 @@ export async function generateShotImage(
     let finalPrompt = "";
     let finalNegative = "";
 
+    // 构建基础 Prompt
     if (isDraftMode) {
-      finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${actionPrompt}:1.6), ${characterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), lineart, (white background:1.2)`;
-      
-      let dynamicNegative = getStrictNegative(shotType, isNonFace, stylePreset, true);
-      // 虽然换了描述，但加上负面词双重保险也没坏处
-      if (actionPrompt.includes("back view") || actionPrompt.includes("背影")) {
-          dynamicNegative += ", (face:2.0), (looking at camera:2.0), eyes, nose, mouth, (tie:2.0), (logo:2.0)";
-      }
-      finalNegative = `${dynamicNegative}${extraNegative}`;
+      // 线稿模式提示词 (已更新为粗糙/漫画风)
+      finalPrompt = `(${DRAFT_PROMPT_CLASSIC}), (${actionPrompt}:1.6), ${characterPart} (${shotWeightPrompt}), (${angleWeightPrompt}), lineart`;
+      finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, true)}${extraNegative}`;
     } else {
-        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), (${actionPrompt}:1.3), ${characterPart} (${STYLE_PRESETS[stylePreset] || STYLE_PRESETS['realistic']}:1.4)`; 
+        // 渲染模式提示词
+        finalPrompt = `(${shotWeightPrompt}), (${angleWeightPrompt}), (${actionPrompt}:1.3), ${characterPart}`;
         finalNegative = `${getStrictNegative(shotType, isNonFace, stylePreset, false)}${characterNegative}${extraNegative}`;
     }
 
-    const payload: any = {
-      model: isDraftMode ? MODEL_DRAFT : MODEL_PRO, prompt: finalPrompt, negative_prompt: finalNegative, 
-      size: RATIO_MAP[aspectRatio] || "2560x1440", n: 1
-    };
+    // 🟢 [分支 A] Replicate (精准构图 + 垫图模式)
+    if (useHighPrecision && isCompositionMode && referenceImageUrl) {
+        console.log("🚀 [Generate] 激活 Replicate (精准构图模式), URL:", referenceImageUrl);
+        
+        let controlModel = MODEL_CN_DEPTH; 
+        if (referenceImageUrl.includes("canny")) controlModel = MODEL_CN_CANNY;
+        if (referenceImageUrl.includes("openpose")) controlModel = MODEL_CN_OPENPOSE;
 
-    if (activeRefImage) { 
-        const base64Image = await processImageRef(activeRefImage, visionAnalysis, shotType, isDraftMode);
-        if (base64Image) {
-            payload.image_url = base64Image;
-            payload.strength = 0.65;
-            payload.ref_strength = 0.65;
-        }
+        const w = aspectRatio.startsWith("16") ? 1024 : 576;
+        const h = aspectRatio.startsWith("16") ? 576 : 1024;
+
+        const output = await replicate.run(
+            controlModel as any,
+            {
+              input: {
+                prompt: finalPrompt + ", " + (STYLE_PRESETS[stylePreset] || ""),
+                negative_prompt: finalNegative,
+                image: referenceImageUrl,
+                controlnet_conditioning_scale: controlStrength,
+                num_inference_steps: 30,
+                width: w,
+                height: h,
+              }
+            }
+        );
+
+        const imageUrl = Array.isArray(output) ? output[0] : output;
+        return processResponse({ url: imageUrl }, shotId, projectId);
     }
 
-    const response = await fetch(ARK_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${ARK_API_KEY}` },
-      body: JSON.stringify(payload)
-    });
+    // 🟢 [分支 B] 阿里云 DashScope (Z-Image Turbo / Wanx 轮换)
+    if (!DASHSCOPE_API_KEY) throw new Error("DASHSCOPE_API_KEY Missing");
+
+    const zSize = RATIO_MAP[aspectRatio] || "1280*720";
+    let imageUrl = "";
+
+    // 🟢 [逻辑 1] 渲染/写实模式 (Z-Image Turbo)
+    if (!isDraftMode) {
+        console.log("🚀 [Generate] 模式: 渲染 (Z-Image Turbo)");
+        finalPrompt += getSmartStyleSuffix(actionPrompt);
+        
+        const payload = {
+            model: MODEL_RENDER,
+            input: { messages: [{ role: "user", content: [{ text: finalPrompt }] }] },
+            parameters: { prompt_extend: false, size: zSize, n: 1 }
+        };
+        const response = await fetch("https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${DASHSCOPE_API_KEY}` },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || "Z-Image Turbo Error");
+        
+        if (data.output?.choices?.[0]?.message?.content) {
+            const img = data.output.choices[0].message.content.find((i:any)=>i.image);
+            if(img) imageUrl = img.image;
+        } else if (data.output?.task_id) {
+            imageUrl = await pollDashScopeTask(data.output.task_id);
+        } else {
+            throw new Error("Unknown Format");
+        }
+    } 
     
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || "Generation Failed");
-    return processResponse(data, shotId, projectId);
+    // 🟢 [逻辑 2] 线稿/Draft 模式 (Wanx 系列轮换)
+    else {
+        console.log("🚀 [Generate] 模式: 线稿 (Wanx 系列轮询)");
+        let lastError = null;
+
+        for (const modelName of DRAFT_MODELS) {
+            try {
+                console.log(`   🔄 尝试模型: ${modelName}...`);
+                
+                let endpoint = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis";
+                let payload: any = {
+                    model: modelName,
+                    input: { prompt: finalPrompt },
+                    parameters: { size: zSize, n: 1 }
+                };
+
+                // ⚠️ 关键点：如果是 wanx-v1，强制加上 sketch 风格参数，保证统一性
+                if (modelName === "wanx-v1") {
+                    payload.parameters.style = "<sketch>";
+                    console.log("   👉 已启用 wanx-v1 原生 sketch 风格参数");
+                }
+
+                const response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json", 
+                        "Authorization": `Bearer ${DASHSCOPE_API_KEY}`,
+                        "X-DashScope-Async": "enable"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || data.code || "API Error");
+
+                if (data.output?.task_id) {
+                    console.log(`   ⏳ Task ID: ${data.output.task_id} - 等待结果...`);
+                    imageUrl = await pollDashScopeTask(data.output.task_id);
+                    console.log(`   ✅ 模型 ${modelName} 生成成功!`);
+                    break; 
+                } else {
+                    throw new Error("No Task ID returned");
+                }
+            } catch (e: any) {
+                console.warn(`   ❌ 模型 ${modelName} 失败: ${e.message}`);
+                lastError = e;
+            }
+        }
+        if (!imageUrl) throw new Error(`All Draft models failed. Last error: ${lastError?.message}`);
+    }
+
+    return processResponse({ url: imageUrl }, shotId, projectId);
 
   } catch (error: any) {
-    console.error(error);
+    console.error("❌ Generation Error:", error);
     return { success: false, message: error.message };
   }
 }
 
-async function processResponse(data: any, shotId: string | number, projectId: string) {
-    const imageUrl = data.data?.[0]?.url;
+// 辅助函数
+async function processResponse(data: { url: string }, shotId: string | number, projectId: string) {
+    const imageUrl = data.url;
     if (!imageUrl) throw new Error("No image url returned");
     const imageRes = await fetch(imageUrl);
     const buffer = Buffer.from(await imageRes.arrayBuffer());
     const fileName = `cineflow/${projectId}/${Date.now()}_${shotId}.png`;
-    await supabaseAdmin.storage.from('images').upload(fileName, buffer, { contentType: 'image/png', upsert: true });
+    const { error: uploadError } = await supabaseAdmin.storage
+        .from('images')
+        .upload(fileName, buffer, { contentType: 'image/png', upsert: true });
+    if (uploadError) throw new Error("Upload failed: " + uploadError.message);
     const { data: { publicUrl } } = supabaseAdmin.storage.from('images').getPublicUrl(fileName);
     return { success: true, url: publicUrl };
 }
