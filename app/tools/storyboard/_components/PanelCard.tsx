@@ -1,14 +1,16 @@
 'use client'
 
 import React, { useState } from 'react';
-// ✅ 修复点1：确保引入了 ImagePlus 图标
-import { RefreshCw, ImageIcon, Loader2, GripHorizontal, Trash2, ChevronDown, ChevronUp, Eye, Camera, User, ImagePlus } from 'lucide-react';
+// 🟢 确保引入 Clapperboard，如果报错说找不到 Clapperboard，请改用 Film
+import { RefreshCw, ImageIcon, Loader2, GripHorizontal, Trash2, ChevronDown, ChevronUp, Eye, Camera, User, ImagePlus, Clapperboard } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { StoryboardPanel } from '../types';
 import { CINEMATIC_SHOTS, CAMERA_ANGLES } from '../constants';
+import CompositionPicker from './CompositionPicker'; // 🟢 确保这个文件已创建
 
-interface PanelCardProps extends React.HTMLAttributes<HTMLDivElement> {
+// 🟢 修复点：添加 'export' 关键字
+export interface PanelCardProps extends React.HTMLAttributes<HTMLDivElement> {
     panel: StoryboardPanel;
     idx: number;
     currentRatioClass: string;
@@ -16,9 +18,10 @@ interface PanelCardProps extends React.HTMLAttributes<HTMLDivElement> {
     onUpdate?: (id: string, field: keyof StoryboardPanel, value: any) => void;
     onRegenerate?: (id: string) => void;
     onOpenCharModal?: (id: string) => void;
-    // 定义接口
     onOpenSearch?: (idx: number) => void;
     onImageClick?: (idx: number) => void;
+    // 🟢 新增回调
+    onApplyComposition?: (panelId: string, ref: any) => void;
     step: string;
     isOverlay?: boolean;
     t: any;
@@ -26,9 +29,6 @@ interface PanelCardProps extends React.HTMLAttributes<HTMLDivElement> {
     isDeleteMode?: boolean;
 }
 
-// --- PanelCard Component (V6.2 修复版) ---
-// ✅ 修复点2：注意下面这行，必须把 onOpenSearch 从 props 里解构出来！
-// 如果不写在这里，它就会留在 ...props 里传给 div，导致报错
 export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({ 
     panel, 
     idx, 
@@ -37,14 +37,15 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({
     onUpdate, 
     onRegenerate, 
     onOpenCharModal, 
-    onOpenSearch, // <--- 关键：这里必须把它拿出来
+    onOpenSearch, 
     onImageClick, 
+    onApplyComposition, // 🟢 解构出来，防止传给 div 导致 React 警告
     step, 
     isOverlay, 
     t, 
     isDark, 
     isDeleteMode, 
-    ...props // 剩下的 props 才能传给 div
+    ...props 
 }, ref) => {
     
     const cardBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
@@ -172,7 +173,6 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({
                 </div>
             </div>
 
-            {/* ✅ 修复点3：确保这里有 ImagePlus 按钮的 JSX 代码 */}
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                 {/* 1. Shot Size */}
                 <div className="relative group shrink-0">
@@ -227,41 +227,29 @@ export const PanelCard = React.forwardRef<HTMLDivElement, PanelCardProps>(({
                     </div>
                 </button>
 
-                {/* 🟢 4. [导演搜图按钮] - 修复版 */}
+                {/* 4. [Search Ref] Unsplash */}
                 <button 
-                    onClick={(e) => {
-                        // 1. 阻止拖拽事件干扰
-                        e.stopPropagation();
-                        e.preventDefault();
-                        
-                        // 2. 打印日志，按 F12 看控制台有没有输出
-                        console.log("🖱️ 点击了搜图按钮，Index:", idx);
-
-                        // 3. 执行回调
-                        if (onOpenSearch) {
-                            onOpenSearch(idx);
-                        } else {
-                            console.error("❌ onOpenSearch 未定义，请检查父组件传参！");
-                        }
-                    }}
+                    onClick={(e) => { e.stopPropagation(); onOpenSearch && onOpenSearch(idx); }}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg ${pillBg} cursor-pointer border border-transparent hover:border-zinc-600 transition-all shrink-0 ${panel.referenceImage ? 'bg-indigo-500/10 border-indigo-500' : ''}`}
-                    title="Search Unsplash Reference"
+                    title="Search Unsplash"
                 >
                     <ImagePlus size={14} className={panel.referenceImage ? "text-indigo-500" : "text-zinc-500"} />
-                    {panel.referenceImage ? (
-                        <div className="w-4 h-4 rounded-sm overflow-hidden ring-1 ring-indigo-500">
-                            <img src={panel.referenceImage} className="w-full h-full object-cover" />
-                        </div>
-                    ) : (
-                        <span className={`text-xs font-bold ${textColor} whitespace-nowrap`}>参考图</span>
-                    )}
                 </button>
+
+                {/* 🟢 5. [AI Director] Master Composition */}
+                <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <CompositionPicker 
+                        initialQuery={panel.description} 
+                        onSelect={(ref) => onApplyComposition && onApplyComposition(panel.id, ref)}
+                    />
+                </div>
             </div>
         </div>
     );
 });
 PanelCard.displayName = "PanelCard";
 
+// 🟢 确保 SortablePanelItem 也能接收到新的 props
 export function SortablePanelItem(props: PanelCardProps) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.panel.id });
     const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 };

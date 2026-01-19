@@ -1,11 +1,13 @@
 'use client'
 
-import React, { useRef } from 'react';
-import { X, ChevronLeft, ChevronRight, Loader2, User, Check, Upload, Users, Sparkles } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, ChevronLeft, ChevronRight, Loader2, User, Users, Check, Upload, Sparkles, RefreshCw, ImagePlus } from 'lucide-react';
 import Image from 'next/image';
 import { StoryboardPanel, Character, ExportMeta } from '../types';
 import { CAMERA_ANGLES, STYLE_OPTIONS, ATMOSPHERE_TAGS } from '../constants';
+import { toast } from 'sonner';
 
+// 🟢 1. 更新 Interface 定义
 interface ModalsProps {
     t: any;
     isDark: boolean;
@@ -55,23 +57,49 @@ interface ModalsProps {
     setExportMeta: (m: ExportMeta) => void;
     handleExportPDF: () => void;
     isExporting: boolean;
+
+    // ✨✨✨ 场景锚点属性 (仅保留数据展示，移除设置函数) ✨✨✨
+    sceneAnchorImage: string | null;
+    // 🟢 [核心修改] 传入更换场景的处理函数
+    handleEditScene: (panelId: string, newPrompt: string, refFile: File | null) => Promise<void>;
 }
 
 export default function StoryboardModals(props: ModalsProps) {
     const { 
-        t, isDark, lightboxIndex, setLightboxIndex, panels, isRepainting, 
+        t, isDark, lightboxIndex, setLightboxIndex, panels, isRepainting, triggerRepaint,
         setActivePanelIdForModal, setShowCastingModal, getLocalizedShotLabel,
         showBatchConfirm, setShowBatchConfirm, batchTargetChar, setBatchTargetChar, executeCharacterInject,
         showStyleModal, setShowStyleModal, handleStyleUpload, uploadedStyleRef, stylePreset, setStylePreset,
         showAtmosphereModal, setShowAtmosphereModal, toggleAtmosphere, globalAtmosphere,
         showCharModal, setShowCharModal, showCastingModal: _showCastingModal, characters, activePanelIdForModal, handlePreSelectCharacter,
-        showExportModal, setShowExportModal, exportMeta, setExportMeta, handleExportPDF, isExporting
+        showExportModal, setShowExportModal, exportMeta, setExportMeta, handleExportPDF, isExporting,
+        
+        // 解构新属性
+        sceneAnchorImage, handleEditScene
     } = props;
+
+    // 本地状态：场景编辑
+    const [isEditingScene, setIsEditingScene] = useState(false);
+    const [newScenePrompt, setNewScenePrompt] = useState("");
+    const [sceneRefFile, setSceneRefFile] = useState<File | null>(null);
 
     const currentLightboxPanel = lightboxIndex !== null ? panels[lightboxIndex] : null;
     const styleUploadRef = useRef<HTMLInputElement>(null);
     const inputBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
     const buttonBg = isDark ? "bg-[#2d2d2d] hover:bg-[#3d3d3d]" : "bg-[#e3e3e3] hover:bg-[#d3d3d3] text-black";
+
+    // 处理场景编辑提交
+    const onSubmitSceneEdit = async () => {
+        if (!currentLightboxPanel) return;
+        if (!newScenePrompt && !sceneRefFile) {
+            toast.error("请输入场景描述或上传参考图片");
+            return;
+        }
+        await handleEditScene(currentLightboxPanel.id, newScenePrompt, sceneRefFile);
+        setIsEditingScene(false);
+        setNewScenePrompt("");
+        setSceneRefFile(null);
+    };
 
     return (
         <>
@@ -79,24 +107,38 @@ export default function StoryboardModals(props: ModalsProps) {
         {currentLightboxPanel && currentLightboxPanel.imageUrl && (
           <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
               
-              <div className="absolute top-6 left-6 z-50">
+              {/* Top Left: Info Tag */}
+              <div className="absolute top-6 left-6 z-50 flex items-center gap-4">
                     <span className="text-white/60 font-black text-2xl font-mono tracking-widest bg-black/30 px-3 py-1 rounded-lg backdrop-blur-md">
                         {t.shotPrefix} {String((lightboxIndex??0) + 1).padStart(2, '0')}
                     </span>
+                    {/* 🟢 已移除旧的 "Set as Scene Anchor" 按钮 */}
               </div>
 
+              {/* Close Button */}
               <button onClick={() => setLightboxIndex(null)} className="absolute top-6 right-6 text-white/50 hover:text-white p-2 z-50 bg-black/20 rounded-full backdrop-blur-md cursor-pointer"><X size={28} /></button>
 
+              {/* Main Canvas */}
               <div className="relative w-full h-[85vh] flex items-center justify-center group">
+                  {/* Nav Buttons */}
                   <button onClick={() => setLightboxIndex(lightboxIndex !== null && lightboxIndex > 0 ? lightboxIndex - 1 : lightboxIndex)} className="absolute left-4 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md z-40"><ChevronLeft size={32}/></button>
                   <button onClick={() => setLightboxIndex(lightboxIndex !== null && lightboxIndex < panels.length - 1 ? lightboxIndex + 1 : lightboxIndex)} className="absolute right-4 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all backdrop-blur-md z-40"><ChevronRight size={32}/></button>
 
+                  {/* Image */}
                   <img src={currentLightboxPanel.imageUrl} className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" alt="lightbox" />
                   
-                  {isRepainting && <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60"><Loader2 className="animate-spin text-white w-12 h-12"/><span className="text-white font-bold mt-4">{t.loading}</span></div>}
+                  {/* Loading Overlay */}
+                  {(isRepainting || currentLightboxPanel.isLoading) && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 rounded-lg z-50">
+                          <Loader2 className="animate-spin text-white w-12 h-12"/>
+                          <span className="text-white font-bold mt-4">{isRepainting ? "正在重绘角色..." : "正在处理场景..."}</span>
+                      </div>
+                  )}
 
+                  {/* 🟢 Bottom Bar */}
                   <div className="absolute bottom-0 left-0 right-0 w-full p-10 pt-32 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex justify-between items-end pointer-events-none rounded-b-lg">
-                      <div className="max-w-4xl space-y-3 pointer-events-auto">
+                      {/* Left: Info */}
+                      <div className="max-w-3xl space-y-3 pointer-events-auto">
                           <p className="text-white/95 text-xl font-medium leading-relaxed drop-shadow-md">
                               {currentLightboxPanel.description}
                           </p>
@@ -111,17 +153,80 @@ export default function StoryboardModals(props: ModalsProps) {
                           </div>
                       </div>
                       
-                      <div className="pointer-events-auto">
+                      {/* Right: Actions */}
+                      <div className="pointer-events-auto flex items-center gap-3">
+                          {/* 🟢 Change Scene Button (汉化) */}
+                          <button 
+                            onClick={() => setIsEditingScene(true)}
+                            disabled={isRepainting || currentLightboxPanel.isLoading}
+                            className="px-5 py-3 bg-zinc-800 text-white hover:bg-zinc-700 font-bold rounded-full flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                              <RefreshCw size={18} /> 更换场景
+                          </button>
+
+                          {/* Casting Button */}
                           <button 
                             onClick={() => { setActivePanelIdForModal(currentLightboxPanel.id); setShowCastingModal(true); }} 
-                            disabled={isRepainting}
-                            className="px-6 py-3 bg-white text-black hover:bg-zinc-200 font-bold rounded-full flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer"
+                            disabled={isRepainting || currentLightboxPanel.isLoading}
+                            className="px-6 py-3 bg-white text-black hover:bg-zinc-200 font-bold rounded-full flex items-center gap-2 shadow-xl hover:scale-105 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                              <User size={18} /> {t.casting}
+                              <User size={18} /> 角色卡司
                           </button>
                       </div>
                   </div>
               </div>
+
+              {/* 🟢 [新增] 场景编辑面板 (覆盖在 Lightbox 之上) */}
+              {isEditingScene && (
+                  <div className="absolute z-[250] bg-[#1A1A1A] border border-white/10 p-6 rounded-2xl shadow-2xl w-[400px] animate-in zoom-in-95 duration-200 bottom-32 right-10">
+                      <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-white font-bold flex items-center gap-2"><Sparkles size={16} className="text-blue-500"/> 更换场景</h3>
+                          <button onClick={() => setIsEditingScene(false)} className="text-zinc-500 hover:text-white"><X size={18}/></button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                          {/* Text Input */}
+                          <div>
+                              <label className="text-xs text-zinc-500 font-bold uppercase mb-1 block">新场景描述</label>
+                              <textarea 
+                                  value={newScenePrompt}
+                                  onChange={(e) => setNewScenePrompt(e.target.value)}
+                                  className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-sm text-white focus:border-blue-500 outline-none h-20 resize-none placeholder:text-zinc-600"
+                                  placeholder="描述新的背景环境 (例如：赛博朋克街道，下雨天)..."
+                              />
+                          </div>
+
+                          {/* Image Upload */}
+                          <div>
+                              <label className="text-xs text-zinc-500 font-bold uppercase mb-1 block">参考图 (可选)</label>
+                              <div className="relative group">
+                                  <input 
+                                      type="file" 
+                                      accept="image/*"
+                                      onChange={(e) => e.target.files && setSceneRefFile(e.target.files[0])}
+                                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                                  />
+                                  <div className={`flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed text-sm transition-colors ${sceneRefFile ? 'border-green-500/50 bg-green-500/10 text-green-400' : 'border-white/10 hover:bg-white/5 text-zinc-400'}`}>
+                                      {sceneRefFile ? <Check size={16} /> : <ImagePlus size={16} />}
+                                      {sceneRefFile ? "已选择图片" : "点击上传参考图"}
+                                  </div>
+                                  {sceneRefFile && <div className="text-xs text-center text-zinc-500 mt-1 truncate">{sceneRefFile.name}</div>}
+                              </div>
+                          </div>
+
+                          {/* Action Button */}
+                          <button 
+                              onClick={onSubmitSceneEdit}
+                              // 修复逻辑：只要有 Prompt 或者 File 就可以点击，且不在 loading 状态
+                              disabled={currentLightboxPanel.isLoading || (!newScenePrompt && !sceneRefFile)}
+                              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                              {currentLightboxPanel.isLoading ? <RefreshCw className="animate-spin" size={16}/> : <Sparkles size={16}/>}
+                              立即生成
+                          </button>
+                      </div>
+                  </div>
+              )}
           </div>
       )}
 

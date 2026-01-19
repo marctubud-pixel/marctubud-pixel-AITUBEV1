@@ -6,6 +6,7 @@ import { DndContext, closestCenter, DragOverlay } from '@dnd-kit/core';
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 import { PanelCard, SortablePanelItem } from './PanelCard';
 import { StoryboardPanel } from '../types';
+import { toast } from 'sonner'; // 引入 toast
 
 interface StepRenderProps {
     isDark: boolean;
@@ -14,7 +15,7 @@ interface StepRenderProps {
     aspectRatio: string;
     setStep: (s: any) => void;
     setScript: (s: string) => void;
-    setPanels: (p: StoryboardPanel[]) => void;
+    setPanels: (p: any) => void; // 稍微放宽类型定义以便 React.SetStateAction
     handleGenerateSingleImage: (id: string) => void;
     setLightboxIndex: (idx: number | null) => void;
     handleExportPDF: () => void;
@@ -38,6 +39,37 @@ export default function StepRender({
     
     const activePanel = activeDragId ? panels.find(p => p.id === activeDragId) : null;
 
+    // 🟢 [新增] 处理构图应用的核心逻辑
+    const handleApplyComposition = (panelId: string, ref: any) => {
+        setPanels((current: StoryboardPanel[]) => current.map(p => {
+            if (p.id === panelId) {
+                // 1. 提取关键词
+                const keywords = [
+                    ref.meta.technical.shot_size, // 景别
+                    ref.meta.technical.angle,     // 角度
+                    ref.meta.environment.lighting_type, // 光影
+                    ref.meta.mood.keywords        // 氛围
+                ].filter(Boolean).join(', ');
+
+                // 2. 追加到 Prompt
+                const oldPrompt = p.prompt || "";
+                // 如果 Prompt 里还没包含这些词，就加进去
+                const newPrompt = oldPrompt.includes(keywords) 
+                    ? oldPrompt 
+                    : `${oldPrompt}, ${keywords}, cinematic composition`;
+
+                toast.success(`已应用构图: ${ref.meta.technical.shot_size}`);
+                
+                return {
+                    ...p,
+                    prompt: newPrompt,
+                    // 如果你支持参考图，可以在这里加: referenceImage: ref.image_url 
+                };
+            }
+            return p;
+        }));
+    };
+
     return (
         <div className="max-w-[1920px] mx-auto animate-in fade-in space-y-8">
              <div className="flex justify-between items-center px-4">
@@ -56,7 +88,19 @@ export default function StepRender({
                 <SortableContext items={panels.map(p => p.id)} strategy={rectSortingStrategy}>
                     <div className={`grid gap-6 px-4 ${aspectRatio === '9:16' ? 'grid-cols-3 lg:grid-cols-5 xl:grid-cols-6' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
                         {panels.map((panel, idx) => (
-                            <SortablePanelItem key={panel.id} panel={panel} idx={idx} step={step} currentRatioClass={currentRatioClass} onRegenerate={handleGenerateSingleImage} onImageClick={setLightboxIndex} t={t} isDark={isDark}/>
+                            <SortablePanelItem 
+                                key={panel.id} 
+                                panel={panel} 
+                                idx={idx} 
+                                step={step} 
+                                currentRatioClass={currentRatioClass} 
+                                onRegenerate={handleGenerateSingleImage} 
+                                onImageClick={setLightboxIndex} 
+                                t={t} 
+                                isDark={isDark}
+                                // 🟢 [新增] 传递回调函数
+                                onApplyComposition={handleApplyComposition}
+                            />
                         ))}
                     </div>
                 </SortableContext>

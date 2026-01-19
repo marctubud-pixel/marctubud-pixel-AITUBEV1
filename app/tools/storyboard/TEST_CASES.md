@@ -38,3 +38,106 @@
     2.  Prompt 仅输入：“一只流浪猫”。
 * **验收标准**：
     * 生成的猫必须处于“赛博朋克雨夜”的环境中（霓虹灯光、湿润地面），而不是在白天或室内。
+
+Project Log Update: [2026-01-07] CineFlow Director Mode Upgrade
+1. 核心功能：双轨制生图引擎 (Dual-Engine Generation)
+为了解决构图控制不准和 API 限流问题，重构了生图逻辑，引入了**“精准度开关”**：
+
+🚀 快速参考模式 (Fast Mode / Default):
+
+引擎: Volcengine (火山引擎 Ark)。
+
+特点: 速度极快，无并发限制，免费。
+
+逻辑: 将参考图作为 IP-Adapter (风格/大概率参考) 处理，适合由 AI 自由发挥的场景。
+
+💎 精准构图模式 (High Precision Mode):
+
+引擎: Replicate (SDXL ControlNet)。
+
+特点: 构图绝对锁死 (Strength 0.95)，支持 Depth/Canny/OpenPose。
+
+防限流: 针对免费版 API 的 429 限制，实现了批量生成时的“智能冷却”机制（每张图生成后强制休眠 5秒）。
+
+2. 组件重构：统一参考库 (Unified Reference Library)
+将分散的弹窗逻辑重新整合回增强版的 ImageSearchModal，实现了“三合一”数据源：
+
+构图骨架 (Composition): 读取本地 constants/compositionTemplates.ts，提供“三分法”、“过肩镜头”、“荷兰角”等 8 种硬核构图模版。
+
+氛围参考 (Atmosphere): 连接 Unsplash API (需检查 Key 状态)。
+
+电影剧照 (Cinematic): 连接 Google Custom Search API。
+
+3. 关键修复 (Bug Fixes)
+API 参数对齐: 修复了前端传递 number 类型强度 (0.95) 而后端期待 string 导致的类型报错。
+
+React Key 冲突: 修复了搜图列表中因重复图片导致的 unique key 报错。
+
+逻辑冗余清洗: 移除了 StoryboardModals 中废弃的旧弹窗代码，减轻了组件负担。
+
+🧪 CineFlow 黄金测试集 (Golden Test Cases) v1.0
+原则：每次修改 page.tsx 核心逻辑或后端生成算法后，必须 跑通以下 4 个测试点。
+
+✅ 测试点 1：极端空镜测试 (The "Empty Void" Test)
+目的：验证空镜保护逻辑是否生效，是否存在幻觉（乱加人）。
+
+模式：线稿模式 (Draft Mode) & 精绘模式 (Render Mode) 各测一次。
+
+Prompt：
+
+[空镜测试] 午夜的废弃医院走廊，墙壁斑驳，灯光闪烁。没有任何人，空无一物，完全的空场景，死寂。
+
+验收标准：
+
+画面必须 没有人（不仅是没正脸，连背影、路人、鬼影都不能有）。
+
+如果是线稿模式，画面必须是纯黑白线条，无彩色。
+
+✅ 测试点 2：线稿防手压力测试 (The "No Hand" Test)
+目的：验证线稿模式下，AI 是否会错误地画出“正在画画的手”或笔。
+
+模式：仅限 线稿模式 (Draft Mode)。
+
+Prompt：
+
+[防手测试] 一张放在桌子上的建筑设计蓝图特写，线条复杂，旁边放着尺子。画面纯净，不要出现画画的手，不要出现笔。
+
+验收标准：
+
+画面主体是图纸。
+
+绝对禁止 出现握笔的人手、画家的手部特写。
+
+✅ 测试点 3：人物与构图对照组 (Character & Composition)
+目的：验证在强力负面词（防手/防人）存在的情况下，是否还能正常画出人，且构图模式是否生效。
+
+模式：精绘模式 (Render Mode) + 开启“精准构图” (High Precision)。
+
+操作：选择“三分法-左”模版。
+
+Prompt：
+
+[人物测试] 一名年轻的赛博朋克黑客（女性，绿色短发）站在悬崖边。
+
+验收标准：
+
+必须出现人物（不能被空镜逻辑误杀）。
+
+人物特征（绿发）准确。
+
+构图准确：人物必须严格位于画面左侧 1/3 处。
+
+✅ 测试点 4：环境一致性测试 (Consistency Check)
+目的：验证 Scene Description 字段的权重。
+
+模式：任意模式。
+
+操作：
+
+在全局设置栏填写“赛博朋克雨夜 (Cyberpunk rainy night)”。
+
+Prompt 仅输入：“一只流浪猫”。
+
+验收标准：
+
+生成的猫必须处于“赛博朋克雨夜”的环境中（霓虹灯光、湿润地面），而不是在白天或室内。
